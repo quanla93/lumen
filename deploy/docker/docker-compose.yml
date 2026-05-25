@@ -16,15 +16,21 @@ services:
     container_name: lumen-hub
     ports:
       - "8090:8090"
+    # env_file path is resolved relative to THIS compose file, so
+    # `docker compose -f deploy/docker/docker-compose.yml ...` works
+    # from any CWD (no need for --env-file). Missing .env is OK; the
+    # Go binary applies its own defaults.
+    env_file:
+      - path: .env
+        required: false
     environment:
       LUMEN_HUB_ADDR: ":8090"
       LUMEN_HUB_DEV: "false"
       LUMEN_HUB_STREAM_INTERVAL: "5s"
       LUMEN_HUB_DB_PATH: "/data/lumen.db"
-      # Set this to a stable secret (>=64 hex chars) in your shell or a
-      # local .env so sessions survive container restarts. Generate one with:
-      #   openssl rand -hex 32
-      LUMEN_HUB_SECRET: "${LUMEN_HUB_SECRET:-}"
+      # LUMEN_HUB_SECRET comes from deploy/docker/.env — set it to a
+      # stable hex string so sessions survive restarts. Generate with:
+      #   node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
     volumes:
       - lumen-data:/data
     restart: unless-stopped
@@ -47,12 +53,15 @@ services:
     container_name: lumen-agent
     depends_on:
       - hub
+    env_file:
+      - path: .env
+        required: false
     environment:
       LUMEN_HUB_URL: "http://hub:8090"
-      LUMEN_AGENT_TOKEN: "${LUMEN_AGENT_TOKEN:-devtoken}"
       LUMEN_AGENT_INTERVAL: "5s"
-      # Override the in-container hostname so the dashboard shows a friendly name.
-      LUMEN_AGENT_HOST: "${LUMEN_AGENT_HOST:-compose-agent}"
+      # LUMEN_AGENT_TOKEN + LUMEN_AGENT_HOST come from deploy/docker/.env.
+      # Empty token → no Authorization header → ingest still accepted today
+      # (strict-mode opt-in later).
     restart: unless-stopped
 
 volumes:
