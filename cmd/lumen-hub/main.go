@@ -1,23 +1,50 @@
-// Package main is the entry point for the Lumen hub binary.
+// Lumen hub binary.
 //
-// Phase 1.1/1.2 status: skeleton only — wires up a chi router but does not
-// register any routes yet. Phase 1.3 will add /healthz; subsequent phases add
-// ingest, stream, auth, etc.
+// Configuration is read from environment variables (12-factor). A .env file
+// in the CWD is loaded automatically if present (dev convenience).
 //
-// Chosen libraries for the hub (locked in ACTION_PLAN Phase 1):
-//   - HTTP router:  github.com/go-chi/chi/v5
-//   - WebSocket:    github.com/gorilla/websocket   (added in Phase 1.5)
-//   - Storage:      modernc.org/sqlite             (added in Phase 2, pure-Go, no CGO)
+//	LUMEN_HUB_ADDR  (default ":8090")  - bind address
+//	LUMEN_HUB_DEV   (default "false")  - enable verbose request logs + debug logging
+//
+// Phase 1 endpoints:
+//   - GET  /healthz       — liveness probe
+//   - POST /api/ingest    — agents push metric snapshots here every ~5s
+//
+// Phase 1.5 adds /api/stream (WebSocket). Phase 2 wires SQLite + auth.
 package main
 
 import (
-	"log"
+	"context"
+	"log/slog"
+	"os"
+	"os/signal"
+	"syscall"
 
-	"github.com/go-chi/chi/v5"
+	"github.com/lumenhq/lumen/internal/hub/server"
+	"github.com/lumenhq/lumen/internal/shared/envcfg"
 )
 
 func main() {
-	r := chi.NewRouter()
-	_ = r // routes registered in Phase 1.3+
-	log.Println("lumen-hub: skeleton build — no routes registered yet")
+	envcfg.Load()
+	addr := envcfg.String("LUMEN_HUB_ADDR", ":8090")
+	dev := envcfg.Bool("LUMEN_HUB_DEV", false)
+
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+		Level: levelFor(dev),
+	}))
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	if err := server.Run(ctx, server.Config{Addr: addr, Dev: dev, Logger: logger}); err != nil {
+		logger.Error("hub exited with error", "err", err)
+		os.Exit(1)
+	}
+}
+
+func levelFor(dev bool) slog.Level {
+	if dev {
+		return slog.LevelDebug
+	}
+	return slog.LevelInfo
 }

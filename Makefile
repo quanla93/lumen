@@ -20,12 +20,12 @@ help: ## Show this help
 # ============================================================
 
 .PHONY: dev-hub
-dev-hub: ## Run hub in dev mode (auto-reload)
-	$(GO) run ./cmd/lumen-hub --dev
+dev-hub: ## Run hub in dev mode (reads .env from CWD; see .env.example)
+	$(GO) run ./cmd/lumen-hub
 
 .PHONY: dev-agent
-dev-agent: ## Run agent in dev mode pointed at local hub
-	$(GO) run ./cmd/lumen-agent --hub http://localhost:8090 --token devtoken
+dev-agent: ## Run agent in dev mode (reads .env from CWD; see .env.example)
+	$(GO) run ./cmd/lumen-agent
 
 .PHONY: dev-web
 dev-web: ## Run Vite dev server for the web UI
