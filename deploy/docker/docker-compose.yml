@@ -16,21 +16,17 @@ services:
     container_name: lumen-hub
     ports:
       - "8090:8090"
-    # env_file path is resolved relative to THIS compose file, so
-    # `docker compose -f deploy/docker/docker-compose.yml ...` works
-    # from any CWD (no need for --env-file). Missing .env is OK; the
-    # Go binary applies its own defaults.
+    # Single source of truth: the repo-root .env. Path is resolved
+    # relative to THIS compose file, so any CWD works (no --env-file flag).
+    # Missing .env is OK; the Go binary falls back to its own defaults.
     env_file:
-      - path: .env
+      - path: ../../.env
         required: false
     environment:
-      LUMEN_HUB_ADDR: ":8090"
-      LUMEN_HUB_DEV: "false"
-      LUMEN_HUB_STREAM_INTERVAL: "5s"
+      # Container-only overrides — keep these so a native-tuned .env
+      # (LUMEN_HUB_URL=localhost, LUMEN_HUB_DB_PATH=./lumen.db) doesn't
+      # break things inside the container.
       LUMEN_HUB_DB_PATH: "/data/lumen.db"
-      # LUMEN_HUB_SECRET comes from deploy/docker/.env — set it to a
-      # stable hex string so sessions survive restarts. Generate with:
-      #   node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
     volumes:
       - lumen-data:/data
     restart: unless-stopped
@@ -54,14 +50,11 @@ services:
     depends_on:
       - hub
     env_file:
-      - path: .env
+      - path: ../../.env
         required: false
     environment:
+      # Container-only override: agent reaches the hub via compose DNS.
       LUMEN_HUB_URL: "http://hub:8090"
-      LUMEN_AGENT_INTERVAL: "5s"
-      # LUMEN_AGENT_TOKEN + LUMEN_AGENT_HOST come from deploy/docker/.env.
-      # Empty token → no Authorization header → ingest still accepted today
-      # (strict-mode opt-in later).
     restart: unless-stopped
 
 volumes:
