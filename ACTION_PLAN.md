@@ -154,22 +154,23 @@ Mỗi quyết định ghi 1 dòng. Không xóa, không sửa — nếu đổi ý
 
 ---
 
-### Phase 1 — MVP technical spike (Week 1) ⏳
+### Phase 1 — MVP technical spike (Week 1) ✅
 
 **Goal**: 1 end-to-end skinny slice. Validate stack hoạt động trước khi build wide.
 
-- [x] `go.mod` init + dependency chọn (chi, gopsutil locked; gorilla/websocket + modernc.org/sqlite deferred to phase-of-use)
+- [x] `go.mod` init + dependency chọn (chi, gopsutil, gorilla/websocket, godotenv locked; modernc.org/sqlite deferred to Phase 2 storage)
 - [x] Skeleton dirs: `cmd/{lumen-hub,lumen-agent}/`, `internal/{hub,agent,shared}/`, `web/`
-- [ ] `cmd/lumen-hub/main.go` — bind 8090, serve 1 endpoint `/healthz` *(stub exists, not yet listening)*
-- [ ] `cmd/lumen-agent/main.go` — read 1 metric (CPU%), POST to hub mỗi 5s *(stub reads CPU once, no loop/POST yet)*
-- [ ] Hub `internal/hub/ingest/` — accept POST, in-memory store last value per host
-- [ ] Hub `internal/hub/stream/` — WS `/api/stream` echo current value mỗi 5s
-- [ ] `web/` Vite scaffold + 1 page hiển thị live CPU% qua WS
-- [ ] `embed.FS` web build vào hub binary
-- [ ] Docker compose chạy được hub + 1 agent local
-- [ ] Document: `how-to/run-from-source.md`
+- [x] `cmd/lumen-hub/main.go` — bind `:8090`, serve `/healthz`
+- [x] `cmd/lumen-agent/main.go` — read CPU% via gopsutil, POST to hub mỗi 5s
+- [x] Hub `internal/hub/ingest/` — accept POST, in-memory store last value per host
+- [x] Hub `internal/hub/stream/` — WS `/api/stream` broadcast every `LUMEN_HUB_STREAM_INTERVAL`
+- [x] `web/` Vite scaffold + 1 page hiển thị live CPU% qua WS (inline styles; Tailwind+shadcn deferred to Phase 2)
+- [x] `embed.FS` web build vào hub binary (SPA fallback; `.gitkeep` placeholder so `go build` never fails)
+- [x] Docker compose chạy được hub + 1 agent local (distroless, env-only)
+- [x] Document: `how-to/run-from-source.md` (4 run modes + Docker + API testing + env reference)
+- [x] Bonus: OpenAPI 3.1 + `.http` file under `api/` for Postman/REST Client import
 
-**Definition of done**: 1 binary chạy, mở browser, thấy CPU% live update từ agent.
+**Definition of done**: 1 binary chạy, mở browser, thấy CPU% live update từ agent. ✅ Achieved (`go run ./cmd/lumen-hub` + `go run ./cmd/lumen-agent` + Vite dev → http://localhost:5173; or `docker compose up` → http://localhost:8090).
 
 ---
 
@@ -300,7 +301,7 @@ Nếu bạn (hoặc Claude) mở session mới:
 > Cập nhật mục này mỗi session.
 
 **Session**: 2026-05-25 (kickoff, day 1)
-**Đang làm**: Phase 0 closed → vào Phase 1 (MVP spike)
+**Đang làm**: Phase 1 closed → vào Phase 2 (MVP feature breadth)
 **Vừa hoàn thành**:
 - README, LICENSE, CONTRIBUTING, ACTION_PLAN
 - Toàn bộ `.github/` (issue/PR/discussion templates + CI/release/CodeQL workflows + CODEOWNERS)
@@ -312,16 +313,17 @@ Nếu bạn (hoặc Claude) mở session mới:
 - Toolchain dev unblocked: Go 1.26.3 + pnpm cài qua winget/npm
 - `git init -b main` + initial commit Phase 0 baseline (`919e0a7 chore: initial Phase 0 baseline`)
 
-**Bước tiếp theo cụ thể**:
-1. ✅ Phase 1.1 — `go mod init github.com/lumenhq/lumen` + chi/gopsutil pinned (go.sum committed)
-2. ✅ Phase 1.2 — Skeleton dirs created; both stub mains compile + run
-3. ⏳ Phase 1.3 — Hub: bind `:8090`, serve `/healthz`
-4. ⏳ Phase 1.4 — Agent: read CPU% mỗi 5s, POST tới hub
-5. ⏳ Phase 1.5 — Hub WS `/api/stream` echo current value (lock websocket lib: gorilla vs coder)
-6. ⏳ Phase 1.6 — Web: Vite scaffold + 1 page hiển thị live CPU qua WS
-7. ⏳ Phase 1.7 — `embed.FS` web build vào hub binary
-8. ⏳ Phase 1.8 — `docker-compose` dev (hub + 1 agent local)
-9. ⏳ Phase 1 docs — `how-to/run-from-source.md`
+**Phase 1 complete (10 micro-steps + 1 bonus, 8 commits on main):**
+- ✅ 1.1–1.9 per Phase plan above + OpenAPI/`.http` spec for tooling.
+
+**Phase 2 first slice (proposed, pending user confirm):**
+1. ⏳ UI polish foundation — Tailwind v4 + shadcn/ui in `web/`, replace inline styles with Card + Table + Badge + Theme toggle. Borrow visual cues from Beszel (open source, MIT) without copying code; see [[lumen-vs-beszel]] in memory.
+2. ⏳ Agent collector breadth — add RAM%, swap, disk usage%, disk I/O, net throughput, load avg, temperature; envelope extended; hub stream forwards.
+3. ⏳ Web Overview page — host cards (name, status dot, CPU bar, RAM bar, sparkline) with shadcn.
+4. ⏳ Hub auth + Hosts CRUD — register-first-admin flow, Argon2id passwords, JWT in HttpOnly cookie, hosts table with rotatable bearer tokens.
+5. ⏳ Hub storage layer — modernc.org/sqlite migrations (goose), in-memory ring buffer per host, batched flush every 60s.
+
+Items 1–3 are visible UI/data work; 4–5 are foundational backend. Order can flex.
 
 **Blockers / open questions**:
 - Domain `lumenhq.dev` / GitHub org `lumenhq` chưa register — không block code nhưng nên xử lý trước public release.
