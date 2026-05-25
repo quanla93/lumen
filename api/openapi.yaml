@@ -1,0 +1,173 @@
+openapi: 3.1.0
+info:
+  title: Lumen Hub API
+  version: 0.0.0-phase1
+  summary: Pre-v0.1 spike — only the endpoints implemented so far.
+  description: |
+    Lumen hub REST + WebSocket API.
+
+    Phase 1 spike: only the three endpoints below are wired. Phase 2 adds
+    auth (Argon2id + JWT), host CRUD, the `/api/hosts` query API, and
+    versions everything under `/api/v1/`.
+
+    Import this file into Postman, Insomnia, Bruno, Hoppscotch, Stoplight,
+    or any OpenAPI-aware tool. For the WebSocket endpoint (`/api/stream`),
+    use a dedicated WS client — most REST tools don't drive WS from OpenAPI.
+  license:
+    name: MIT
+    identifier: MIT
+  contact:
+    name: Lumen
+    url: https://github.com/quanla93/lumen
+
+servers:
+  - url: http://localhost:8090
+    description: Local dev hub (default `LUMEN_HUB_ADDR`).
+  - url: https://lumen.example.com
+    description: Replace with your deployed hub URL.
+
+tags:
+  - name: health
+    description: Liveness probes.
+  - name: ingest
+    description: Agent → hub metric push.
+  - name: stream
+    description: Hub → client WebSocket fan-out (documented for reference).
+
+paths:
+  /healthz:
+    get:
+      tags: [health]
+      operationId: getHealth
+      summary: Liveness probe.
+      description: Returns 200 OK as long as the hub process is up.
+      responses:
+        "200":
+          description: Hub is alive.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status:
+                    type: string
+                    example: ok
+
+  /api/ingest:
+    post:
+      tags: [ingest]
+      operationId: postIngest
+      summary: Push one metric snapshot for a host.
+      description: |
+        Agents call this every `LUMEN_AGENT_INTERVAL` (default 5s) with the
+        latest host sample. The hub keeps only the most recent snapshot per
+        host in memory (Phase 1); Phase 2 batches into SQLite every 60s.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IngestRequest"
+            examples:
+              cpuOnly:
+                summary: Minimal Phase 1 envelope
+                value:
+                  host: pve-01
+                  ts: "2026-05-25T07:09:53Z"
+                  cpu_pct: 12.3
+      responses:
+        "204":
+          description: Accepted, no body.
+        "400":
+          description: Validation failed (missing host, zero ts, cpu_pct out of [0,100], unknown fields).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                missingHost:
+                  value: { error: "host required" }
+                badCpu:
+                  value: { error: "cpu_pct out of [0,100]" }
+        "401":
+          description: |
+            Reserved for Phase 2 — currently the bearer token is accepted
+            but not validated, so this status is never returned today.
+
+  /api/stream:
+    get:
+      tags: [stream]
+      operationId: getStream
+      summary: WebSocket — pushes the current per-host snapshot every interval.
+      description: |
+        Upgrade this request to a WebSocket. The hub then:
+
+        1. Sends the current snapshot immediately (initial frame).
+        2. Re-sends every `LUMEN_HUB_STREAM_INTERVAL` (default 5s).
+
+        Frames are JSON arrays of `HostSnapshot`. Phase 2 adds diffing /
+        per-host subscription.
+
+        Test from CLI (Node 22+):
+        ```
+        node -e "const ws=new WebSocket('ws://localhost:8090/api/stream');ws.onmessage=e=>console.log(e.data);"
+        ```
+      responses:
+        "101":
+          description: Switching Protocols — WebSocket upgrade succeeded.
+        "400":
+          description: Upgrade failed (missing/invalid WS headers).
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque
+      description: |
+        `Authorization: Bearer <token>`. Phase 1 accepts any value (token
+        not validated). Phase 2 enforces per-host tokens minted at host
+        creation time.
+
+  schemas:
+    IngestRequest:
+      type: object
+      required: [host, ts, cpu_pct]
+      additionalProperties: false
+      properties:
+        host:
+          type: string
+          minLength: 1
+          example: pve-01
+          description: Host identifier (defaults to `os.Hostname()` in the agent).
+        ts:
+          type: string
+          format: date-time
+          example: "2026-05-25T07:09:53Z"
+          description: RFC3339 sample time (UTC recommended).
+        cpu_pct:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 100
+          example: 12.34
+          description: CPU usage percentage across all cores for the past interval.
+
+    HostSnapshot:
+      type: object
+      required: [host, ts, cpu_pct]
+      properties:
+        host: { type: string, example: pve-01 }
+        ts: { type: string, format: date-time }
+        cpu_pct: { type: number, format: double, minimum: 0, maximum: 100 }
+
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+          example: host required

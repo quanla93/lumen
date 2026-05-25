@@ -1,0 +1,69 @@
+# Lumen — REST Client requests.
+#
+# Compatible with VS Code "REST Client" (humao.rest-client),
+# JetBrains/IntelliJ HTTP Client, and Visual Studio HTTP Files.
+#
+# For Postman / Insomnia / Bruno / Hoppscotch: import api/openapi.yaml instead.
+# For the WebSocket /api/stream endpoint, see the snippet at the bottom.
+
+@hub = http://localhost:8090
+@host = pve-01
+@token = devtoken
+
+###
+# Liveness — should return 200 with {"status":"ok"}.
+GET {{hub}}/healthz
+
+###
+# Ingest a CPU sample. The hub stores it as the latest snapshot for `host`.
+# Auth header is accepted but not validated until Phase 2.
+POST {{hub}}/api/ingest
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "host": "{{host}}",
+  "ts": "2026-05-25T07:09:53Z",
+  "cpu_pct": 12.34
+}
+
+###
+# Ingest — missing host (expect 400).
+POST {{hub}}/api/ingest
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "ts": "2026-05-25T07:09:53Z",
+  "cpu_pct": 12.34
+}
+
+###
+# Ingest — cpu_pct out of range (expect 400).
+POST {{hub}}/api/ingest
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "host": "{{host}}",
+  "ts": "2026-05-25T07:09:53Z",
+  "cpu_pct": 150
+}
+
+###
+# WebSocket /api/stream is not driveable from this file. Use either:
+#
+# 1) Node 22+ one-liner:
+#    node -e "const ws=new WebSocket('ws://localhost:8090/api/stream'); \
+#             ws.onmessage=e=>console.log(e.data); \
+#             setTimeout(()=>{ws.close();process.exit(0)}, 15000)"
+#
+# 2) websocat (https://github.com/vi/websocat):
+#    websocat ws://localhost:8090/api/stream
+#
+# 3) wscat (npm i -g wscat):
+#    wscat -c ws://localhost:8090/api/stream
+#
+# 4) Browser DevTools console:
+#    const ws=new WebSocket('ws://localhost:8090/api/stream');
+#    ws.onmessage=e=>console.log(JSON.parse(e.data));
