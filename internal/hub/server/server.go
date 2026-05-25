@@ -15,6 +15,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 
 	"github.com/lumenhq/lumen/internal/hub/ingest"
+	"github.com/lumenhq/lumen/internal/hub/storage"
 	"github.com/lumenhq/lumen/internal/hub/store"
 	"github.com/lumenhq/lumen/internal/hub/stream"
 	"github.com/lumenhq/lumen/internal/hub/web"
@@ -24,6 +25,7 @@ type Config struct {
 	Addr           string
 	Dev            bool
 	StreamInterval time.Duration
+	DBPath         string
 	Logger         *slog.Logger
 }
 
@@ -35,8 +37,15 @@ func Run(ctx context.Context, cfg Config) error {
 		logger = slog.Default()
 	}
 
+	db, err := storage.Open(cfg.DBPath)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	logger.Info("storage ready", "path", cfg.DBPath)
+
 	st := store.New()
-	ingestHandler := ingest.New(st, logger)
+	ingestHandler := ingest.New(st, db, logger)
 	streamHandler := stream.New(st, logger, cfg.StreamInterval)
 
 	r := chi.NewRouter()

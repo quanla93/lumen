@@ -2,22 +2,25 @@
 package ingest
 
 import (
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
 
+	"github.com/lumenhq/lumen/internal/hub/storage"
 	"github.com/lumenhq/lumen/internal/hub/store"
 	"github.com/lumenhq/lumen/internal/shared/api"
 )
 
 type Handler struct {
 	Store  *store.Store
+	DB     *sql.DB
 	Logger *slog.Logger
 }
 
-func New(s *store.Store, logger *slog.Logger) *Handler {
-	return &Handler{Store: s, Logger: logger}
+func New(s *store.Store, db *sql.DB, logger *slog.Logger) *Handler {
+	return &Handler{Store: s, DB: db, Logger: logger}
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -33,8 +36,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Store.Put extends the per-host CpuSeries ring on top of these fields.
-	h.Store.Put(api.HostSnapshot{
+	snap := api.HostSnapshot{
 		Host:    req.Host,
 		Ts:      req.Ts,
 		CpuPct:  req.CpuPct,
@@ -44,7 +46,20 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		Load1:   req.Load1,
 		Load5:   req.Load5,
 		Load15:  req.Load15,
-	})
+	}
+	// In-memory store extends the per-host CpuSeries ring on top of these fields.
+	h.Store.Put(snap)
+
+	// Best-effort archive: SQLite failures are logged but don't fail the
+	// ingest (the client already got a usable result via the in-memory store).
+	if h.DB != nil {
+		if id, err := storage.InsertSnapshot(r.Context(), h.DB, snap); err != nil {
+			h.Logger.Warn("snapshot persist failed", "err", err, "host", snap.Host)
+		} else {
+			h.Logger.Debug("snapshot persisted", "id", id, "host", snap.Host)
+		}
+	}
+
 	h.Logger.Debug("ingest accepted",
 		"host", req.Host, "cpu", req.CpuPct, "ram", req.RamPct,
 		"disk", req.DiskPct, "load1", req.Load1)
