@@ -21,7 +21,7 @@
 |---|---|
 | **Name** | Lumen |
 | **Tagline** | Proxmox-native monitoring for homelabs. HTTPS-only, HDD-friendly, mobile-ready. |
-| **Repo (proposed)** | github.com/lumenhq/lumen |
+| **Repo (proposed)** | github.com/lumenhq/lumen (eventual); currently staged at github.com/quanla93/lumen (private) |
 | **Domain (proposed)** | lumenhq.dev (alt: getlumen.io) |
 | **License** | MIT |
 | **Language** | Go (hub + agent), TypeScript (web + docs) |
@@ -74,6 +74,7 @@ Mỗi quyết định ghi 1 dòng. Không xóa, không sửa — nếu đổi ý
 | 2026-05-25 | Go toolchain floor = 1.24 (was 1.22) | gopsutil/v4 v4.26.4 requires Go 1.24 — accept newer floor instead of downgrading to gopsutil/v3 (deprecated +incompatible tag). Updated CI workflows + CONTRIBUTING. |
 | 2026-05-25 | HTTP router = github.com/go-chi/chi/v5 | Stdlib-friendly, middleware ecosystem, no codegen — matches "single binary, low RAM" decision. |
 | 2026-05-25 | Metrics lib = github.com/shirou/gopsutil/v4 | De-facto cross-platform metrics for Go; covers Linux/Windows/macOS in one API. |
+| 2026-05-25 | Repo staging = github.com/quanla93/lumen (PRIVATE) | Personal staging until `lumenhq` GitHub org registered; switch to public + transfer when v0.1.0 ready. Git author = quanla93 / quanla.work@gmail.com. |
 
 ---
 
