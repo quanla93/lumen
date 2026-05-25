@@ -1,0 +1,69 @@
+# Build output
+/dist/
+/bin/
+*.exe
+*.test
+*.out
+*.prof
+coverage.out
+coverage.html
+
+# Go
+vendor/
+.go-build/
+
+# Node / pnpm
+node_modules/
+.pnpm-store/
+.pnpm-debug.log
+npm-debug.log
+yarn-debug.log
+yarn-error.log
+
+# Web build artifacts (embedded by hub at build time)
+/web/dist/
+/web/.vite/
+/internal/hub/web/dist/
+
+# Docs build
+/docs/.astro/
+/docs/dist/
+/docs/.cache/
+
+# Local data (dev)
+/data/
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+*.parquet
+/lumen-data/
+
+# Local config / secrets
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+config.local.yml
+
+# IDE / editor
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.shared.json
+*.swp
+*.swo
+.DS_Store
+
+# OS
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+logs/
+
+# Temp
+tmp/
+*.tmp

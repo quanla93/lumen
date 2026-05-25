@@ -1,0 +1,116 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint-go:
+    name: Lint (Go)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          cache: true
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+          args: --timeout=5m
+
+  lint-web:
+    name: Lint (Web + Docs)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run lint
+      - run: pnpm run typecheck
+
+  test-go:
+    name: Test (Go)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          cache: true
+      - run: go test -race -coverprofile=coverage.out ./...
+      - uses: codecov/codecov-action@v4
+        with:
+          files: coverage.out
+          fail_ci_if_error: false
+
+  build:
+    name: Build (${{ matrix.target }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        target:
+          - linux-amd64
+          - linux-arm64
+          - linux-armv7
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          cache: true
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: make build-${{ matrix.target }}
+      - name: Check binary size
+        run: |
+          HUB_SIZE=$(stat -c%s dist/lumen-hub-${{ matrix.target }})
+          AGENT_SIZE=$(stat -c%s dist/lumen-agent-${{ matrix.target }})
+          echo "Hub: $HUB_SIZE bytes"
+          echo "Agent: $AGENT_SIZE bytes"
+          # Fail if hub > 30MB or agent > 20MB
+          test $HUB_SIZE -lt 31457280 || (echo "Hub binary exceeds 30MB"; exit 1)
+          test $AGENT_SIZE -lt 20971520 || (echo "Agent binary exceeds 20MB"; exit 1)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: binaries-${{ matrix.target }}
+          path: dist/
+          retention-days: 7
+
+  benchmark:
+    name: Benchmark (RAM + throughput)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          cache: true
+      - run: go test -bench=. -benchmem -run=^$ ./internal/hub/... | tee bench.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: benchmark
+          path: bench.txt

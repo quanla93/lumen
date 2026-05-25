@@ -1,0 +1,25 @@
+title: "[Show & Tell] "
+labels: ["show-and-tell"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Show off your Lumen setup! Screenshots welcome.
+
+  - type: textarea
+    id: setup
+    attributes:
+      label: Your setup
+      description: What are you monitoring? Hardware, OS, scale.
+    validations:
+      required: true
+
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots / dashboard
+
+  - type: textarea
+    id: tips
+    attributes:
+      label: Any tips for others?

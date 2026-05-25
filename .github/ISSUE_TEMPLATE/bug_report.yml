@@ -1,0 +1,96 @@
+name: 🐛 Bug report
+description: Report a bug in Lumen hub or agent
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug! Please fill out the form below.
+        Before submitting, please [search existing issues](https://github.com/lumenhq/lumen/issues?q=is%3Aissue) to avoid duplicates.
+
+  - type: input
+    id: version
+    attributes:
+      label: Lumen version
+      description: Output of `lumen-hub --version` or `lumen-agent --version`
+      placeholder: "v0.1.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      options:
+        - Hub
+        - Agent
+        - Web UI
+        - Docs
+        - Other / Unsure
+    validations:
+      required: true
+
+  - type: dropdown
+    id: deployment
+    attributes:
+      label: Deployment method
+      options:
+        - Docker Compose
+        - Docker (standalone)
+        - Single binary (systemd)
+        - LXC container
+        - Built from source
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: OS / kernel / arch
+      placeholder: "Debian 12 / Linux 6.1 / amd64"
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: Clear description of the bug.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Start hub with `...`
+        2. Connect agent with `...`
+        3. Observe `...`
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: Output of `journalctl -u lumen-hub -n 100` or `docker logs lumen-hub`. Redact secrets.
+      render: shell
+
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: Checklist
+      options:
+        - label: I searched existing issues
+          required: true
+        - label: I redacted any tokens, passwords, or private hostnames
+          required: true

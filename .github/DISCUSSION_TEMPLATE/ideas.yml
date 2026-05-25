@@ -1,0 +1,38 @@
+title: "[Idea] "
+labels: ["idea"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Early-stage ideas welcome here. For mature feature requests, open an issue instead.
+
+        Please check our [anti-features list](https://github.com/lumenhq/lumen/blob/main/ACTION_PLAN.md#anti-features-locked--không-bàn-lại) first.
+
+  - type: textarea
+    id: idea
+    attributes:
+      label: The idea
+    validations:
+      required: true
+
+  - type: textarea
+    id: motivation
+    attributes:
+      label: Why does this matter?
+    validations:
+      required: true
+
+  - type: dropdown
+    id: wedge
+    attributes:
+      label: Which wedge does this serve?
+      options:
+        - Proxmox / LXC first-class
+        - HDD-friendly storage
+        - HTTPS-only push transport
+        - Public status page
+        - Mobile / PWA
+        - Bilingual docs
+        - None / unsure
+    validations:
+      required: true

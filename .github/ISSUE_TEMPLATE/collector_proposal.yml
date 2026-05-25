@@ -1,0 +1,54 @@
+name: 🔌 Collector proposal
+description: Propose a new metric collector for the agent (or as a plugin)
+labels: ["collector", "enhancement", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Lumen ships a focused set of built-in collectors. Other collectors are welcome as **plugins**
+        (after the Plugin SDK lands in v1.0). Use this template to discuss either built-in or plugin scope.
+
+  - type: input
+    id: target
+    attributes:
+      label: What does this collector monitor?
+      placeholder: "e.g. UPS via NUT, ZFS pool I/O, GPU temperature"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Where should this live?
+      options:
+        - Built-in to the agent (broadly useful, low overhead)
+        - Plugin (specialized or heavy dependency)
+        - Unsure
+    validations:
+      required: true
+
+  - type: textarea
+    id: metrics
+    attributes:
+      label: Metrics it would expose
+      description: List each metric, unit, and update frequency.
+      placeholder: |
+        - ups_battery_charge (%, every 30s)
+        - ups_load (W, every 30s)
+        - ups_input_voltage (V, every 30s)
+    validations:
+      required: true
+
+  - type: textarea
+    id: data_source
+    attributes:
+      label: Data source
+      description: How does the agent get this data? File, syscall, API, exec?
+    validations:
+      required: true
+
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: New dependencies?
+      description: Go libraries or system tools required. Lumen is strict about new deps.

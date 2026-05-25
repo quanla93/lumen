@@ -1,0 +1,53 @@
+---
+title: Lumen
+description: Proxmox-native monitoring for homelabs. HTTPS-only, HDD-friendly, mobile-ready.
+template: splash
+hero:
+  tagline: Lightweight self-hosted server monitoring designed for homelabs — not enterprise clusters.
+  actions:
+    - text: Quickstart
+      link: /getting-started/quickstart/
+      icon: right-arrow
+      variant: primary
+    - text: View on GitHub
+      link: https://github.com/lumenhq/lumen
+      icon: external
+      variant: minimal
+---
+
+import { Card, CardGrid } from "@astrojs/starlight/components";
+
+## Why Lumen?
+
+<CardGrid stagger>
+  <Card title="Proxmox-native" icon="setting">
+    Read the Proxmox API directly. See cluster topology, ZFS pools, PBS backups,
+    LXC vs QEMU — without installing an agent on the host.
+  </Card>
+  <Card title="HDD-friendly storage" icon="open-book">
+    Batched writes, WAL-tuned SQLite, hot/cold tiering with Parquet.
+    Designed to keep your spinning rust quiet.
+  </Card>
+  <Card title="HTTPS-only push" icon="rocket">
+    Agents push outbound via HTTPS/WebSocket. Works behind any NAT,
+    through Cloudflare Tunnel or Tailscale Funnel — no SSH keys required.
+  </Card>
+  <Card title="Mobile-ready PWA" icon="laptop">
+    Install on your phone. Web Push notifications natively, no extra app.
+  </Card>
+</CardGrid>
+
+## Five minutes to get going
+
+```bash
+# Hub
+curl -fsSL https://get.lumenhq.dev/compose > docker-compose.yml
+docker compose up -d
+
+# Agent (after creating a host in the UI)
+curl -fsSL https://get.lumenhq.dev/agent | sudo bash -s -- \
+  --hub https://lumen.example.com \
+  --token lum_xxxxxxxxxx
+```
+
+Open <a href="http://localhost:8090">http://localhost:8090</a> and you're monitoring.

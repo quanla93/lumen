@@ -1,0 +1,35 @@
+# Lumen CODEOWNERS
+# Each line: <pattern> <owner1> <owner2> ...
+# Owners are auto-requested for review and required to approve PRs touching their area.
+# See https://docs.github.com/en/repositories/managing-your-repositories-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default fallback — Core team owns everything not matched below
+*                                       @lumenhq/core
+
+# Hub backend
+/internal/hub/                          @lumenhq/core
+/cmd/lumen-hub/                         @lumenhq/core
+
+# Agent
+/internal/agent/                        @lumenhq/core
+/cmd/lumen-agent/                       @lumenhq/core
+
+# Storage & schema — high-risk area, require careful review
+/internal/hub/storage/                  @lumenhq/core
+/internal/hub/storage/migrations/       @lumenhq/core
+
+# Web frontend
+/web/                                   @lumenhq/web
+
+# Docs
+/docs/                                  @lumenhq/docs
+*.md                                    @lumenhq/docs
+
+# Build & release
+/.github/workflows/                     @lumenhq/core
+/Makefile                               @lumenhq/core
+/scripts/                               @lumenhq/core
+
+# Security-sensitive files
+/SECURITY.md                            @lumenhq/core
+/internal/hub/auth/                     @lumenhq/core

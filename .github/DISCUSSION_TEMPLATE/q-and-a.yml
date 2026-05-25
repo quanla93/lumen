@@ -1,0 +1,26 @@
+title: "[Q&A] "
+labels: ["question"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please search before posting — your question may already be answered.
+
+  - type: textarea
+    id: question
+    attributes:
+      label: Your question
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Lumen version
+      placeholder: "v0.1.0"
+
+  - type: textarea
+    id: tried
+    attributes:
+      label: What have you tried?
+      description: Help others help you faster by sharing what you've already attempted.

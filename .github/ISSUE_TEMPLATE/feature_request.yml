@@ -1,0 +1,57 @@
+name: 💡 Feature request
+description: Propose a new feature for Lumen
+labels: ["enhancement", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the suggestion! Before submitting, please check:
+        - [ ] This is **not** in our [anti-features list](https://github.com/lumenhq/lumen/blob/main/ACTION_PLAN.md#anti-features-locked--không-bàn-lại)
+        - [ ] [Existing issues / discussions](https://github.com/lumenhq/lumen/discussions) don't already cover this
+
+        For large changes (new module, architecture impact), consider an RFC in Discussions first.
+
+  - type: dropdown
+    id: wedge
+    attributes:
+      label: Which Lumen wedge does this serve?
+      description: Lumen features must support at least one of our north-star wedges.
+      options:
+        - Proxmox / LXC first-class
+        - HDD-friendly storage
+        - HTTPS-only push transport
+        - Public status page
+        - Mobile / PWA
+        - Bilingual docs
+        - None of the above (please justify in the description)
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: Describe the user-facing pain. Avoid jumping to the solution.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What did you think about but rule out, and why?
+
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope estimate (optional)
+      description: |
+        Rough size: small (<100 LOC), medium (new endpoint/feature), large (architecture change).
+        Are you willing to work on this yourself?
