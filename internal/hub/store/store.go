@@ -43,6 +43,15 @@ func (s *Store) Put(snap api.HostSnapshot) {
 	s.m[snap.Host] = snap
 }
 
+// Delete evicts a host's snapshot + ring. Called when an operator
+// deletes the host record so /api/stream stops broadcasting a ghost
+// card that nothing is updating.
+func (s *Store) Delete(hostName string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.m, hostName)
+}
+
 // Snapshot returns a deep-enough copy of every host's latest state.
 // CpuSeries slices are aliased — callers should treat them as read-only.
 func (s *Store) Snapshot() []api.HostSnapshot {

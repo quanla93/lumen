@@ -57,5 +57,28 @@ services:
       LUMEN_HUB_URL: "http://hub:8090"
     restart: unless-stopped
 
+  # Second agent — opt-in via `--profile extra`. Workflow:
+  #   1. Hub UI → Settings → Add host "compose-agent-2" → copy token.
+  #   2. Append to .env:  LUMEN_AGENT_TOKEN_2=lum_xxx...
+  #   3. docker compose -f deploy/docker/docker-compose.yml --profile extra up -d agent2
+  agent2:
+    profiles: ["extra"]
+    image: lumen-agent:dev
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.agent
+    container_name: lumen-agent-2
+    depends_on:
+      - hub
+    env_file:
+      - path: ../../.env
+        required: false
+    environment:
+      LUMEN_HUB_URL: "http://hub:8090"
+      LUMEN_AGENT_HOST: "compose-agent-2"
+      # Interpolated from .env at compose time — empty → 401 from hub.
+      LUMEN_AGENT_TOKEN: "${LUMEN_AGENT_TOKEN_2:-}"
+    restart: unless-stopped
+
 volumes:
   lumen-data:

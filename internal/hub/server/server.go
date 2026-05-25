@@ -17,6 +17,7 @@ import (
 	"github.com/lumenhq/lumen/internal/hub/auth"
 	"github.com/lumenhq/lumen/internal/hub/hosts"
 	"github.com/lumenhq/lumen/internal/hub/ingest"
+	"github.com/lumenhq/lumen/internal/hub/install"
 	"github.com/lumenhq/lumen/internal/hub/storage"
 	"github.com/lumenhq/lumen/internal/hub/store"
 	"github.com/lumenhq/lumen/internal/hub/stream"
@@ -28,6 +29,7 @@ type Config struct {
 	Dev            bool
 	StreamInterval time.Duration
 	DBPath         string
+	InstallDir     string
 	Secret         []byte
 	Logger         *slog.Logger
 }
@@ -51,7 +53,8 @@ func Run(ctx context.Context, cfg Config) error {
 	ingestHandler := ingest.New(st, db, logger)
 	streamHandler := stream.New(st, logger, cfg.StreamInterval)
 	authHandlers := auth.NewHandlers(db, cfg.Secret, logger)
-	hostsHandlers := hosts.NewHandlers(db, logger)
+	hostsHandlers := hosts.NewHandlers(db, st, logger)
+	installHandler := &install.Handler{InstallDir: cfg.InstallDir, Logger: logger}
 	requireSession := auth.RequireSession(cfg.Secret)
 
 	r := chi.NewRouter()
@@ -64,6 +67,12 @@ func Run(ctx context.Context, cfg Config) error {
 	r.Get("/healthz", healthz)
 	r.Post("/api/ingest", ingestHandler.ServeHTTP)
 	r.Get("/api/stream", streamHandler.ServeHTTP)
+
+	// Public install endpoints — script + agent binaries. Both 503 if the
+	// hub wasn't built with the binaries staged (e.g. native dev without
+	// LUMEN_HUB_INSTALL_DIR set).
+	r.Get("/install.sh", installHandler.ServeScript)
+	r.Get("/install/{binary}", installHandler.ServeBinary)
 
 	// Auth (public)
 	r.Get("/api/setup-status", authHandlers.SetupStatus)

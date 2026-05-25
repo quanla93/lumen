@@ -8,6 +8,7 @@
 //	LUMEN_HUB_STREAM_INTERVAL  (default "5s")           - WS broadcast cadence
 //	LUMEN_HUB_DB_PATH          (default "./lumen.db")   - SQLite file location
 //	LUMEN_HUB_SECRET           (default: random 32B)    - HMAC secret for session JWTs (set explicitly in prod)
+//	LUMEN_HUB_INSTALL_DIR      (default "")             - directory holding install.sh + agent binaries; empty disables /install.sh
 //
 // Phase 1 + 2 endpoints:
 //   - GET  /healthz       — liveness probe
@@ -38,6 +39,7 @@ func main() {
 	dev := envcfg.Bool("LUMEN_HUB_DEV", false)
 	streamInterval := envcfg.Duration("LUMEN_HUB_STREAM_INTERVAL", 5*time.Second)
 	dbPath := envcfg.String("LUMEN_HUB_DB_PATH", "./lumen.db")
+	installDir := envcfg.String("LUMEN_HUB_INSTALL_DIR", "")
 	secretHex := envcfg.String("LUMEN_HUB_SECRET", "")
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
@@ -61,6 +63,7 @@ func main() {
 		Dev:            dev,
 		StreamInterval: streamInterval,
 		DBPath:         dbPath,
+		InstallDir:     installDir,
 		Secret:         secret,
 		Logger:         logger,
 	}); err != nil {

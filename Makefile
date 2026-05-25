@@ -109,6 +109,14 @@ build-linux-armv7: build-web
 .PHONY: build-all
 build-all: build-linux-amd64 build-linux-arm64 build-linux-armv7 ## Build for all target platforms
 
+.PHONY: release-agents
+release-agents: ## Cross-build agent binaries + stage install.sh for hub /install endpoint
+	mkdir -p $(DIST)
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64       $(GO) build -trimpath -ldflags '$(LDFLAGS)' -o $(DIST)/lumen-agent-linux-amd64 ./cmd/lumen-agent
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm64       $(GO) build -trimpath -ldflags '$(LDFLAGS)' -o $(DIST)/lumen-agent-linux-arm64 ./cmd/lumen-agent
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 $(GO) build -trimpath -ldflags '$(LDFLAGS)' -o $(DIST)/lumen-agent-linux-armv7 ./cmd/lumen-agent
+	cp scripts/install-agent.sh $(DIST)/install.sh
+
 # ============================================================
 # Docker
 # ============================================================

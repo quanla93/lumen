@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { GhostButton } from "@/components/CenterCard";
 
-/** One-shot token display — shows the plaintext + copy button + agent
- * install snippet. Sticks around in the parent's state until the parent
- * removes it (the token CAN'T be fetched again from the hub). */
+/** One-shot token display — shows the plaintext + copy button + the
+ * preferred one-liner install command + a fallback manual snippet.
+ * Sticks around in the parent's state until the parent removes it
+ * (the token CAN'T be fetched again from the hub). */
 export function TokenReveal({
   hostName,
   token,
@@ -13,19 +14,20 @@ export function TokenReveal({
   token: string;
   onDismiss: () => void;
 }) {
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState<"token" | "oneliner" | "env" | null>(null);
   const hubUrl =
     typeof window !== "undefined"
       ? `${window.location.protocol}//${window.location.host}`
       : "https://your-hub.example.com";
 
+  const oneLiner = `curl -fsSL ${hubUrl}/install.sh | sudo bash -s -- --token ${token} --host ${hostName}`;
   const envSnippet = `LUMEN_HUB_URL=${hubUrl}\nLUMEN_AGENT_TOKEN=${token}\nLUMEN_AGENT_HOST=${hostName}`;
 
-  async function copy(text: string) {
+  async function copy(text: string, which: "token" | "oneliner" | "env") {
     try {
       await navigator.clipboard.writeText(text);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
+      setCopied(which);
+      setTimeout(() => setCopied(null), 1500);
     } catch {
       // clipboard API may be unavailable on non-HTTPS — user can manually copy
     }
@@ -49,21 +51,40 @@ export function TokenReveal({
         <code className="flex-1 font-mono text-xs bg-[color:var(--color-card)] border border-[color:var(--color-border)] rounded px-2 py-1.5 overflow-x-auto whitespace-nowrap">
           {token}
         </code>
-        <GhostButton onClick={() => copy(token)}>
-          {copied ? "Copied!" : "Copy"}
+        <GhostButton onClick={() => copy(token, "token")}>
+          {copied === "token" ? "Copied!" : "Copy"}
         </GhostButton>
       </div>
 
-      <div>
-        <p className="text-xs text-[color:var(--color-muted)] mb-1">
-          Set these on the host you want to monitor, then run the agent:
-        </p>
-        <pre className="text-xs font-mono bg-[color:var(--color-card)] border border-[color:var(--color-border)] rounded p-3 overflow-x-auto">{envSnippet}</pre>
+      <div className="mb-4">
+        <div className="flex items-center justify-between mb-1">
+          <p className="text-xs font-semibold">Install on the target (Linux + systemd)</p>
+          <GhostButton onClick={() => copy(oneLiner, "oneliner")}>
+            {copied === "oneliner" ? "Copied!" : "Copy"}
+          </GhostButton>
+        </div>
+        <pre className="text-xs font-mono bg-[color:var(--color-card)] border border-[color:var(--color-border)] rounded p-3 overflow-x-auto">{oneLiner}</pre>
         <p className="text-xs text-[color:var(--color-muted)] mt-2">
-          The agent loads <code>.env</code> from its working directory; either
-          paste these into an <code>.env</code> file or export them as env vars.
+          Detects arch, downloads the binary from this hub, registers a systemd unit,
+          and starts the agent. Re-running upgrades in place. Uninstall: same command
+          with <code>--uninstall</code>.
         </p>
       </div>
+
+      <details>
+        <summary className="text-xs text-[color:var(--color-muted)] cursor-pointer hover:text-[color:var(--color-fg)]">
+          No systemd / not Linux? Use env vars manually
+        </summary>
+        <div className="mt-2">
+          <div className="flex items-center justify-between mb-1">
+            <p className="text-xs">Set these on the host, then run <code>lumen-agent</code>:</p>
+            <GhostButton onClick={() => copy(envSnippet, "env")}>
+              {copied === "env" ? "Copied!" : "Copy"}
+            </GhostButton>
+          </div>
+          <pre className="text-xs font-mono bg-[color:var(--color-card)] border border-[color:var(--color-border)] rounded p-3 overflow-x-auto">{envSnippet}</pre>
+        </div>
+      </details>
     </div>
   );
 }

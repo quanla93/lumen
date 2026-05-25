@@ -9,15 +9,18 @@ import (
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
+
+	"github.com/lumenhq/lumen/internal/hub/store"
 )
 
 type Handlers struct {
 	DB     *sql.DB
+	Store  *store.Store
 	Logger *slog.Logger
 }
 
-func NewHandlers(db *sql.DB, logger *slog.Logger) *Handlers {
-	return &Handlers{DB: db, Logger: logger}
+func NewHandlers(db *sql.DB, st *store.Store, logger *slog.Logger) *Handlers {
+	return &Handlers{DB: db, Store: st, Logger: logger}
 }
 
 type hostView struct {
@@ -85,6 +88,18 @@ func (h *Handlers) Delete(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusBadRequest, "invalid id")
 		return
 	}
+	// Resolve name BEFORE deleting so we can evict the in-memory snapshot
+	// (which is keyed by host name, not id) after the DB row is gone.
+	host, err := getByID(r.Context(), h.DB, id)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			writeJSONError(w, http.StatusNotFound, "host not found")
+			return
+		}
+		h.Logger.Error("lookup host failed", "err", err)
+		writeJSONError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
 	if err := Delete(r.Context(), h.DB, id); err != nil {
 		if errors.Is(err, ErrNotFound) {
 			writeJSONError(w, http.StatusNotFound, "host not found")
@@ -93,6 +108,9 @@ func (h *Handlers) Delete(w http.ResponseWriter, r *http.Request) {
 		h.Logger.Error("delete host failed", "err", err)
 		writeJSONError(w, http.StatusInternalServerError, "internal error")
 		return
+	}
+	if h.Store != nil {
+		h.Store.Delete(host.Name)
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
