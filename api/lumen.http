@@ -49,6 +49,27 @@ GET {{hub}}/api/me
 POST {{hub}}/api/logout
 
 ###
+# Hosts — list (session required).
+GET {{hub}}/api/hosts
+
+###
+# Hosts — create + mint one-shot bearer token.
+POST {{hub}}/api/hosts
+Content-Type: application/json
+
+{
+  "name": "{{host}}"
+}
+
+###
+# Hosts — rotate token for host id 1.
+POST {{hub}}/api/hosts/1/rotate
+
+###
+# Hosts — delete host id 1.
+DELETE {{hub}}/api/hosts/1
+
+###
 # Ingest a full metric envelope. Auth header accepted, not validated yet.
 POST {{hub}}/api/ingest
 Content-Type: application/json

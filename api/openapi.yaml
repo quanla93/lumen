@@ -35,6 +35,8 @@ tags:
     description: Hub → client WebSocket fan-out (documented for reference).
   - name: auth
     description: First-admin registration, login, logout, session lookup.
+  - name: hosts
+    description: Per-host bearer-token CRUD. Session-protected.
 
 paths:
   /healthz:
@@ -108,8 +110,11 @@ paths:
                   value: { error: "cpu_pct out of [0,100]" }
         "401":
           description: |
-            Reserved for Phase 2 — currently the bearer token is accepted
-            but not validated, so this status is never returned today.
+            Bearer token present but invalid. Returned when the
+            `Authorization` header carries a token not matching any host.
+            (Requests **without** an Authorization header still succeed —
+            strict-mode is opt-in via env LUMEN_HUB_REQUIRE_TOKEN, not
+            yet wired.)
 
   /api/setup-status:
     get:
@@ -207,6 +212,94 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
 
+  /api/hosts:
+    get:
+      tags: [hosts]
+      operationId: listHosts
+      security: [{ sessionCookie: [] }]
+      responses:
+        "200":
+          description: All hosts ordered by name.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Host" }
+    post:
+      tags: [hosts]
+      operationId: createHost
+      security: [{ sessionCookie: [] }]
+      summary: Mint a new host + bearer token.
+      description: |
+        The plaintext token is returned **exactly once** in the response.
+        The hub stores only its SHA-256 hash. If the user navigates away
+        without copying it, they must call rotate to get a new one.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              additionalProperties: false
+              properties:
+                name:
+                  type: string
+                  maxLength: 64
+                  example: pve-01
+      responses:
+        "201":
+          description: Created.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [host, token]
+                properties:
+                  host:  { $ref: "#/components/schemas/Host" }
+                  token: { type: string, example: "lum_abcdef0123456789..." }
+        "400":
+          description: Invalid name or name already taken.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/hosts/{id}:
+    delete:
+      tags: [hosts]
+      operationId: deleteHost
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer, format: int64 }
+      responses:
+        "204": { description: Deleted. Past snapshots stay for audit. }
+        "404": { description: Host not found. }
+
+  /api/hosts/{id}/rotate:
+    post:
+      tags: [hosts]
+      operationId: rotateHostToken
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer, format: int64 }
+      responses:
+        "200":
+          description: New token (one-shot).
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [token]
+                properties:
+                  token: { type: string }
+        "404": { description: Host not found. }
+
   /api/stream:
     get:
       tags: [stream]
@@ -272,6 +365,19 @@ components:
         id:         { type: integer, format: int64, example: 1 }
         username:   { type: string,  example: admin }
         created_at: { type: string,  format: date-time }
+
+    Host:
+      type: object
+      required: [id, name, created_at]
+      properties:
+        id:           { type: integer, format: int64, example: 1 }
+        name:         { type: string, example: pve-01 }
+        created_at:   { type: string, format: date-time }
+        last_seen_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: Updated by /api/ingest when a token-authenticated POST arrives.
 
     IngestRequest:
       type: object

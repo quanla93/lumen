@@ -7,7 +7,9 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strings"
 
+	"github.com/lumenhq/lumen/internal/hub/hosts"
 	"github.com/lumenhq/lumen/internal/hub/storage"
 	"github.com/lumenhq/lumen/internal/hub/store"
 	"github.com/lumenhq/lumen/internal/shared/api"
@@ -31,6 +33,29 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, err)
 		return
 	}
+
+	// Bearer token auth (optional for now — when present it MUST be valid,
+	// and the token's host name wins over whatever the agent declared in
+	// the body so a leaked token can't be used to spoof a different host).
+	// Strict-mode enforcement (always-require token) is a follow-up.
+	if hdr := r.Header.Get("Authorization"); strings.HasPrefix(hdr, "Bearer ") {
+		token := strings.TrimPrefix(hdr, "Bearer ")
+		host, err := hosts.VerifyToken(r.Context(), h.DB, token)
+		if err != nil {
+			if errors.Is(err, hosts.ErrInvalidToken) {
+				writeErr(w, http.StatusUnauthorized, errors.New("invalid token"))
+				return
+			}
+			h.Logger.Error("token verify failed", "err", err)
+			writeErr(w, http.StatusInternalServerError, errors.New("internal error"))
+			return
+		}
+		req.Host = host.Name
+		if err := hosts.TouchLastSeen(r.Context(), h.DB, host.ID); err != nil {
+			h.Logger.Warn("touch last_seen failed", "err", err, "host", host.Name)
+		}
+	}
+
 	if err := validate(&req); err != nil {
 		writeErr(w, http.StatusBadRequest, err)
 		return

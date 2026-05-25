@@ -15,6 +15,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 
 	"github.com/lumenhq/lumen/internal/hub/auth"
+	"github.com/lumenhq/lumen/internal/hub/hosts"
 	"github.com/lumenhq/lumen/internal/hub/ingest"
 	"github.com/lumenhq/lumen/internal/hub/storage"
 	"github.com/lumenhq/lumen/internal/hub/store"
@@ -50,6 +51,7 @@ func Run(ctx context.Context, cfg Config) error {
 	ingestHandler := ingest.New(st, db, logger)
 	streamHandler := stream.New(st, logger, cfg.StreamInterval)
 	authHandlers := auth.NewHandlers(db, cfg.Secret, logger)
+	hostsHandlers := hosts.NewHandlers(db, logger)
 	requireSession := auth.RequireSession(cfg.Secret)
 
 	r := chi.NewRouter()
@@ -69,10 +71,14 @@ func Run(ctx context.Context, cfg Config) error {
 	r.Post("/api/login", authHandlers.Login)
 	r.Post("/api/logout", authHandlers.Logout)
 
-	// Auth (session required)
+	// Auth + Hosts CRUD (session required)
 	r.Group(func(r chi.Router) {
 		r.Use(requireSession)
 		r.Get("/api/me", authHandlers.Me)
+		r.Get("/api/hosts", hostsHandlers.List)
+		r.Post("/api/hosts", hostsHandlers.Create)
+		r.Delete("/api/hosts/{id}", hostsHandlers.Delete)
+		r.Post("/api/hosts/{id}/rotate", hostsHandlers.Rotate)
 	})
 
 	// Everything else falls to the embedded web bundle (SPA-style), except
