@@ -75,6 +75,8 @@ Mỗi quyết định ghi 1 dòng. Không xóa, không sửa — nếu đổi ý
 | 2026-05-25 | HTTP router = github.com/go-chi/chi/v5 | Stdlib-friendly, middleware ecosystem, no codegen — matches "single binary, low RAM" decision. |
 | 2026-05-25 | Metrics lib = github.com/shirou/gopsutil/v4 | De-facto cross-platform metrics for Go; covers Linux/Windows/macOS in one API. |
 | 2026-05-25 | Repo staging = github.com/quanla93/lumen (PRIVATE) | Personal staging until `lumenhq` GitHub org registered; switch to public + transfer when v0.1.0 ready. Git author = quanla93 / quanla.work@gmail.com. |
+| 2026-05-25 | Config = env-vars only (LUMEN_*) + .env loader via godotenv | 12-factor: hub/agent are Dockerized services; flags become per-bespoke-binary noise. .env.example documents knobs. CLI flags removed. |
+| 2026-05-25 | WebSocket lib = github.com/gorilla/websocket | Most widely understood, large body of examples, stable v1.5+. coder/websocket is more modern but adds a learning surface for contributors with no spike-time benefit. Easy to swap behind the stream.Handler if needed. |
 
 ---
 

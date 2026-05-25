@@ -15,12 +15,14 @@ import (
 
 	"github.com/lumenhq/lumen/internal/hub/ingest"
 	"github.com/lumenhq/lumen/internal/hub/store"
+	"github.com/lumenhq/lumen/internal/hub/stream"
 )
 
 type Config struct {
-	Addr   string
-	Dev    bool
-	Logger *slog.Logger
+	Addr           string
+	Dev            bool
+	StreamInterval time.Duration
+	Logger         *slog.Logger
 }
 
 // Run starts the hub HTTP server and blocks until ctx is cancelled.
@@ -33,6 +35,7 @@ func Run(ctx context.Context, cfg Config) error {
 
 	st := store.New()
 	ingestHandler := ingest.New(st, logger)
+	streamHandler := stream.New(st, logger, cfg.StreamInterval)
 
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
@@ -43,6 +46,7 @@ func Run(ctx context.Context, cfg Config) error {
 
 	r.Get("/healthz", healthz)
 	r.Post("/api/ingest", ingestHandler.ServeHTTP)
+	r.Get("/api/stream", streamHandler.ServeHTTP)
 
 	srv := &http.Server{
 		Addr:              cfg.Addr,
