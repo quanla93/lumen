@@ -17,7 +17,7 @@ the one that matches what you're working on.
 
 ## Prerequisites
 
-- **Go 1.24+** (`go version`) — floored by gopsutil/v4.
+- **Go 1.25+** (`go version`) — floored by pressly/goose v3 (added in Phase 2 storage).
 - **Node 20+** and **pnpm 9+** (`pnpm --version`) — only for modes that touch the web bundle.
 - **Docker** with Compose v2 (`docker compose version`) — only for the Compose mode.
 - **Git** to clone.
@@ -32,6 +32,26 @@ cp .env.example .env
 
 `.env` is gitignored. Edit it freely; both binaries pick env vars up from
 the file at startup. See [the env reference](#env-vars) at the bottom.
+
+## First-time setup (auth flow)
+
+The hub validates each agent's Bearer token against the `hosts` table.
+For a brand-new hub:
+
+1. Start the hub (any mode below).
+2. Open **http://localhost:8090** (or `:5173` for Vite dev).
+3. **Register** the first admin — the form only appears while the hub has
+   no users yet.
+4. Go to **Settings → Hosts**, type a host name, click **Create**.
+5. Copy the `lum_…` token shown **once** (paired with a ready-to-paste
+   `.env` snippet). The hub stores only its SHA-256 hash; if you lose it,
+   rotate.
+6. Paste `LUMEN_AGENT_TOKEN=lum_…` (and `LUMEN_HUB_URL`, `LUMEN_AGENT_HOST`)
+   into the agent's `.env`, then start the agent.
+
+The dashboard shows the host live within one tick. The agent's
+`LUMEN_AGENT_HOST` is overridden by the token's host name server-side,
+so a leaked token can't be used to spoof a different host.
 
 ---
 
@@ -160,13 +180,15 @@ All knobs live in `.env`. Defaults shown.
 | `LUMEN_HUB_ADDR` | `:8090` | Bind address. |
 | `LUMEN_HUB_DEV` | `false` | Verbose request logs + slog DEBUG level. |
 | `LUMEN_HUB_STREAM_INTERVAL` | `5s` | Cadence at which `/api/stream` re-sends the snapshot. |
+| `LUMEN_HUB_DB_PATH` | `./lumen.db` | SQLite file (auto-created; WAL pragmas applied). |
+| `LUMEN_HUB_SECRET` | _random per startup_ | Hex-encoded HMAC secret for session JWTs (>=64 hex chars). If unset, hub generates one at boot and **all sessions die on restart** — set this in prod. Generate with `openssl rand -hex 32`. |
 
 ### Agent
 
 | Var | Default | Meaning |
 |---|---|---|
 | `LUMEN_HUB_URL` | `http://localhost:8090` | Hub base URL (no trailing slash). |
-| `LUMEN_AGENT_TOKEN` | _empty_ | Bearer token (accepted but not validated until Phase 2). |
+| `LUMEN_AGENT_TOKEN` | _empty_ | Per-host bearer token minted in Settings → Hosts. The hub validates the token if present; requests without a token still succeed today (strict-mode is a follow-up). |
 | `LUMEN_AGENT_INTERVAL` | `5s` | How often the agent samples + POSTs. |
 | `LUMEN_AGENT_HOST` | `os.Hostname()` | Override the host identifier. |
 

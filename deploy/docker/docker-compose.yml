@@ -20,8 +20,25 @@ services:
       LUMEN_HUB_ADDR: ":8090"
       LUMEN_HUB_DEV: "false"
       LUMEN_HUB_STREAM_INTERVAL: "5s"
+      LUMEN_HUB_DB_PATH: "/data/lumen.db"
+      # Set this to a stable secret (>=64 hex chars) in your shell or a
+      # local .env so sessions survive container restarts. Generate one with:
+      #   openssl rand -hex 32
+      LUMEN_HUB_SECRET: "${LUMEN_HUB_SECRET:-}"
+    volumes:
+      - lumen-data:/data
     restart: unless-stopped
 
+  # NOTE: The hub validates Bearer tokens against the hosts table. On a
+  # fresh stack `devtoken` doesn't exist yet, so this agent will log
+  # `ingest send failed: hub returned 401: invalid token` until you:
+  #   1. Open http://localhost:8090 and register the first admin.
+  #   2. Create a host in Settings → copy the real token.
+  #   3. Either `docker compose down`, set LUMEN_AGENT_TOKEN in your
+  #      shell / a local .env file, and `docker compose up -d agent`;
+  #      or just run the agent on a different machine pointed at the
+  #      hub URL.
+  # The 401s are harmless — the agent keeps trying every interval.
   agent:
     build:
       context: ../..
@@ -32,8 +49,11 @@ services:
       - hub
     environment:
       LUMEN_HUB_URL: "http://hub:8090"
-      LUMEN_AGENT_TOKEN: "devtoken"
+      LUMEN_AGENT_TOKEN: "${LUMEN_AGENT_TOKEN:-devtoken}"
       LUMEN_AGENT_INTERVAL: "5s"
       # Override the in-container hostname so the dashboard shows a friendly name.
-      LUMEN_AGENT_HOST: "compose-agent"
+      LUMEN_AGENT_HOST: "${LUMEN_AGENT_HOST:-compose-agent}"
     restart: unless-stopped
+
+volumes:
+  lumen-data:

@@ -111,7 +111,7 @@ We **squash and merge** by default. PR title becomes the commit message — writ
 
 ### Prerequisites
 
-- Go 1.24+ (floored by gopsutil/v4 — see Decisions log 2026-05-25)
+- Go 1.25+ (floored by pressly/goose v3 — see Decisions log 2026-05-25)
 - Node.js 20+ and pnpm 9+ (for the web UI and docs)
 - Docker (for integration tests)
 - Make

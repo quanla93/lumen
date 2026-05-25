@@ -72,6 +72,7 @@ Mỗi quyết định ghi 1 dòng. Không xóa, không sửa — nếu đổi ý
 | 2026-05-25 | Commits = Conventional Commits | Auto changelog, semantic versioning |
 | 2026-05-25 | Contributor model = gradual-trust tiers (Visitor → Triager → Contributor → Trusted → Maintainer → Core) | Bám model của Astro/Tauri/Hono |
 | 2026-05-25 | Go toolchain floor = 1.24 (was 1.22) | gopsutil/v4 v4.26.4 requires Go 1.24 — accept newer floor instead of downgrading to gopsutil/v3 (deprecated +incompatible tag). Updated CI workflows + CONTRIBUTING. |
+| 2026-05-25 | Go toolchain floor = 1.25 (was 1.24) | pressly/goose v3 (added in Phase 2 storage) requires Go 1.25. Smaller bump than downgrading goose to an older line. CI + Dockerfiles + CONTRIBUTING synced. |
 | 2026-05-25 | HTTP router = github.com/go-chi/chi/v5 | Stdlib-friendly, middleware ecosystem, no codegen — matches "single binary, low RAM" decision. |
 | 2026-05-25 | Metrics lib = github.com/shirou/gopsutil/v4 | De-facto cross-platform metrics for Go; covers Linux/Windows/macOS in one API. |
 | 2026-05-25 | Repo staging = github.com/quanla93/lumen (PRIVATE) | Personal staging until `lumenhq` GitHub org registered; switch to public + transfer when v0.1.0 ready. Git author = quanla93 / quanla.work@gmail.com. |
@@ -174,34 +175,36 @@ Mỗi quyết định ghi 1 dòng. Không xóa, không sửa — nếu đổi ý
 
 ---
 
-### Phase 2 — MVP feature breadth (Week 2-4)
+### Phase 2 — MVP feature breadth (Week 2-4) 🚧 (core loop shipping)
 
 **Goal**: Đủ feature để 1 user homelab thật dùng được.
 
 #### Hub
-- [ ] Auth: register first-admin flow, JWT, password Argon2id
-- [ ] Hosts CRUD + token generation (display once)
-- [ ] SQLite schema migration framework
-- [ ] Ring buffer in-memory per host
-- [ ] Batch flush ring → SQLite mỗi 60s
-- [ ] Query API: `GET /api/hosts/:id/metrics?from&to&step`
-- [ ] WS subscribe/unsubscribe protocol
+- [x] Auth: register first-admin flow, JWT (HS256, 30d), password Argon2id (RFC 9106 second-class)
+- [x] Hosts CRUD + token generation (lum_… one-shot; SHA-256 hash stored; rotate; delete; ingest validates and overwrites body.host)
+- [x] SQLite schema migration framework (pressly/goose v3, embedded migrations, WAL pragmas)
+- [x] Per-host CPU ring buffer in-memory (120 samples, ships on WS)
+- [ ] Batch flush ring → SQLite mỗi 60s (currently every ingest is a sync INSERT — fine for spike load; batching is an optimization)
+- [ ] Query API: `GET /api/hosts/:id/metrics?from&to&step` (history endpoint — schema ready in SQLite)
+- [ ] WS subscribe/unsubscribe protocol (currently broadcasts everything to everyone)
 - [ ] Retention task (1h cron, delete >24h SQLite rows)
 - [ ] Settings page: retention, password change
 
 #### Agent
-- [ ] Full host collector: CPU per-core, RAM, swap, disk usage + I/O, network, load, temperature
+- [x] Host collector: CPU%, RAM%, Swap%, Disk%, load1/5/15 (gopsutil v4)
+- [ ] Per-core CPU + disk I/O + network throughput + temperature (need state across ticks)
 - [ ] Docker collector (Engine API)
 - [ ] Local BoltDB buffer cho offline
-- [ ] Config file YAML + env override
+- [ ] Config file YAML + env override (currently env-only via godotenv)
 - [ ] Systemd service file
 - [ ] Install script `get.lumenhq.dev/agent`
 
 #### Web
-- [ ] Overview page: host cards + sparklines
-- [ ] Host detail: 4 charts (CPU/RAM/Disk/Net) với uPlot, container list
-- [ ] Dark/light mode toggle
-- [ ] Settings UI
+- [x] Overview page: host cards + CPU sparkline + 3 metric bars (CPU/RAM/Disk) + load avg footer
+- [x] Dark/light mode toggle (class-based, persists in localStorage)
+- [x] Auth UI: Register / Login / Logout + AppShell with tab nav
+- [x] Settings UI: hosts table + create + rotate + delete + one-shot token reveal + .env snippet
+- [ ] Host detail page: 4 charts (CPU/RAM/Disk/Net) with uPlot, container list
 - [ ] PWA manifest + service worker
 
 #### Docs (parallel)

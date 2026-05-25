@@ -13,7 +13,7 @@ COPY web ./web
 RUN pnpm --filter web build
 
 # ─── Stage 2: build the hub Go binary, embedding the bundle ──────────────────
-FROM golang:1.24-alpine AS go-build
+FROM golang:1.25-alpine AS go-build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
@@ -28,10 +28,16 @@ RUN CGO_ENABLED=0 go build \
       -ldflags="-s -w -X main.Version=${VERSION}" \
       -o /out/lumen-hub \
       ./cmd/lumen-hub
+# Stage a /data dir owned by uid 65532 (the distroless `nonroot` user) so
+# the final image has a writable mount point for the SQLite DB without a
+# shell or chown command at runtime.
+RUN install -d -m 0755 -o 65532 -g 65532 /data
 
 # ─── Stage 3: minimal runtime ────────────────────────────────────────────────
 FROM gcr.io/distroless/static-debian12:nonroot
 COPY --from=go-build /out/lumen-hub /usr/local/bin/lumen-hub
+COPY --from=go-build --chown=65532:65532 /data /data
 EXPOSE 8090
 USER nonroot:nonroot
+VOLUME ["/data"]
 ENTRYPOINT ["/usr/local/bin/lumen-hub"]

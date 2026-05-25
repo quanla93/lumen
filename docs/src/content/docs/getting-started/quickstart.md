@@ -11,7 +11,7 @@ sidebar:
 
 ## Prerequisites
 
-- Go **1.24+** (`go version` to check)
+- Go **1.25+** (`go version` to check)
 - Git
 - A terminal — Linux, macOS, or Windows (PowerShell or bash)
 
