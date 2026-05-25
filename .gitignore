@@ -23,7 +23,8 @@ yarn-error.log
 # Web build artifacts (embedded by hub at build time)
 /web/dist/
 /web/.vite/
-/internal/hub/web/dist/
+/internal/hub/web/dist/*
+!/internal/hub/web/dist/.gitkeep
 
 # Docs build
 /docs/.astro/

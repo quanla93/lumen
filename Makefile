@@ -71,8 +71,12 @@ benchmark: ## Run benchmarks (RAM + throughput)
 build: build-web build-hub build-agent ## Build hub + agent for current platform
 
 .PHONY: build-web
-build-web: ## Build web UI bundle (embedded into hub)
+build-web: ## Build web UI bundle and stage it for hub embed
 	$(PNPM) --filter web build
+	rm -rf internal/hub/web/dist
+	mkdir -p internal/hub/web/dist
+	cp -r web/dist/. internal/hub/web/dist/
+	touch internal/hub/web/dist/.gitkeep
 
 .PHONY: build-hub
 build-hub: ## Build hub binary

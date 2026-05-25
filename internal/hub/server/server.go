@@ -8,6 +8,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -16,6 +17,7 @@ import (
 	"github.com/lumenhq/lumen/internal/hub/ingest"
 	"github.com/lumenhq/lumen/internal/hub/store"
 	"github.com/lumenhq/lumen/internal/hub/stream"
+	"github.com/lumenhq/lumen/internal/hub/web"
 )
 
 type Config struct {
@@ -47,6 +49,17 @@ func Run(ctx context.Context, cfg Config) error {
 	r.Get("/healthz", healthz)
 	r.Post("/api/ingest", ingestHandler.ServeHTTP)
 	r.Get("/api/stream", streamHandler.ServeHTTP)
+
+	// Everything else falls to the embedded web bundle (SPA-style), except
+	// /api/* which gets an honest 404 — never an HTML page.
+	webHandler := web.Handler()
+	r.NotFound(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/api/") {
+			http.NotFound(w, r)
+			return
+		}
+		webHandler.ServeHTTP(w, r)
+	})
 
 	srv := &http.Server{
 		Addr:              cfg.Addr,
