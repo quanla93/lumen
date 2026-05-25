@@ -119,7 +119,7 @@ We **squash and merge** by default. PR title becomes the commit message — writ
 ### Clone and run
 
 ```bash
-git clone https://github.com/lumenhq/lumen
+git clone https://github.com/quanla93/lumen
 cd lumen
 
 # Install web/docs deps
