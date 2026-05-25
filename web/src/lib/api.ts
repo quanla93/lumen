@@ -1,0 +1,82 @@
+/** Typed fetch wrappers for the hub API. All paths are relative so the
+ * same client works in `pnpm dev` (Vite proxies to :8090) and in the
+ * embedded build (hub serves both /api and the SPA from :8090). */
+
+export type User = {
+  id: number;
+  username: string;
+  created_at: string;
+};
+
+export type Host = {
+  id: number;
+  name: string;
+  created_at: string;
+  last_seen_at: string | null;
+};
+
+export type CreateHostResponse = {
+  host: Host;
+  token: string;
+};
+
+export class ApiError extends Error {
+  readonly status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
+
+async function api<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(path, {
+    credentials: "same-origin",
+    headers: {
+      "Content-Type": "application/json",
+      ...(init?.headers ?? {}),
+    },
+    ...init,
+  });
+  if (!res.ok) {
+    let msg = `${res.status} ${res.statusText}`;
+    try {
+      const body = (await res.json()) as { error?: string };
+      if (body.error) msg = body.error;
+    } catch {
+      // body wasn't JSON; keep status text
+    }
+    throw new ApiError(msg, res.status);
+  }
+  if (res.status === 204) return undefined as T;
+  return (await res.json()) as T;
+}
+
+export const authApi = {
+  setupStatus: () => api<{ admin_exists: boolean }>("/api/setup-status"),
+  me: () => api<User>("/api/me"),
+  register: (username: string, password: string) =>
+    api<User>("/api/register", {
+      method: "POST",
+      body: JSON.stringify({ username, password }),
+    }),
+  login: (username: string, password: string) =>
+    api<User>("/api/login", {
+      method: "POST",
+      body: JSON.stringify({ username, password }),
+    }),
+  logout: () => api<void>("/api/logout", { method: "POST" }),
+};
+
+export const hostsApi = {
+  list: () => api<Host[]>("/api/hosts"),
+  create: (name: string) =>
+    api<CreateHostResponse>("/api/hosts", {
+      method: "POST",
+      body: JSON.stringify({ name }),
+    }),
+  remove: (id: number) =>
+    api<void>(`/api/hosts/${id}`, { method: "DELETE" }),
+  rotate: (id: number) =>
+    api<{ token: string }>(`/api/hosts/${id}/rotate`, { method: "POST" }),
+};

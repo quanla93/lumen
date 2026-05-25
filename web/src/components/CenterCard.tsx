@@ -1,0 +1,82 @@
+import type { ReactNode } from "react";
+
+/** Centered single-column container used by Login + Register pages. */
+export function CenterCard({
+  title,
+  subtitle,
+  children,
+}: {
+  title: string;
+  subtitle?: string;
+  children: ReactNode;
+}) {
+  return (
+    <main className="min-h-screen flex items-center justify-center px-4 py-12">
+      <div className="w-full max-w-sm rounded-lg border border-[color:var(--color-border)] bg-[color:var(--color-card)] p-6 shadow-sm">
+        <h1 className="text-xl font-semibold tracking-tight">{title}</h1>
+        {subtitle && (
+          <p className="mt-1 text-sm text-[color:var(--color-muted)]">{subtitle}</p>
+        )}
+        <div className="mt-5">{children}</div>
+      </div>
+    </main>
+  );
+}
+
+/** Small reusable input styled like the rest of the dashboard. */
+export function FieldInput(props: React.InputHTMLAttributes<HTMLInputElement>) {
+  return (
+    <input
+      {...props}
+      className={`w-full rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--color-accent)] ${props.className ?? ""}`}
+    />
+  );
+}
+
+export function Field({
+  label,
+  children,
+}: {
+  label: string;
+  children: ReactNode;
+}) {
+  return (
+    <label className="block">
+      <span className="block text-xs uppercase tracking-wide text-[color:var(--color-muted)] mb-1">
+        {label}
+      </span>
+      {children}
+    </label>
+  );
+}
+
+/** Primary action button. */
+export function PrimaryButton(props: React.ButtonHTMLAttributes<HTMLButtonElement>) {
+  return (
+    <button
+      type="submit"
+      {...props}
+      className={`inline-flex items-center justify-center rounded-md bg-[color:var(--color-fg)] px-3 py-2 text-sm font-medium text-[color:var(--color-bg)] hover:opacity-90 disabled:opacity-50 transition-opacity ${props.className ?? ""}`}
+    />
+  );
+}
+
+/** Secondary / ghost button. */
+export function GhostButton(props: React.ButtonHTMLAttributes<HTMLButtonElement>) {
+  return (
+    <button
+      type="button"
+      {...props}
+      className={`inline-flex items-center justify-center rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-card)] px-3 py-1.5 text-sm hover:bg-[color:var(--color-border)] disabled:opacity-50 transition-colors ${props.className ?? ""}`}
+    />
+  );
+}
+
+/** Inline error banner. */
+export function ErrorText({ message }: { message: string }) {
+  return (
+    <p className="text-sm text-[color:var(--color-danger)]" role="alert">
+      {message}
+    </p>
+  );
+}
