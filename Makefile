@@ -121,6 +121,14 @@ docker-hub: ## Build hub Docker image
 docker-agent: ## Build agent Docker image
 	docker build -f deploy/docker/Dockerfile.agent -t lumenhq/lumen-agent:$(VERSION) .
 
+.PHONY: compose-up
+compose-up: ## Start full stack (hub + 1 agent) via Docker Compose, build images on first run
+	docker compose -f deploy/docker/docker-compose.yml up --build
+
+.PHONY: compose-down
+compose-down: ## Stop the Compose stack and remove the local images
+	docker compose -f deploy/docker/docker-compose.yml down --rmi local
+
 # ============================================================
 # Clean
 # ============================================================

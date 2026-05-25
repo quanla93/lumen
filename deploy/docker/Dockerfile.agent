@@ -1,0 +1,20 @@
+# syntax=docker/dockerfile:1.7
+
+# ─── Stage 1: build the agent binary ─────────────────────────────────────────
+FROM golang:1.24-alpine AS build
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+ARG VERSION=docker
+RUN CGO_ENABLED=0 go build \
+      -trimpath \
+      -ldflags="-s -w -X main.Version=${VERSION}" \
+      -o /out/lumen-agent \
+      ./cmd/lumen-agent
+
+# ─── Stage 2: minimal runtime ────────────────────────────────────────────────
+FROM gcr.io/distroless/static-debian12:nonroot
+COPY --from=build /out/lumen-agent /usr/local/bin/lumen-agent
+USER nonroot:nonroot
+ENTRYPOINT ["/usr/local/bin/lumen-agent"]

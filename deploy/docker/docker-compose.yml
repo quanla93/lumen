@@ -1,0 +1,39 @@
+# Lumen dev compose — 1-command end-to-end stack.
+#
+# From repo root:
+#   docker compose -f deploy/docker/docker-compose.yml up --build
+#
+# Then open http://localhost:8090 to see the embedded web UI.
+
+name: lumen
+
+services:
+  hub:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.hub
+    image: lumen-hub:dev
+    container_name: lumen-hub
+    ports:
+      - "8090:8090"
+    environment:
+      LUMEN_HUB_ADDR: ":8090"
+      LUMEN_HUB_DEV: "false"
+      LUMEN_HUB_STREAM_INTERVAL: "5s"
+    restart: unless-stopped
+
+  agent:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.agent
+    image: lumen-agent:dev
+    container_name: lumen-agent
+    depends_on:
+      - hub
+    environment:
+      LUMEN_HUB_URL: "http://hub:8090"
+      LUMEN_AGENT_TOKEN: "devtoken"
+      LUMEN_AGENT_INTERVAL: "5s"
+      # Override the in-container hostname so the dashboard shows a friendly name.
+      LUMEN_AGENT_HOST: "compose-agent"
+    restart: unless-stopped

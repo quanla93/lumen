@@ -1,0 +1,46 @@
+# Lean the Docker build context — exclude anything Docker doesn't need.
+
+# Version control
+.git
+.github
+.gitignore
+.gitattributes
+
+# Node tooling state (re-resolved inside the build by pnpm install)
+node_modules
+**/node_modules
+**/.pnpm-store
+
+# Local build outputs (re-built inside Docker stages)
+dist
+web/dist
+docs/.astro
+docs/dist
+docs/.cache
+
+# The embed staging dir — Dockerfile.hub copies the freshly built bundle
+# from the web stage; the host's local state must not pollute the image.
+internal/hub/web/dist
+
+# TypeScript incremental cache
+*.tsbuildinfo
+
+# Local config / secrets (compose passes env explicitly)
+.env
+.env.local
+.env.*.local
+
+# Compiled Go binaries (local Windows / macOS / Linux)
+*.exe
+bin
+coverage.out
+coverage.html
+
+# Editor / OS
+.vscode
+.idea
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+desktop.ini
