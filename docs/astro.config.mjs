@@ -14,8 +14,8 @@ export default defineConfig({
       },
       favicon: "/favicon.svg",
       social: {
-        github: "https://github.com/lumenhq/lumen",
-        discord: "https://discord.gg/lumen",
+        github: "https://github.com/quanla93/lumen",
+        // discord: pending — channel not registered yet (pre-v0.1).
       },
       defaultLocale: "root",
       locales: {
@@ -24,7 +24,7 @@ export default defineConfig({
       },
       editLink: {
         baseUrl:
-          "https://github.com/lumenhq/lumen/edit/main/docs/",
+          "https://github.com/quanla93/lumen/edit/main/docs/",
       },
       lastUpdated: true,
       pagination: true,

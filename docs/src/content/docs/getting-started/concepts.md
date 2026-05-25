@@ -33,7 +33,7 @@ The agent only sends data **out**. It never accepts inbound connections. This is
 
 ### Special case: Proxmox host
 
-For monitoring the Proxmox node itself (not the LXCs/VMs on it), Lumen can read the **Proxmox API** directly without installing an agent on the host. See [Proxmox integration](/integrations/proxmox/).
+For monitoring the Proxmox node itself (not the LXCs/VMs on it), Lumen can read the **Proxmox API** directly without installing an agent on the host. The full Proxmox integration ships in v0.2 (see the [roadmap](https://github.com/quanla93/lumen/blob/main/ACTION_PLAN.md)).
 
 ## Token
 
@@ -56,9 +56,9 @@ Lumen uses **three storage tiers** to balance speed, retention, and disk wear:
 | **Hot** | SQLite (WAL) | 1-minute | 24 hours | Recent history queries |
 | **Cold** | Parquet (ZSTD) | 5-minute | 30 days (config: up to 365) | Long-range queries |
 
-Data moves through tiers automatically — you don't manage this directly. You can adjust retention per tier in [Settings → Retention](/configure/retention/).
+Data moves through tiers automatically — you don't manage this directly. Per-tier retention will be configurable in Settings → Retention (UI lands in v0.3).
 
 ## Next
 
-- [Quickstart](/getting-started/quickstart/) — try it.
-- [Architecture deep dive](/reference/architecture/) — how the pieces fit together.
+- [Quickstart](./quickstart.md) — try it.
+- Architecture decisions: see [`docs/adr/`](https://github.com/quanla93/lumen/tree/main/docs/adr) in the repo. A full architecture reference page lands in v0.2.

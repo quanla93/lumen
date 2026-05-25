@@ -8,9 +8,12 @@ Lightweight self-hosted server monitoring with realtime dashboards, historical m
 and alerts — designed to run comfortably on a Raspberry Pi.
 
 [Quickstart](docs/src/content/docs/getting-started/quickstart.md) ·
-[Documentation](https://lumenhq.dev) ·
-[Discord](#) ·
-[Roadmap](docs/src/content/docs/reference/roadmap.md)
+[Roadmap](ACTION_PLAN.md)
+
+> ⚠️ **Pre-1.0 / pre-launch.** The project is being staged at
+> [`quanla93/lumen`](https://github.com/quanla93/lumen) (private) until
+> v0.1.0; the `lumenhq.dev` site, Discord, and installer URLs below are
+> placeholders and don't exist yet.
 
 </div>
 
@@ -66,17 +69,23 @@ If those are dealbreakers, look at [Grafana + Prometheus](https://grafana.com) o
 
 ## Quickstart
 
+The Docker Compose and `get.lumenhq.dev` installer flow shown below is the
+target UX for v0.1.0. Today (pre-v0.1) you build from source:
+
 ```bash
-# Run the hub (Docker Compose)
+git clone https://github.com/quanla93/lumen
+cd lumen
+cp .env.example .env
+make dev-hub      # terminal 1
+make dev-agent    # terminal 2
+```
+
+Future v0.1+ flow (not live yet):
+
+```bash
 curl -fsSL https://get.lumenhq.dev/compose > docker-compose.yml
 docker compose up -d
-
-# Open http://localhost:8090 and create the admin account.
-# Then add a host in the UI to get an install command for the agent:
-
-curl -fsSL https://get.lumenhq.dev/agent | sudo bash -s -- \
-  --hub https://your-lumen.example.com \
-  --token lum_xxxxxxxxxxxxx
+# then add a host in the UI to copy the agent install command.
 ```
 
 Full setup: see [Quickstart](docs/src/content/docs/getting-started/quickstart.md).
@@ -94,31 +103,35 @@ Lumen is **pre-1.0**. Expect breaking changes until v1.0. We aim for stable APIs
 | v0.3 | Planned | Cold tier Parquet, multi-user, retention config |
 | v1.0 | Planned | Stable API, plugin SDK |
 
-See the full [roadmap](docs/src/content/docs/reference/roadmap.md).
+See the full [roadmap](ACTION_PLAN.md) (phase-by-phase plan, decisions log, anti-features).
 
 ---
 
 ## Documentation
 
-- **[Getting started](docs/src/content/docs/getting-started/quickstart.md)** — Up and running in 5 minutes
-- **[Install guide](docs/src/content/docs/install/)** — Hub, agent, Proxmox host
-- **[Configuration](docs/src/content/docs/configure/)** — Hosts, alerts, retention, auth
-- **[Integrations](docs/src/content/docs/integrations/)** — Proxmox, Docker, LXC, ZFS, PBS
-- **[Reference](docs/src/content/docs/reference/)** — API, architecture, metrics catalog
-- **[Contributing](CONTRIBUTING.md)** — How to help
+Currently available:
+
+- **[Overview](docs/src/content/docs/getting-started/overview.md)** — What Lumen is and isn't
+- **[Quickstart](docs/src/content/docs/getting-started/quickstart.md)** — Up and running locally
+- **[Concepts](docs/src/content/docs/getting-started/concepts.md)** — Hub, agent, host, metric
+- **[ADR-0001: Storage architecture](docs/adr/0001-storage-architecture.md)** — SQLite hot + Parquet cold
+- **[Contributing](CONTRIBUTING.md)** — Dev setup, commit style, PR workflow
+
+Install guide, configuration reference, integrations (Proxmox/LXC/ZFS/PBS),
+and the API reference land in phases v0.1 → v0.3 — see the [roadmap](ACTION_PLAN.md).
 
 ---
 
 ## Contributing
 
-We welcome contributions of every kind: code, docs, translations, bug reports, ideas, and helping others.
+We welcome contributions of every kind: code, docs, bug reports, ideas, and helping others.
 
-- 🐛 **Bug?** [Open an issue](https://github.com/lumenhq/lumen/issues/new/choose)
-- 💡 **Idea?** [Start a discussion](https://github.com/lumenhq/lumen/discussions)
+- 🐛 **Bug?** [Open an issue](https://github.com/quanla93/lumen/issues/new/choose)
+- 💡 **Idea?** [Start a discussion](https://github.com/quanla93/lumen/discussions)
 - 🛠️ **Code?** Read [CONTRIBUTING.md](CONTRIBUTING.md) first
-- 🌍 **Translate?** See [translating.md](docs/src/content/docs/contributing/translating.md)
 
-By participating, you agree to our [Code of Conduct](CODE_OF_CONDUCT.md).
+A translation guide and a formal Code of Conduct land before v0.1.0 (see
+the [roadmap](ACTION_PLAN.md) Phase 0 deferred items).
 
 ---
 

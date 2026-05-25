@@ -1,102 +1,98 @@
 ---
 title: Quickstart
-description: Get a Lumen hub and one agent running in 5 minutes.
+description: Build Lumen from source and see live CPU metrics in two terminals.
 sidebar:
   order: 2
 ---
 
-This guide gets you from zero to live metrics in about five minutes. We'll run the **hub** on one machine and connect a single **agent** to it.
+> ℹ️ This is the **pre-v0.1 dev quickstart** — you build the binaries from
+> source. The polished `curl get.lumenhq.dev | bash` flow lands with v0.1.0
+> (see the [roadmap](https://github.com/quanla93/lumen/blob/main/ACTION_PLAN.md)).
 
 ## Prerequisites
 
-- A Linux server (or VM) with **Docker** and **Docker Compose** for the hub.
-- One more Linux machine to monitor (can be the same host for testing).
-- Network: the agent must be able to reach the hub over HTTP/HTTPS (port 8090 by default).
+- Go **1.24+** (`go version` to check)
+- Git
+- A terminal — Linux, macOS, or Windows (PowerShell or bash)
 
-## 1. Start the hub
-
-On your hub machine:
+## 1. Clone and build
 
 ```bash
-mkdir -p ~/lumen && cd ~/lumen
-curl -fsSL https://get.lumenhq.dev/compose -o docker-compose.yml
-docker compose up -d
+git clone https://github.com/quanla93/lumen
+cd lumen
+cp .env.example .env
 ```
 
-Check it's running:
+`.env` is gitignored and holds all config (12-factor — there are no CLI
+flags). Edit it if you want different ports or interval; the defaults are
+fine for local testing.
+
+## 2. Run the hub
+
+In terminal **1**:
 
 ```bash
-docker compose ps
-# lumen-hub   Up   0.0.0.0:8090->8090/tcp
+make dev-hub
+# or:  go run ./cmd/lumen-hub
 ```
 
-Open <a href="http://localhost:8090">http://localhost:8090</a> (or `http://<server-ip>:8090`).
+Expected output:
 
-## 2. Create the admin account
+```
+time=... level=INFO msg="hub listening" addr=:8090 dev=true
+```
 
-The first time you open the UI, you'll see a setup screen. Choose a username and a strong password. This account has full admin rights.
-
-:::caution
-There is no "forgot password" recovery flow yet — write it down.
-:::
-
-## 3. Add your first host
-
-In the UI:
-
-1. Go to **Hosts** → **Add host**.
-2. Give it a name (e.g. `pve-01`, `vps-tokyo`, `nas`).
-3. Click **Create**. A token is shown **once** — copy the install command displayed.
-
-Example install command:
+Sanity-check the liveness probe:
 
 ```bash
-curl -fsSL https://get.lumenhq.dev/agent | sudo bash -s -- \
-  --hub https://lumen.example.com \
-  --token lum_AbCdEf123456789
+curl -i http://localhost:8090/healthz
+# HTTP/1.1 200 OK
+# Content-Type: application/json
+#
+# {"status":"ok"}
 ```
 
-## 4. Install the agent
+## 3. Run the agent
 
-Run the command from step 3 on the machine you want to monitor. The installer:
-
-- Downloads the agent binary for your architecture.
-- Creates a `lumen` user.
-- Writes config to `/etc/lumen-agent/config.yml`.
-- Installs and starts a systemd service `lumen-agent`.
-
-Verify:
+In terminal **2**:
 
 ```bash
-sudo systemctl status lumen-agent
-# Active: active (running)
+make dev-agent
+# or:  go run ./cmd/lumen-agent
 ```
 
-## 5. See your metrics
+You should see one log line per tick (default 5s, tunable in `.env` via
+`LUMEN_AGENT_INTERVAL`):
 
-Back in the UI, your host's status dot should turn **green** within 10 seconds. Click it to see live CPU, RAM, disk, and network charts.
+```
+time=... level=INFO msg="agent starting" hub=http://localhost:8090 host=<hostname> interval=5s
+time=... level=INFO msg=ingested cpu_pct=12.34
+time=... level=INFO msg=ingested cpu_pct=8.76
+```
 
-You're done. 🎉
+And the hub log (terminal 1) shows each ingest accepted:
+
+```
+time=... level=DEBUG msg="ingest accepted" host=<hostname> cpu_pct=12.34
+```
+
+## 4. (coming soon) Live dashboard
+
+The web dashboard lands in Phase 1.6 of the [roadmap](https://github.com/quanla93/lumen/blob/main/ACTION_PLAN.md).
+Until then, the hub's `POST /api/ingest` is the only ingest path, and
+`GET /api/stream` (WebSocket) is the only realtime output. A minimal
+React+Vite UI consuming `/api/stream` is the next milestone.
 
 ## Troubleshooting
 
-**Status dot stays red**
-: Check the agent log: `sudo journalctl -u lumen-agent -f`. Most common cause is a wrong `--hub` URL (typo, missing scheme) or a firewall blocking outbound.
+**`go: command not found`**
+: Install Go 1.24+ from [go.dev/dl](https://go.dev/dl/). On Windows, after
+the MSI installer, open a fresh terminal so the new PATH is picked up.
 
-**`connection refused`**
-: The hub is unreachable. Check `curl -v https://lumen.example.com` from the agent host.
+**`bind: address already in use` on port 8090**
+: Another process holds the port. Either stop it or change `LUMEN_HUB_ADDR`
+in `.env` (e.g. `:9090`) and update `LUMEN_HUB_URL` to match.
 
-**`401 unauthorized`**
-: The token is wrong. Re-create the host in the UI (tokens are not recoverable; you must rotate).
-
-**`permission denied /var/run/docker.sock`**
-: If you want Docker monitoring, add the agent's user to the `docker` group: `sudo usermod -aG docker lumen && sudo systemctl restart lumen-agent`.
-
-More fixes: [How-to: Debug agent not connecting](/how-to/debug-agent-not-connecting/).
-
-## What's next
-
-- [Add a Proxmox host](/integrations/proxmox/) — Lumen's signature integration.
-- [Configure alerts](/configure/alerts/) — Discord, Telegram, ntfy.
-- [Set retention](/configure/retention/) — adjust how long metrics are kept.
-- [Run behind a reverse proxy](/configure/reverse-proxy/) — Caddy / Nginx / Traefik examples.
+**Agent logs `ingest send failed`**
+: The hub isn't reachable. Verify `LUMEN_HUB_URL` matches `LUMEN_HUB_ADDR`
+and that the hub terminal is still running.

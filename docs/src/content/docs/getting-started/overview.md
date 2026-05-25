@@ -31,10 +31,14 @@ Honest is faster than oversell:
 - **One agent** binary runs on each server you monitor. Pushes metrics to the hub over HTTPS. ~10 MB RAM.
 - **SQLite** stores recent data; older data rolls into compressed **Parquet** files.
 
-Read more: [Architecture](/reference/architecture/).
+A full Architecture reference doc lands with v0.2. Until then, architecture
+decisions live under [`docs/adr/`](https://github.com/quanla93/lumen/tree/main/docs/adr)
+in the repo.
 
 ## What's next
 
-- [Quickstart](/getting-started/quickstart/) — get a hub and one agent running in 5 minutes.
-- [Concepts](/getting-started/concepts/) — Hub, Agent, Token, Tier.
-- [Install on Docker Compose](/install/hub-compose/).
+- [Quickstart](./quickstart.md) — build from source, see live CPU in two terminals.
+- [Concepts](./concepts.md) — Hub, Agent, Token, Tier.
+
+The Docker Compose / Proxmox / install guides land in v0.1 → v0.3 (see the
+[roadmap](https://github.com/quanla93/lumen/blob/main/ACTION_PLAN.md)).
