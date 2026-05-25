@@ -7,6 +7,7 @@
 //	LUMEN_HUB_DEV              (default "false")        - enable verbose request logs + debug logging
 //	LUMEN_HUB_STREAM_INTERVAL  (default "5s")           - WS broadcast cadence
 //	LUMEN_HUB_DB_PATH          (default "./lumen.db")   - SQLite file location
+//	LUMEN_HUB_SECRET           (default: random 32B)    - HMAC secret for session JWTs (set explicitly in prod)
 //
 // Phase 1 + 2 endpoints:
 //   - GET  /healthz       — liveness probe
@@ -19,6 +20,8 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -35,10 +38,20 @@ func main() {
 	dev := envcfg.Bool("LUMEN_HUB_DEV", false)
 	streamInterval := envcfg.Duration("LUMEN_HUB_STREAM_INTERVAL", 5*time.Second)
 	dbPath := envcfg.String("LUMEN_HUB_DB_PATH", "./lumen.db")
+	secretHex := envcfg.String("LUMEN_HUB_SECRET", "")
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
 		Level: levelFor(dev),
 	}))
+
+	secret, err := resolveSecret(secretHex)
+	if err != nil {
+		logger.Error("secret bootstrap failed", "err", err)
+		os.Exit(1)
+	}
+	if secretHex == "" {
+		logger.Warn("LUMEN_HUB_SECRET not set — generated a random key; sessions will not survive a hub restart. Set this in prod.")
+	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -48,6 +61,7 @@ func main() {
 		Dev:            dev,
 		StreamInterval: streamInterval,
 		DBPath:         dbPath,
+		Secret:         secret,
 		Logger:         logger,
 	}); err != nil {
 		logger.Error("hub exited with error", "err", err)
@@ -61,3 +75,30 @@ func levelFor(dev bool) slog.Level {
 	}
 	return slog.LevelInfo
 }
+
+// resolveSecret returns the JWT signing secret. If hexStr is non-empty it
+// must decode to at least 32 bytes; otherwise a fresh random 32-byte key
+// is generated (warned about by the caller — sessions die on restart).
+func resolveSecret(hexStr string) ([]byte, error) {
+	if hexStr != "" {
+		b, err := hex.DecodeString(hexStr)
+		if err != nil {
+			return nil, err
+		}
+		if len(b) < 32 {
+			return nil, errSecretTooShort
+		}
+		return b, nil
+	}
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		return nil, err
+	}
+	return b, nil
+}
+
+var errSecretTooShort = errSecret("LUMEN_HUB_SECRET must be at least 32 random bytes (64 hex chars)")
+
+type errSecret string
+
+func (e errSecret) Error() string { return string(e) }

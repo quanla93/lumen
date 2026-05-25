@@ -14,6 +14,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
+	"github.com/lumenhq/lumen/internal/hub/auth"
 	"github.com/lumenhq/lumen/internal/hub/ingest"
 	"github.com/lumenhq/lumen/internal/hub/storage"
 	"github.com/lumenhq/lumen/internal/hub/store"
@@ -26,6 +27,7 @@ type Config struct {
 	Dev            bool
 	StreamInterval time.Duration
 	DBPath         string
+	Secret         []byte
 	Logger         *slog.Logger
 }
 
@@ -47,6 +49,8 @@ func Run(ctx context.Context, cfg Config) error {
 	st := store.New()
 	ingestHandler := ingest.New(st, db, logger)
 	streamHandler := stream.New(st, logger, cfg.StreamInterval)
+	authHandlers := auth.NewHandlers(db, cfg.Secret, logger)
+	requireSession := auth.RequireSession(cfg.Secret)
 
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
@@ -58,6 +62,18 @@ func Run(ctx context.Context, cfg Config) error {
 	r.Get("/healthz", healthz)
 	r.Post("/api/ingest", ingestHandler.ServeHTTP)
 	r.Get("/api/stream", streamHandler.ServeHTTP)
+
+	// Auth (public)
+	r.Get("/api/setup-status", authHandlers.SetupStatus)
+	r.Post("/api/register", authHandlers.Register)
+	r.Post("/api/login", authHandlers.Login)
+	r.Post("/api/logout", authHandlers.Logout)
+
+	// Auth (session required)
+	r.Group(func(r chi.Router) {
+		r.Use(requireSession)
+		r.Get("/api/me", authHandlers.Me)
+	})
 
 	// Everything else falls to the embedded web bundle (SPA-style), except
 	// /api/* which gets an honest 404 — never an HTML page.

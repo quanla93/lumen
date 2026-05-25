@@ -9,10 +9,44 @@
 @hub = http://localhost:8090
 @host = pve-01
 @token = devtoken
+@username = admin
+@password = correcthorse
 
 ###
 # Liveness — should return 200 with {"status":"ok"}.
 GET {{hub}}/healthz
+
+###
+# Auth — check if first-admin registration is still available.
+GET {{hub}}/api/setup-status
+
+###
+# Auth — register the first admin (one-shot; subsequent calls 403).
+POST {{hub}}/api/register
+Content-Type: application/json
+
+{
+  "username": "{{username}}",
+  "password": "{{password}}"
+}
+
+###
+# Auth — log in (sets `lumen_session` HttpOnly cookie).
+POST {{hub}}/api/login
+Content-Type: application/json
+
+{
+  "username": "{{username}}",
+  "password": "{{password}}"
+}
+
+###
+# Auth — current session user (401 without cookie).
+GET {{hub}}/api/me
+
+###
+# Auth — clear the session cookie.
+POST {{hub}}/api/logout
 
 ###
 # Ingest a full metric envelope. Auth header accepted, not validated yet.

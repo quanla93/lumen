@@ -33,6 +33,8 @@ tags:
     description: Agent → hub metric push.
   - name: stream
     description: Hub → client WebSocket fan-out (documented for reference).
+  - name: auth
+    description: First-admin registration, login, logout, session lookup.
 
 paths:
   /healthz:
@@ -109,6 +111,102 @@ paths:
             Reserved for Phase 2 — currently the bearer token is accepted
             but not validated, so this status is never returned today.
 
+  /api/setup-status:
+    get:
+      tags: [auth]
+      operationId: getSetupStatus
+      summary: Whether an admin user has been created yet.
+      description: UI hits this on first paint to decide between the register or login form.
+      responses:
+        "200":
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [admin_exists]
+                properties:
+                  admin_exists: { type: boolean }
+
+  /api/register:
+    post:
+      tags: [auth]
+      operationId: postRegister
+      summary: Create the first admin (one-shot).
+      description: |
+        Allowed only while the users table is empty. After the first user
+        is created, this endpoint returns 403 forever.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CredentialsRequest" }
+      responses:
+        "201":
+          description: Admin created; session cookie set.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "400":
+          description: Username or password failed validation.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: Setup already complete.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/login:
+    post:
+      tags: [auth]
+      operationId: postLogin
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CredentialsRequest" }
+      responses:
+        "200":
+          description: OK; session cookie set.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "401":
+          description: Invalid credentials.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/logout:
+    post:
+      tags: [auth]
+      operationId: postLogout
+      summary: Clear the session cookie. Idempotent.
+      responses:
+        "204":
+          description: Logged out.
+
+  /api/me:
+    get:
+      tags: [auth]
+      operationId: getMe
+      summary: Current session user. 401 without a valid cookie.
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: OK.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "401":
+          description: No session.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
   /api/stream:
     get:
       tags: [stream]
@@ -140,11 +238,41 @@ components:
       scheme: bearer
       bearerFormat: opaque
       description: |
-        `Authorization: Bearer <token>`. Phase 1 accepts any value (token
-        not validated). Phase 2 enforces per-host tokens minted at host
-        creation time.
+        `Authorization: Bearer <token>`. Per-host token minted when the host
+        is created (Phase 2 hosts CRUD slice — not yet enforced by ingest).
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: lumen_session
+      description: |
+        HttpOnly cookie holding an HMAC-SHA256 JWT (claim `uid`, 30-day TTL).
+        Issued by /api/register and /api/login; cleared by /api/logout.
 
   schemas:
+    CredentialsRequest:
+      type: object
+      required: [username, password]
+      additionalProperties: false
+      properties:
+        username:
+          type: string
+          minLength: 3
+          maxLength: 32
+          example: admin
+        password:
+          type: string
+          minLength: 8
+          format: password
+          example: correcthorsebattery
+
+    User:
+      type: object
+      required: [id, username, created_at]
+      properties:
+        id:         { type: integer, format: int64, example: 1 }
+        username:   { type: string,  example: admin }
+        created_at: { type: string,  format: date-time }
+
     IngestRequest:
       type: object
       required: [host, ts]
