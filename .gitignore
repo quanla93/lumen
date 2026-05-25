@@ -30,6 +30,9 @@ yarn-error.log
 /docs/dist/
 /docs/.cache/
 
+# TypeScript incremental build info
+*.tsbuildinfo
+
 # Local data (dev)
 /data/
 *.db

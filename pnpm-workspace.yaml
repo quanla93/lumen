@@ -1,0 +1,11 @@
+packages:
+  - "web"
+  - "docs"
+
+# pnpm 10+ requires explicit opt-in for postinstall scripts (supply-chain
+# safety). These three packages each ship a native binary their install
+# script places; without true they're inert at runtime.
+allowBuilds:
+  esbuild: true             # Vite transpile/bundle.
+  sharp: true               # Starlight image processing.
+  "@biomejs/biome": true    # Biome linter/formatter binary.

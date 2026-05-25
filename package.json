@@ -1,0 +1,12 @@
+{
+  "name": "lumen-workspace",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Lumen monorepo root — pnpm workspace for web + docs.",
+  "scripts": {
+    "dev:web": "pnpm --filter web dev",
+    "dev:docs": "pnpm --filter docs dev",
+    "build:web": "pnpm --filter web build",
+    "build:docs": "pnpm --filter docs build"
+  }
+}
