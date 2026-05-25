@@ -15,8 +15,25 @@
 GET {{hub}}/healthz
 
 ###
-# Ingest a CPU sample. The hub stores it as the latest snapshot for `host`.
-# Auth header is accepted but not validated until Phase 2.
+# Ingest a full metric envelope. Auth header accepted, not validated yet.
+POST {{hub}}/api/ingest
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "host": "{{host}}",
+  "ts": "2026-05-25T07:09:53Z",
+  "cpu_pct": 12.34,
+  "ram_pct": 68.0,
+  "swap_pct": 23.6,
+  "disk_pct": 73.1,
+  "load1": 0.42,
+  "load5": 0.31,
+  "load15": 0.28
+}
+
+###
+# Minimal envelope — only host + ts required; metric fields default to 0.
 POST {{hub}}/api/ingest
 Content-Type: application/json
 Authorization: Bearer {{token}}
