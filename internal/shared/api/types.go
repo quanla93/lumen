@@ -24,14 +24,18 @@ type IngestRequest struct {
 }
 
 // HostSnapshot is the latest known state of a single host as held by the hub.
+// CpuSeries is the recent CPU history (oldest first) the hub kept in its
+// per-host ring buffer; clients use it to draw sparklines without a
+// cold-start gap on connect.
 type HostSnapshot struct {
-	Host    string    `json:"host"`
-	Ts      time.Time `json:"ts"`
-	CpuPct  float64   `json:"cpu_pct"`
-	RamPct  float64   `json:"ram_pct"`
-	SwapPct float64   `json:"swap_pct"`
-	DiskPct float64   `json:"disk_pct"`
-	Load1   float64   `json:"load1"`
-	Load5   float64   `json:"load5"`
-	Load15  float64   `json:"load15"`
+	Host      string    `json:"host"`
+	Ts        time.Time `json:"ts"`
+	CpuPct    float64   `json:"cpu_pct"`
+	RamPct    float64   `json:"ram_pct"`
+	SwapPct   float64   `json:"swap_pct"`
+	DiskPct   float64   `json:"disk_pct"`
+	Load1     float64   `json:"load1"`
+	Load5     float64   `json:"load5"`
+	Load15    float64   `json:"load15"`
+	CpuSeries []float64 `json:"cpu_series,omitempty"`
 }

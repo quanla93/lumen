@@ -1,5 +1,6 @@
 import { cpuTone, TONE_CLASS, widthClass, type StatusTone } from "@/lib/status";
 import { isStale, relativeTime } from "@/lib/time";
+import { Sparkline } from "@/components/Sparkline";
 
 export type Snapshot = {
   host: string;
@@ -11,6 +12,14 @@ export type Snapshot = {
   load1: number;
   load5: number;
   load15: number;
+  cpu_series?: number[];
+};
+
+const TONE_TEXT: Record<StatusTone, string> = {
+  ok: "text-[color:var(--color-accent)]",
+  warn: "text-[color:var(--color-warn)]",
+  danger: "text-[color:var(--color-danger)]",
+  muted: "text-[color:var(--color-muted)]",
 };
 
 type MetricRow = {
@@ -34,10 +43,11 @@ export function HostCard({ snapshot, now }: { snapshot: Snapshot; now: number })
   ];
 
   const hasLoad = snapshot.load1 + snapshot.load5 + snapshot.load15 > 0;
+  const series = snapshot.cpu_series ?? [];
 
   return (
     <div className="rounded-lg border border-[color:var(--color-border)] bg-[color:var(--color-card)] p-4 shadow-sm">
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
           <span
             aria-hidden
@@ -52,6 +62,12 @@ export function HostCard({ snapshot, now }: { snapshot: Snapshot; now: number })
           {relativeTime(snapshot.ts, now)}
         </span>
       </div>
+
+      {series.length >= 2 && (
+        <div className={`mb-3 h-[18px] ${TONE_TEXT[headerTone]}`}>
+          <Sparkline values={series} width={100} height={18} className="w-full h-full" />
+        </div>
+      )}
 
       <div className="space-y-2.5">
         {rows.map((r) => (
@@ -78,9 +94,7 @@ function MetricBar({ label, value, tone }: MetricRow) {
         <span className="text-xs uppercase tracking-wide text-[color:var(--color-muted)]">
           {label}
         </span>
-        <span className="font-mono text-sm tabular-nums">
-          {value.toFixed(1)}%
-        </span>
+        <span className="font-mono text-sm tabular-nums">{value.toFixed(1)}%</span>
       </div>
       <div className="h-1.5 w-full rounded-full bg-[color:var(--color-border)] overflow-hidden">
         <div

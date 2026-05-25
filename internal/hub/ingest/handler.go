@@ -33,6 +33,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Store.Put extends the per-host CpuSeries ring on top of these fields.
 	h.Store.Put(api.HostSnapshot{
 		Host:    req.Host,
 		Ts:      req.Ts,

@@ -186,6 +186,13 @@ components:
         load1:    { type: number, format: double, minimum: 0 }
         load5:    { type: number, format: double, minimum: 0 }
         load15:   { type: number, format: double, minimum: 0 }
+        cpu_series:
+          type: array
+          description: |
+            Recent CPU% history kept by the hub's per-host ring (up to 120
+            samples, oldest first). Lets clients draw a sparkline on first
+            connect without a cold-start gap. Omitted if empty.
+          items: { type: number, format: double, minimum: 0, maximum: 100 }
 
     Error:
       type: object
