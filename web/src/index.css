@@ -1,0 +1,73 @@
+@import "tailwindcss";
+
+/* Tailwind v4: opt into class-based dark mode (manual toggle), instead of
+ * the default prefers-color-scheme. */
+@custom-variant dark (&:is(.dark *));
+
+@theme {
+  --color-bg: oklch(99% 0 0);
+  --color-fg: oklch(20% 0.01 270);
+  --color-muted: oklch(55% 0.01 270);
+  --color-border: oklch(92% 0.01 270);
+  --color-card: oklch(100% 0 0);
+  --color-accent: oklch(70% 0.16 145); /* green */
+  --color-warn: oklch(75% 0.16 75);    /* amber */
+  --color-danger: oklch(65% 0.22 30);  /* red */
+
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+
+.dark {
+  --color-bg: oklch(15% 0.01 270);
+  --color-fg: oklch(96% 0 0);
+  --color-muted: oklch(65% 0.01 270);
+  --color-border: oklch(25% 0.01 270);
+  --color-card: oklch(20% 0.01 270);
+}
+
+@layer base {
+  html, body, #root {
+    height: 100%;
+  }
+  body {
+    background-color: var(--color-bg);
+    color: var(--color-fg);
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+}
+
+@layer components {
+  /* Discrete status colors — used by App.tsx and HostCard. Defined as
+   * background classes (paired with an explicit text color when used as a
+   * text background) so component code stays inline-style-free. */
+  .lumen-status-ok       { background-color: var(--color-accent); }
+  .lumen-status-warn     { background-color: var(--color-warn); }
+  .lumen-status-danger   { background-color: var(--color-danger); }
+  .lumen-status-muted    { background-color: var(--color-muted); }
+
+  /* Discrete bar-fill widths (5% increments) so progress bars don't need
+   * an inline `style={{ width: '...%' }}` attribute (linter rule). The
+   * 5% quantization is invisible on a 1.5px-tall bar. */
+  .lumen-w-0   { width: 0%;   }
+  .lumen-w-5   { width: 5%;   }
+  .lumen-w-10  { width: 10%;  }
+  .lumen-w-15  { width: 15%;  }
+  .lumen-w-20  { width: 20%;  }
+  .lumen-w-25  { width: 25%;  }
+  .lumen-w-30  { width: 30%;  }
+  .lumen-w-35  { width: 35%;  }
+  .lumen-w-40  { width: 40%;  }
+  .lumen-w-45  { width: 45%;  }
+  .lumen-w-50  { width: 50%;  }
+  .lumen-w-55  { width: 55%;  }
+  .lumen-w-60  { width: 60%;  }
+  .lumen-w-65  { width: 65%;  }
+  .lumen-w-70  { width: 70%;  }
+  .lumen-w-75  { width: 75%;  }
+  .lumen-w-80  { width: 80%;  }
+  .lumen-w-85  { width: 85%;  }
+  .lumen-w-90  { width: 90%;  }
+  .lumen-w-95  { width: 95%;  }
+  .lumen-w-100 { width: 100%; }
+}
