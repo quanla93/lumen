@@ -94,6 +94,7 @@ Mỗi quyết định ghi 1 dòng. Không xóa, không sửa — nếu đổi ý
 | 2026-05-26 | WS stream = optional subscribe filter, default firehose | Phase 1 broadcasts every host to every WS client. HostDetail only cares about one host; on a 200-host fleet that's 99.5% wasted bandwidth. Added `{"type":"subscribe","hosts":["..."]}` control frame; the special host `*` reverts to firehose. Empty or no message = firehose (old web builds keep working). Mutex-protected `allowed` map filters in `writeSnapshot`. Per-conn state, no shared registry. |
 | 2026-05-26 | Agent YAML config = sugar over env, not parallel system | YAML file (`/etc/lumen/agent.yaml`) is parsed once at boot and applied to the environment, only setting keys that aren't already in `os.LookupEnv`. The rest of the agent reads its config the same way it always has (envcfg). Reasoning: shipping one /etc/lumen/agent.yaml across a fleet via Ansible/Salt is operator-friendly, but maintaining two parallel config paths (env vs YAML structs) doubles the surface area for nil/zero-value bugs. Process env always wins; missing file is silent; malformed is fatal at boot. |
 | 2026-05-26 | CI/CD = GitHub Actions, no GoReleaser | The repo already produces hub tarballs via `make release-hub-tarballs` (binary + install.sh + unit + env example bundled). GoReleaser would duplicate that logic; replaced its workflow with three jobs that call the existing Make targets, push multi-arch images to ghcr.io via Buildx+QEMU, and use `softprops/action-gh-release` to upload binaries. CI got a Docker-build smoke job so every PR exercises both Dockerfiles; lint-web pinned to actual scripts (`tsc --noEmit` for web, biome for docs with `dist/` ignored). |
+| 2026-05-26 | PWA = minimal vanilla SW, no plugin | Goal is "installable to phone homescreen + paint instantly on cold start," not "full offline app" — live metrics fundamentally need network reachability to the hub. Skipped vite-plugin-pwa to avoid pulling Workbox + its build-time config surface; a 50-line `sw.js` covers cache-first for the shell + network-only for `/api/*` (caching metric snapshots would be misleading). Manifest + 192/512 SVG icons in `web/public/`, registered from `main.tsx` with `if ("serviceWorker" in navigator)` so non-supporting browsers no-op gracefully. |
 
 ---
 
@@ -221,20 +222,22 @@ Mỗi quyết định ghi 1 dòng. Không xóa, không sửa — nếu đổi ý
 - [x] Auth UI: Register / Login / Logout + AppShell with tab nav
 - [x] Settings UI: hosts table + create + rotate + delete + one-shot token reveal + .env snippet
 - [x] Host detail page: 6 uPlot charts (CPU%, RAM%, Disk%, load avg, Network rx/tx, Disk I/O r/w) + conditional Temperature chart + per-core CPU live strip (subscribed via WS) + range picker (1h/6h/24h) + auto-refresh every 30s + Containers table (name + state badge + image + CPU + mem usage/limit, sorted running-first, danger highlight at mem ≥ 90%).
-- [ ] PWA manifest + service worker
+- [x] PWA manifest + service worker — installable to homescreen on mobile; SW caches the app shell (cache-first) but never `/api/*` (network-only). Falls back gracefully on browsers without SW support.
 
 #### Docs (parallel)
 - [x] `install/hub-compose.md`
 - [x] `install/hub-binary.md`
 - [x] `install/hub-lxc.md` (Proxmox LXC walkthrough — both native + Docker-in-LXC shapes)
 - [x] `install/agent-linux.md`
-- [ ] `install/agent-docker.md`
+- [x] `install/agent-docker.md` — compose snippet + standalone `docker run` + macOS socket quirk + YAML config in container + fleet pattern.
 - [x] `configure/hosts-and-tokens.md`
-- [ ] `configure/retention.md`
-- [ ] `reference/architecture.md`
-- [ ] `reference/api.md`
-- [ ] `reference/metrics-catalog.md`
-- [ ] `faq.md`
+- [x] `configure/retention.md` — landed earlier with the retention heartbeat refactor.
+- [x] `configure/reliability.md` (bonus) — agent buffer + hub batcher + WS subscribe protocol.
+- [x] `contributing/ci-cd.md` (bonus) — reproduces CI locally + release flow + how to skip/promote.
+- [x] `reference/architecture.md` — ASCII diagram + component breakdown + threat model.
+- [x] `reference/api.md` — every REST endpoint + WS frame format + StreamControl + error shape.
+- [x] `reference/metrics-catalog.md` — every metric, source, unit, persisted-vs-live, gotchas.
+- [x] `faq.md`
 
 **Definition of done**: Có thể tag `v0.1.0`, public Show HN / r/selfhosted post.
 
