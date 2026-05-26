@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { LogoMark } from "@/components/Logo";
 
 /** Centered single-column container used by Login + Register pages. */
 export function CenterCard({
@@ -13,9 +14,12 @@ export function CenterCard({
   return (
     <main className="min-h-screen flex items-center justify-center px-4 py-12">
       <div className="w-full max-w-sm rounded-lg border border-[color:var(--color-border)] bg-[color:var(--color-card)] p-6 shadow-sm">
-        <h1 className="text-xl font-semibold tracking-tight">{title}</h1>
+        <div className="mb-4 flex items-center justify-center text-[color:var(--lumen-teal)]">
+          <LogoMark size={44} />
+        </div>
+        <h1 className="text-xl font-semibold tracking-tight text-center">{title}</h1>
         {subtitle && (
-          <p className="mt-1 text-sm text-[color:var(--color-muted)]">{subtitle}</p>
+          <p className="mt-1 text-sm text-[color:var(--color-muted)] text-center">{subtitle}</p>
         )}
         <div className="mt-5">{children}</div>
       </div>

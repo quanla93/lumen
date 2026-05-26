@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { authApi, type User } from "@/lib/api";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { LumenWordmark } from "@/components/Logo";
 
 export type Tab = "dashboard" | "settings";
 
@@ -30,7 +31,9 @@ export function AppShell({
       <header className="border-b border-[color:var(--color-border)] bg-[color:var(--color-card)]">
         <div className="mx-auto max-w-5xl px-4 py-3 flex items-center justify-between gap-4">
           <div className="flex items-center gap-6">
-            <h1 className="text-base font-semibold tracking-tight">Lumen</h1>
+            <h1 className="text-base">
+              <LumenWordmark size={22} />
+            </h1>
             <nav className="flex items-center gap-1">
               <TabButton active={tab === "dashboard"} onClick={() => onTabChange("dashboard")}>
                 Dashboard

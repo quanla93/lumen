@@ -14,6 +14,11 @@
   --color-warn: oklch(75% 0.16 75);    /* amber */
   --color-danger: oklch(65% 0.22 30);  /* red */
 
+  /* Brand teal — matches brand/logo-mark.svg #14b8a6. Two stops so the
+   * logo reads with the same brightness in both modes (light bg = teal-500,
+   * dark bg = teal-300 per brand README). */
+  --lumen-teal: #14b8a6;
+
   --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 }
 
@@ -23,6 +28,7 @@
   --color-muted: oklch(65% 0.01 270);
   --color-border: oklch(25% 0.01 270);
   --color-card: oklch(20% 0.01 270);
+  --lumen-teal: #5eead4;
 }
 
 @layer base {
