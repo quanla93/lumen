@@ -14,6 +14,7 @@ import (
 	"embed"
 	"fmt"
 	"net/url"
+	"time"
 
 	"github.com/pressly/goose/v3"
 	_ "modernc.org/sqlite" // registers "sqlite" driver (pure Go, no CGO)
@@ -64,13 +65,18 @@ func Open(path string) (*sql.DB, error) {
 
 // InsertSnapshot appends one row to the snapshots table. Returns the new
 // row id so callers can log it for traceability.
+//
+// Timestamps are stored as RFC3339 with nanos (e.g. "2026-05-26T06:18:00.123Z")
+// so SQLite's date functions (strftime, etc.) work against them — passing
+// a raw time.Time leaves the modernc.org/sqlite driver to render it via
+// time.Time.String() which uses a format SQLite can't parse.
 func InsertSnapshot(ctx context.Context, db *sql.DB, snap api.HostSnapshot) (int64, error) {
 	res, err := db.ExecContext(ctx, `
 		INSERT INTO snapshots
 			(host, ts, cpu_pct, ram_pct, swap_pct, disk_pct, load1, load5, load15)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
-		snap.Host, snap.Ts.UTC(),
+		snap.Host, formatTS(snap.Ts),
 		snap.CpuPct, snap.RamPct, snap.SwapPct, snap.DiskPct,
 		snap.Load1, snap.Load5, snap.Load15,
 	)
@@ -78,6 +84,13 @@ func InsertSnapshot(ctx context.Context, db *sql.DB, snap api.HostSnapshot) (int
 		return 0, fmt.Errorf("insert snapshot: %w", err)
 	}
 	return res.LastInsertId()
+}
+
+// formatTS renders a time.Time the same way every storage write/query does
+// it, so string comparisons in WHERE clauses stay correct and SQLite's
+// date functions can parse the value.
+func formatTS(t time.Time) string {
+	return t.UTC().Format(time.RFC3339Nano)
 }
 
 // CountSnapshots is a small diagnostic for smoke tests / docs.

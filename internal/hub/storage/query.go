@@ -45,7 +45,7 @@ func QueryMetrics(
 		WHERE host = ? AND ts >= ? AND ts < ?
 		GROUP BY bucket
 		ORDER BY bucket ASC
-	`, stepSeconds, stepSeconds, host, from.UTC(), to.UTC())
+	`, stepSeconds, stepSeconds, host, formatTS(from), formatTS(to))
 	if err != nil {
 		return nil, fmt.Errorf("query snapshots: %w", err)
 	}
@@ -74,7 +74,7 @@ func QueryMetrics(
 // DeleteSnapshotsBefore drops every row with ts < cutoff. Returns the
 // number of rows deleted so the caller can log retention activity.
 func DeleteSnapshotsBefore(ctx context.Context, db *sql.DB, cutoff time.Time) (int64, error) {
-	res, err := db.ExecContext(ctx, `DELETE FROM snapshots WHERE ts < ?`, cutoff.UTC())
+	res, err := db.ExecContext(ctx, `DELETE FROM snapshots WHERE ts < ?`, formatTS(cutoff))
 	if err != nil {
 		return 0, fmt.Errorf("delete snapshots: %w", err)
 	}
