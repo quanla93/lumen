@@ -24,7 +24,10 @@ jobs:
           go-version: "1.25"
           cache: true
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v6
+        # v7 is the first release of the action that supports
+        # golangci-lint v2.x. v6 + v2 errors with
+        # "invalid version string ... golangci-lint v2 is not supported".
+        uses: golangci/golangci-lint-action@v7
         with:
           # Pinned so a future golangci-lint release can't break CI on
           # a quiet day. Bump when adopting a new lint rule.
