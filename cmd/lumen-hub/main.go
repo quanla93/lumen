@@ -3,12 +3,14 @@
 // Configuration is read from environment variables (12-factor). A .env file
 // in the CWD is loaded automatically if present (dev convenience).
 //
-//	LUMEN_HUB_ADDR             (default ":8090")        - bind address
-//	LUMEN_HUB_DEV              (default "false")        - enable verbose request logs + debug logging
-//	LUMEN_HUB_STREAM_INTERVAL  (default "5s")           - WS broadcast cadence
-//	LUMEN_HUB_DB_PATH          (default "./lumen.db")   - SQLite file location
-//	LUMEN_HUB_SECRET           (default: random 32B)    - HMAC secret for session JWTs (set explicitly in prod)
-//	LUMEN_HUB_INSTALL_DIR      (default "")             - directory holding install.sh + agent binaries; empty disables /install.sh
+//	LUMEN_HUB_ADDR                (default ":8090")        - bind address
+//	LUMEN_HUB_DEV                 (default "false")        - enable verbose request logs + debug logging
+//	LUMEN_HUB_STREAM_INTERVAL     (default "5s")           - WS broadcast cadence
+//	LUMEN_HUB_DB_PATH             (default "./lumen.db")   - SQLite file location
+//	LUMEN_HUB_SECRET              (default: random 32B)    - HMAC secret for session JWTs (set explicitly in prod)
+//	LUMEN_HUB_INSTALL_DIR         (default "")             - directory holding install.sh + agent binaries; empty disables /install.sh
+//	LUMEN_HUB_RETENTION_WINDOW    (default "24h")          - prune snapshots older than this; "0" disables
+//	LUMEN_HUB_RETENTION_INTERVAL  (default "1h")           - retention sweep cadence; "0" disables
 //
 // Phase 1 + 2 endpoints:
 //   - GET  /healthz       — liveness probe
@@ -41,6 +43,8 @@ func main() {
 	dbPath := envcfg.String("LUMEN_HUB_DB_PATH", "./lumen.db")
 	installDir := envcfg.String("LUMEN_HUB_INSTALL_DIR", "")
 	secretHex := envcfg.String("LUMEN_HUB_SECRET", "")
+	retentionWindow := envcfg.Duration("LUMEN_HUB_RETENTION_WINDOW", 24*time.Hour)
+	retentionInterval := envcfg.Duration("LUMEN_HUB_RETENTION_INTERVAL", 1*time.Hour)
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
 		Level: levelFor(dev),
@@ -59,13 +63,15 @@ func main() {
 	defer stop()
 
 	if err := server.Run(ctx, server.Config{
-		Addr:           addr,
-		Dev:            dev,
-		StreamInterval: streamInterval,
-		DBPath:         dbPath,
-		InstallDir:     installDir,
-		Secret:         secret,
-		Logger:         logger,
+		Addr:              addr,
+		Dev:               dev,
+		StreamInterval:    streamInterval,
+		DBPath:            dbPath,
+		InstallDir:        installDir,
+		Secret:            secret,
+		RetentionWindow:   retentionWindow,
+		RetentionInterval: retentionInterval,
+		Logger:            logger,
 	}); err != nil {
 		logger.Error("hub exited with error", "err", err)
 		os.Exit(1)

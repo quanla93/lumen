@@ -11,7 +11,11 @@ const STATUS_META: Record<WsStatus, { tone: StatusTone; label: string }> = {
   error:        { tone: "danger", label: "error" },
 };
 
-export function Dashboard() {
+export function Dashboard({
+  onSelectHost,
+}: {
+  onSelectHost?: (hostName: string) => void;
+}) {
   const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
   const [status, setStatus] = useState<WsStatus>("connecting");
   // `now` ticks every second so relative timestamps refresh without a
@@ -68,7 +72,7 @@ export function Dashboard() {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {sorted.map((s) => (
-            <HostCard key={s.host} snapshot={s} now={now} />
+            <HostCard key={s.host} snapshot={s} now={now} onSelect={onSelectHost} />
           ))}
         </div>
       )}

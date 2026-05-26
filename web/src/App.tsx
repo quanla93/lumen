@@ -4,6 +4,7 @@ import { LoginForm } from "@/components/LoginForm";
 import { RegisterForm } from "@/components/RegisterForm";
 import { AppShell, type Tab } from "@/components/AppShell";
 import { Dashboard } from "@/components/Dashboard";
+import { HostDetail } from "@/components/HostDetail";
 import { Settings } from "@/components/Settings";
 import { CenterCard } from "@/components/CenterCard";
 
@@ -11,7 +12,7 @@ type View =
   | { kind: "loading" }
   | { kind: "register" }
   | { kind: "login" }
-  | { kind: "app"; user: User; tab: Tab };
+  | { kind: "app"; user: User; tab: Tab; detailHost: string | null };
 
 export default function App() {
   const [view, setView] = useState<View>({ kind: "loading" });
@@ -34,7 +35,7 @@ export default function App() {
       return (
         <RegisterForm
           onSuccess={(user) =>
-            setView({ kind: "app", user, tab: "dashboard" })
+            setView({ kind: "app", user, tab: "dashboard", detailHost: null })
           }
         />
       );
@@ -42,21 +43,38 @@ export default function App() {
       return (
         <LoginForm
           onSuccess={(user) =>
-            setView({ kind: "app", user, tab: "dashboard" })
+            setView({ kind: "app", user, tab: "dashboard", detailHost: null })
           }
         />
       );
-    case "app":
+    case "app": {
+      const onTabChange = (tab: Tab) =>
+        setView({ ...view, tab, detailHost: null });
+      const onSelectHost = (name: string) =>
+        setView({ ...view, detailHost: name });
+      const onBack = () => setView({ ...view, detailHost: null });
+
+      let body;
+      if (view.tab === "dashboard") {
+        body = view.detailHost ? (
+          <HostDetail hostName={view.detailHost} onBack={onBack} />
+        ) : (
+          <Dashboard onSelectHost={onSelectHost} />
+        );
+      } else {
+        body = <Settings />;
+      }
       return (
         <AppShell
           user={view.user}
           tab={view.tab}
-          onTabChange={(tab) => setView({ ...view, tab })}
+          onTabChange={onTabChange}
           onLogout={() => setView({ kind: "login" })}
         >
-          {view.tab === "dashboard" ? <Dashboard /> : <Settings />}
+          {body}
         </AppShell>
       );
+    }
   }
 }
 
@@ -67,7 +85,7 @@ async function bootstrap(): Promise<View> {
   }
   try {
     const user = await authApi.me();
-    return { kind: "app", user, tab: "dashboard" };
+    return { kind: "app", user, tab: "dashboard", detailHost: null };
   } catch (err) {
     if (err instanceof ApiError && err.status === 401) {
       return { kind: "login" };

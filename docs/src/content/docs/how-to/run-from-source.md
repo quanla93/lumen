@@ -182,6 +182,8 @@ All knobs live in `.env`. Defaults shown.
 | `LUMEN_HUB_STREAM_INTERVAL` | `5s` | Cadence at which `/api/stream` re-sends the snapshot. |
 | `LUMEN_HUB_DB_PATH` | `./lumen.db` | SQLite file (auto-created; WAL pragmas applied). |
 | `LUMEN_HUB_SECRET` | _random per startup_ | Hex-encoded HMAC secret for session JWTs (>=64 hex chars). If unset, hub generates one at boot and **all sessions die on restart** — set this in prod. Generate with `openssl rand -hex 32`. |
+| `LUMEN_HUB_RETENTION_WINDOW` | `24h` | Snapshots older than `now − WINDOW` are pruned on every sweep. Set to `0` to disable. |
+| `LUMEN_HUB_RETENTION_INTERVAL` | `1h` | Retention sweep cadence. Set to `0` to disable. |
 
 ### Agent
 

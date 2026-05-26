@@ -18,6 +18,7 @@ import (
 	"github.com/lumenhq/lumen/internal/hub/hosts"
 	"github.com/lumenhq/lumen/internal/hub/ingest"
 	"github.com/lumenhq/lumen/internal/hub/install"
+	"github.com/lumenhq/lumen/internal/hub/retention"
 	"github.com/lumenhq/lumen/internal/hub/storage"
 	"github.com/lumenhq/lumen/internal/hub/store"
 	"github.com/lumenhq/lumen/internal/hub/stream"
@@ -25,13 +26,15 @@ import (
 )
 
 type Config struct {
-	Addr           string
-	Dev            bool
-	StreamInterval time.Duration
-	DBPath         string
-	InstallDir     string
-	Secret         []byte
-	Logger         *slog.Logger
+	Addr              string
+	Dev               bool
+	StreamInterval    time.Duration
+	DBPath            string
+	InstallDir        string
+	Secret            []byte
+	RetentionWindow   time.Duration // snapshots older than now-Window are pruned; <=0 disables
+	RetentionInterval time.Duration // sweep cadence; <=0 disables
+	Logger            *slog.Logger
 }
 
 // Run starts the hub HTTP server and blocks until ctx is cancelled.
@@ -48,6 +51,13 @@ func Run(ctx context.Context, cfg Config) error {
 	}
 	defer db.Close()
 	logger.Info("storage ready", "path", cfg.DBPath)
+
+	go retention.Run(ctx, retention.Config{
+		DB:       db,
+		Window:   cfg.RetentionWindow,
+		Interval: cfg.RetentionInterval,
+		Logger:   logger.With("subsys", "retention"),
+	})
 
 	st := store.New()
 	ingestHandler := ingest.New(st, db, logger)
@@ -88,6 +98,7 @@ func Run(ctx context.Context, cfg Config) error {
 		r.Post("/api/hosts", hostsHandlers.Create)
 		r.Delete("/api/hosts/{id}", hostsHandlers.Delete)
 		r.Post("/api/hosts/{id}/rotate", hostsHandlers.Rotate)
+		r.Get("/api/hosts/{id}/metrics", hostsHandlers.Metrics)
 	})
 
 	// Everything else falls to the embedded web bundle (SPA-style), except

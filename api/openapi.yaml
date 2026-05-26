@@ -300,6 +300,53 @@ paths:
                   token: { type: string }
         "404": { description: Host not found. }
 
+  /api/hosts/{id}/metrics:
+    get:
+      tags: [hosts]
+      operationId: getHostMetrics
+      security: [{ sessionCookie: [] }]
+      summary: Downsampled metric history for one host.
+      description: |
+        Returns per-bucket averages from the snapshots table between
+        `from` and `to` (exclusive). Each bucket spans `step_seconds`.
+        Empty buckets are omitted; widen `step` or shrink the window if
+        the response would exceed 2000 points.
+
+        Defaults: `to` = now, `from` = to - 1h, `step` auto-picked from
+        the window (≈120 buckets). Min step is 5s; max window is 7 days.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer, format: int64 }
+        - in: query
+          name: from
+          required: false
+          schema: { type: string, format: date-time }
+          description: RFC3339. Default = to - 1h.
+        - in: query
+          name: to
+          required: false
+          schema: { type: string, format: date-time }
+          description: RFC3339. Default = now.
+        - in: query
+          name: step
+          required: false
+          schema: { type: string, example: "30s" }
+          description: Go duration. Default = auto (window / 120 rounded to a friendly tick).
+      responses:
+        "200":
+          description: Metric history.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MetricsResponse" }
+        "400":
+          description: Invalid query (bad RFC3339, from >= to, window > 7d, points > 2000).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404": { description: Host not found. }
+
   /api/stream:
     get:
       tags: [stream]
@@ -427,6 +474,31 @@ components:
             samples, oldest first). Lets clients draw a sparkline on first
             connect without a cold-start gap. Omitted if empty.
           items: { type: number, format: double, minimum: 0, maximum: 100 }
+
+    MetricPoint:
+      type: object
+      required: [ts, cpu_pct, ram_pct, swap_pct, disk_pct, load1, load5, load15]
+      properties:
+        ts:       { type: string, format: date-time, description: Bucket start (UTC). }
+        cpu_pct:  { type: number, format: double, minimum: 0, maximum: 100 }
+        ram_pct:  { type: number, format: double, minimum: 0, maximum: 100 }
+        swap_pct: { type: number, format: double, minimum: 0, maximum: 100 }
+        disk_pct: { type: number, format: double, minimum: 0, maximum: 100 }
+        load1:    { type: number, format: double, minimum: 0 }
+        load5:    { type: number, format: double, minimum: 0 }
+        load15:   { type: number, format: double, minimum: 0 }
+
+    MetricsResponse:
+      type: object
+      required: [host, from, to, step_seconds, points]
+      properties:
+        host:         { type: string, example: pve-01 }
+        from:         { type: string, format: date-time }
+        to:           { type: string, format: date-time }
+        step_seconds: { type: integer, format: int64, example: 30 }
+        points:
+          type: array
+          items: { $ref: "#/components/schemas/MetricPoint" }
 
     Error:
       type: object

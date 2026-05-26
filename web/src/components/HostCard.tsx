@@ -32,7 +32,15 @@ function metricRow(label: string, value: number, stale: boolean): MetricRow {
   return { label, value, tone: cpuTone(value, stale) };
 }
 
-export function HostCard({ snapshot, now }: { snapshot: Snapshot; now: number }) {
+export function HostCard({
+  snapshot,
+  now,
+  onSelect,
+}: {
+  snapshot: Snapshot;
+  now: number;
+  onSelect?: (hostName: string) => void;
+}) {
   const stale = isStale(snapshot.ts, 15_000, now);
   const headerTone = cpuTone(snapshot.cpu_pct, stale);
 
@@ -45,8 +53,29 @@ export function HostCard({ snapshot, now }: { snapshot: Snapshot; now: number })
   const hasLoad = snapshot.load1 + snapshot.load5 + snapshot.load15 > 0;
   const series = snapshot.cpu_series ?? [];
 
+  const interactive = !!onSelect;
+  const handleClick = () => onSelect?.(snapshot.host);
+  const handleKey = (e: React.KeyboardEvent) => {
+    if (!onSelect) return;
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      onSelect(snapshot.host);
+    }
+  };
+
   return (
-    <div className="rounded-lg border border-[color:var(--color-border)] bg-[color:var(--color-card)] p-4 shadow-sm">
+    <div
+      role={interactive ? "button" : undefined}
+      tabIndex={interactive ? 0 : undefined}
+      onClick={interactive ? handleClick : undefined}
+      onKeyDown={interactive ? handleKey : undefined}
+      className={
+        "rounded-lg border border-[color:var(--color-border)] bg-[color:var(--color-card)] p-4 shadow-sm " +
+        (interactive
+          ? "cursor-pointer transition-shadow hover:shadow-md focus:outline-none focus:ring-2 focus:ring-[color:var(--color-accent)]"
+          : "")
+      }
+    >
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
           <span

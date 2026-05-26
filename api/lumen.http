@@ -70,6 +70,14 @@ POST {{hub}}/api/hosts/1/rotate
 DELETE {{hub}}/api/hosts/1
 
 ###
+# Hosts — last hour of history for host id 1, server-picked step.
+GET {{hub}}/api/hosts/1/metrics
+
+###
+# Hosts — explicit range + 30s buckets.
+GET {{hub}}/api/hosts/1/metrics?from=2026-05-26T00:00:00Z&to=2026-05-26T06:00:00Z&step=30s
+
+###
 # Ingest a full metric envelope. Auth header accepted, not validated yet.
 POST {{hub}}/api/ingest
 Content-Type: application/json

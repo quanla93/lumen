@@ -78,6 +78,9 @@ Mỗi quyết định ghi 1 dòng. Không xóa, không sửa — nếu đổi ý
 | 2026-05-25 | Repo staging = github.com/quanla93/lumen (PRIVATE) | Personal staging until `lumenhq` GitHub org registered; switch to public + transfer when v0.1.0 ready. Git author = quanla93 / quanla.work@gmail.com. |
 | 2026-05-25 | Config = env-vars only (LUMEN_*) + .env loader via godotenv | 12-factor: hub/agent are Dockerized services; flags become per-bespoke-binary noise. .env.example documents knobs. CLI flags removed. |
 | 2026-05-25 | WebSocket lib = github.com/gorilla/websocket | Most widely understood, large body of examples, stable v1.5+. coder/websocket is more modern but adds a learning surface for contributors with no spike-time benefit. Easy to swap behind the stream.Handler if needed. |
+| 2026-05-26 | Chart lib = uPlot (vanilla, ~40KB gzipped) | Smallest fast time-series lib for the host detail page. Drives canvas directly; matches the "modern, nhẹ" decision and avoids React-charts pulling in d3. Wrapped in a thin `<UPlotChart/>` so swapping later (recharts, echarts) only touches one file. |
+| 2026-05-26 | History downsampling = SQLite-side AVG by bucket | `strftime('%s', ts) / step * step AS bucket; AVG(...) GROUP BY bucket` runs on the existing `idx_snapshots_host_ts` index. Capped at 2000 points/response and 7-day window; auto-step picks ~120 buckets. Phase 4 swaps this for the Parquet cold tier without changing the wire contract. |
+| 2026-05-26 | Retention = simple time-based DELETE | One goroutine `retention.Run` sweeps every `LUMEN_HUB_RETENTION_INTERVAL` (default 1h) and DELETEs rows older than `LUMEN_HUB_RETENTION_WINDOW` (default 24h). Both env vars accept `0` to disable. Phase 4 replaces this with downsample-and-archive to Parquet. |
 
 ---
 
@@ -185,9 +188,9 @@ Mỗi quyết định ghi 1 dòng. Không xóa, không sửa — nếu đổi ý
 - [x] SQLite schema migration framework (pressly/goose v3, embedded migrations, WAL pragmas)
 - [x] Per-host CPU ring buffer in-memory (120 samples, ships on WS)
 - [ ] Batch flush ring → SQLite mỗi 60s (currently every ingest is a sync INSERT — fine for spike load; batching is an optimization)
-- [ ] Query API: `GET /api/hosts/:id/metrics?from&to&step` (history endpoint — schema ready in SQLite)
+- [x] Query API: `GET /api/hosts/:id/metrics?from&to&step` (SQLite AVG buckets, auto-step, capped at 2000 points / 7d window)
 - [ ] WS subscribe/unsubscribe protocol (currently broadcasts everything to everyone)
-- [ ] Retention task (1h cron, delete >24h SQLite rows)
+- [x] Retention task (default 1h sweep, delete snapshots older than 24h; `LUMEN_HUB_RETENTION_{WINDOW,INTERVAL}`)
 - [ ] Settings page: retention, password change
 
 #### Agent
@@ -204,7 +207,7 @@ Mỗi quyết định ghi 1 dòng. Không xóa, không sửa — nếu đổi ý
 - [x] Dark/light mode toggle (class-based, persists in localStorage)
 - [x] Auth UI: Register / Login / Logout + AppShell with tab nav
 - [x] Settings UI: hosts table + create + rotate + delete + one-shot token reveal + .env snippet
-- [ ] Host detail page: 4 charts (CPU/RAM/Disk/Net) with uPlot, container list
+- [x] Host detail page: 4 uPlot charts (CPU%, RAM%, Disk%, load avg 1/5/15) + range picker (1h/6h/24h) + auto-refresh every 30s. Net + container list deferred until agent breadth slice ships them.
 - [ ] PWA manifest + service worker
 
 #### Docs (parallel)
@@ -303,8 +306,8 @@ Nếu bạn (hoặc Claude) mở session mới:
 
 > Cập nhật mục này mỗi session.
 
-**Session**: 2026-05-25 (kickoff, day 1)
-**Đang làm**: Phase 1 closed → vào Phase 2 (MVP feature breadth)
+**Session**: 2026-05-26
+**Đang làm**: Phase 2 — "History & detail view" slice ✅. Next: agent breadth (net/IO/temp + Docker) or WS subscribe protocol.
 **Vừa hoàn thành**:
 - README, LICENSE, CONTRIBUTING, ACTION_PLAN
 - Toàn bộ `.github/` (issue/PR/discussion templates + CI/release/CodeQL workflows + CODEOWNERS)
@@ -319,14 +322,17 @@ Nếu bạn (hoặc Claude) mở session mới:
 **Phase 1 complete (10 micro-steps + 1 bonus, 8 commits on main):**
 - ✅ 1.1–1.9 per Phase plan above + OpenAPI/`.http` spec for tooling.
 
-**Phase 2 first slice (proposed, pending user confirm):**
-1. ⏳ UI polish foundation — Tailwind v4 + shadcn/ui in `web/`, replace inline styles with Card + Table + Badge + Theme toggle. Borrow visual cues from Beszel (open source, MIT) without copying code; see [[lumen-vs-beszel]] in memory.
-2. ⏳ Agent collector breadth — add RAM%, swap, disk usage%, disk I/O, net throughput, load avg, temperature; envelope extended; hub stream forwards.
-3. ⏳ Web Overview page — host cards (name, status dot, CPU bar, RAM bar, sparkline) with shadcn.
-4. ⏳ Hub auth + Hosts CRUD — register-first-admin flow, Argon2id passwords, JWT in HttpOnly cookie, hosts table with rotatable bearer tokens.
-5. ⏳ Hub storage layer — modernc.org/sqlite migrations (goose), in-memory ring buffer per host, batched flush every 60s.
+**Phase 2 first slice (✅ all shipped):**
+1. ✅ UI polish foundation — Tailwind v4 + shadcn-style cards, theme toggle.
+2. ✅ Agent collector breadth — RAM%, swap, disk usage%, load avg (Net/IO/temp still pending; tracked under "Agent" above).
+3. ✅ Web Overview page — host cards, status dots, CPU sparkline, RAM/Disk bars, load avg footer.
+4. ✅ Hub auth + Hosts CRUD — register-first-admin, Argon2id, JWT cookie, rotatable bearer tokens, ingest validation.
+5. ✅ Hub storage layer — modernc.org/sqlite + goose migrations, per-host CPU ring, sync INSERT per ingest.
 
-Items 1–3 are visible UI/data work; 4–5 are foundational backend. Order can flex.
+**Phase 2 second slice — "History & detail view" (2026-05-26):**
+6. ✅ Query API `GET /api/hosts/{id}/metrics?from&to&step` — server-side AVG bucketing, auto-step, 2000-point cap, 7-day window cap.
+7. ✅ Retention loop — `LUMEN_HUB_RETENTION_WINDOW`/`_INTERVAL` (defaults 24h / 1h); `0` disables.
+8. ✅ Host detail page — uPlot charts for CPU/RAM/Disk + load (1/5/15), 1h/6h/24h range picker, 30s auto-refresh, click-through from dashboard cards.
 
 **Blockers / open questions**:
 - Domain `lumenhq.dev` / GitHub org `lumenhq` chưa register — không block code nhưng nên xử lý trước public release.

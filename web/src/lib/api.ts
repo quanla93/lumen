@@ -20,6 +20,31 @@ export type CreateHostResponse = {
   token: string;
 };
 
+export type MetricPoint = {
+  ts: string;
+  cpu_pct: number;
+  ram_pct: number;
+  swap_pct: number;
+  disk_pct: number;
+  load1: number;
+  load5: number;
+  load15: number;
+};
+
+export type MetricsResponse = {
+  host: string;
+  from: string;
+  to: string;
+  step_seconds: number;
+  points: MetricPoint[];
+};
+
+export type MetricsQuery = {
+  from?: string; // RFC3339
+  to?: string;   // RFC3339
+  step?: string; // e.g. "30s", "5m"
+};
+
 export class ApiError extends Error {
   readonly status: number;
   constructor(message: string, status: number) {
@@ -79,4 +104,14 @@ export const hostsApi = {
     api<void>(`/api/hosts/${id}`, { method: "DELETE" }),
   rotate: (id: number) =>
     api<{ token: string }>(`/api/hosts/${id}/rotate`, { method: "POST" }),
+  metrics: (id: number, q?: MetricsQuery) => {
+    const params = new URLSearchParams();
+    if (q?.from) params.set("from", q.from);
+    if (q?.to) params.set("to", q.to);
+    if (q?.step) params.set("step", q.step);
+    const qs = params.toString();
+    return api<MetricsResponse>(
+      `/api/hosts/${id}/metrics${qs ? `?${qs}` : ""}`,
+    );
+  },
 };
