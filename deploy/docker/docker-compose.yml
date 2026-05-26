@@ -54,6 +54,22 @@ services:
     environment:
       # Container-only override: agent reaches the hub via compose DNS.
       LUMEN_HUB_URL: "http://hub:8090"
+    volumes:
+      # Read-only Docker socket so the agent can list + stats containers
+      # on the host. Same pattern as cAdvisor / Beszel / etc.
+      #
+      # On macOS Docker Desktop, this mount silently no-ops unless you
+      # enable Settings → Advanced → "Allow the default Docker socket to
+      # be used (requires password)". When disabled (the new default in
+      # Docker Desktop 4.x), the agent will log ONE Warn line on
+      # startup, then fall back to no container reporting — host-level
+      # metrics keep working.
+      #
+      # On Linux this Just Works.
+      #
+      # To disable container monitoring entirely (or if the host isn't
+      # running Docker), remove this line.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
     restart: unless-stopped
 
   # Second agent — opt-in via `--profile extra`. Workflow:

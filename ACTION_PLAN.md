@@ -84,6 +84,8 @@ Mỗi quyết định ghi 1 dòng. Không xóa, không sửa — nếu đổi ý
 | 2026-05-26 | Seed admin = env-bootstrap, idempotent | `LUMEN_HUB_ADMIN_{USERNAME,PASSWORD}` create the admin on first boot (Argon2id). Existing user left alone — UI password changes survive restart. Both empty disables the seed (register-via-UI still works). |
 | 2026-05-26 | Strict bearer-token ingest | `/api/ingest` rejects 401 without `Authorization: Bearer <token>`. Closes the pre-v0.1 anonymous spike hole; token's host name (server-side lookup) overrides body.host so a leaked token can't spoof a different host. |
 | 2026-05-26 | Per-core CPU = live only, not persisted | Variable-cardinality per host. Stored only in the in-memory snapshot; flows through WS to the host detail page's per-core strip. Aggregate `cpu_pct` is what historical buckets average. Avoids a JSON column or a join table for modest pre-v1 value. |
+| 2026-05-26 | Docker collector = stdlib HTTP-over-unix-socket, no docker/docker SDK | The official Go SDK pulls ~200 transitive deps + adds 30+ MB to the agent binary. We only need `/containers/json` + `/containers/{id}/stats?stream=false`. A ~150-line HTTP client over `net.Dialer{Unix}` covers both. Trade-off: we have to track Engine API field shapes manually (`cpu_stats` / `precpu_stats` deltas, `memory_stats.stats.inactive_file` subtraction) instead of inheriting them. Acceptable — the wire format is stable since API v1.21 (2015). |
+| 2026-05-26 | Containers = live only, not persisted | Same rationale as per-core CPU. Cardinality varies per host and over time; persisting requires a join table or JSON column. Live-only fits the homelab "what's running RIGHT NOW" question; historical container metrics land later if user demand surfaces. |
 
 ---
 
@@ -199,7 +201,7 @@ Mỗi quyết định ghi 1 dòng. Không xóa, không sửa — nếu đổi ý
 #### Agent
 - [x] Host collector: CPU%, RAM%, Swap%, Disk%, load1/5/15 (gopsutil v4)
 - [x] Per-core CPU + disk I/O + network throughput + temperature (rate-from-cumulative state in `collector.Rates`; temperature picker prefers coretemp/k10temp)
-- [ ] Docker collector (Engine API)
+- [x] Docker collector (Engine API, minimal stdlib unix-socket client — no docker/docker SDK). Lists running + stopped containers, computes per-container CPU% (delta) + memory used/limit. Live-only, not persisted. Warns once on macOS Docker Desktop when socket sharing is disabled.
 - [ ] Local BoltDB buffer cho offline
 - [ ] Config file YAML + env override (currently env-only via godotenv)
 - [ ] Systemd service file
@@ -210,7 +212,7 @@ Mỗi quyết định ghi 1 dòng. Không xóa, không sửa — nếu đổi ý
 - [x] Dark/light mode toggle (class-based, persists in localStorage)
 - [x] Auth UI: Register / Login / Logout + AppShell with tab nav
 - [x] Settings UI: hosts table + create + rotate + delete + one-shot token reveal + .env snippet
-- [x] Host detail page: 6 uPlot charts (CPU%, RAM%, Disk%, load avg, Network rx/tx, Disk I/O r/w) + conditional Temperature chart + per-core CPU live strip (subscribed via WS) + range picker (1h/6h/24h) + auto-refresh every 30s. Container list deferred until Docker collector ships.
+- [x] Host detail page: 6 uPlot charts (CPU%, RAM%, Disk%, load avg, Network rx/tx, Disk I/O r/w) + conditional Temperature chart + per-core CPU live strip (subscribed via WS) + range picker (1h/6h/24h) + auto-refresh every 30s + Containers table (name + state badge + image + CPU + mem usage/limit, sorted running-first, danger highlight at mem ≥ 90%).
 - [ ] PWA manifest + service worker
 
 #### Docs (parallel)

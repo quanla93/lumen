@@ -470,6 +470,15 @@ components:
         disk_r_bps: { type: number, format: double, minimum: 0, example: 5242880, description: Block-device bytes/sec read (summed across all devices). }
         disk_w_bps: { type: number, format: double, minimum: 0, example: 1048576, description: Block-device bytes/sec written. }
         temp_c:     { type: number, format: double, minimum: -50, maximum: 150, example: 47.0, description: Hottest CPU-package temperature in °C; 0 when no sensor is available (macOS without root, Windows without WMI, containers). }
+        containers:
+          type: array
+          items: { $ref: "#/components/schemas/ContainerInfo" }
+          maxItems: 500
+          description: |
+            Live Docker container snapshot reported by the agent (empty
+            if the host has no Docker daemon or the agent can't reach
+            the socket). NOT persisted to SQLite — flows only through
+            the in-memory store + WS broadcast.
 
     HostSnapshot:
       type: object
@@ -493,6 +502,9 @@ components:
         disk_r_bps:   { type: number, format: double, minimum: 0 }
         disk_w_bps:   { type: number, format: double, minimum: 0 }
         temp_c:       { type: number, format: double, minimum: -50, maximum: 150 }
+        containers:
+          type: array
+          items: { $ref: "#/components/schemas/ContainerInfo" }
         cpu_series:
           type: array
           description: |
@@ -530,6 +542,25 @@ components:
         points:
           type: array
           items: { $ref: "#/components/schemas/MetricPoint" }
+
+    ContainerInfo:
+      type: object
+      required: [id, name, image, state, cpu_pct, mem_used_bytes, mem_limit_bytes, mem_pct]
+      description: |
+        One running (or stopped) Docker container as reported by the agent.
+        Live-only; NOT persisted to SQLite.
+      properties:
+        id:              { type: string, example: "3801eb59c886", description: Short 12-char container ID. }
+        name:            { type: string, example: "lumen-agent",   description: Container name with leading "/" stripped. }
+        image:           { type: string, example: "lumen-agent:dev" }
+        state:
+          type: string
+          enum: [created, running, paused, restarting, removing, exited, dead]
+          example: running
+        cpu_pct:         { type: number, format: double, minimum: 0, example: 1.5, description: Container CPU% normalized so 100% = one whole core saturated. }
+        mem_used_bytes:  { type: integer, format: int64, minimum: 0, example: 45088768 }
+        mem_limit_bytes: { type: integer, format: int64, minimum: 0, example: 8589934592 }
+        mem_pct:         { type: number, format: double, minimum: 0, maximum: 100, example: 0.5 }
 
     Error:
       type: object

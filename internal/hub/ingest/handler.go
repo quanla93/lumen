@@ -82,6 +82,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		DiskRBps:   req.DiskRBps,
 		DiskWBps:   req.DiskWBps,
 		TempC:      req.TempC,
+		Containers: req.Containers,
 	}
 	// In-memory store extends the per-host CpuSeries ring on top of these fields.
 	h.Store.Put(snap)
@@ -147,6 +148,28 @@ func validate(req *api.IngestRequest) error {
 	for i, v := range req.CpuPerCore {
 		if v < 0 || v > 100 {
 			return fmt.Errorf("cpu_per_core[%d] out of [0,100]", i)
+		}
+	}
+	// Containers list — optional, live-only (not persisted). Cap entries
+	// and string lengths so a runaway agent can't OOM the hub by pushing
+	// 100k container records.
+	if n := len(req.Containers); n > 500 {
+		return fmt.Errorf("containers too many entries (>500): %d", n)
+	}
+	for i := range req.Containers {
+		c := &req.Containers[i]
+		if len(c.ID) > 64 || len(c.Name) > 128 ||
+			len(c.Image) > 256 || len(c.State) > 32 {
+			return fmt.Errorf("containers[%d] string field too long", i)
+		}
+		if c.CpuPct < 0 {
+			// Upper bound is "100 * online_cpus" (a container can use all
+			// cores). We don't know online_cpus server-side; trust the
+			// agent's own cap and just reject negatives.
+			return fmt.Errorf("containers[%d].cpu_pct < 0", i)
+		}
+		if c.MemPct < 0 || c.MemPct > 100 {
+			return fmt.Errorf("containers[%d].mem_pct out of [0,100]", i)
 		}
 	}
 	return nil

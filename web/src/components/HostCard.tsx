@@ -2,6 +2,17 @@ import { cpuTone, TONE_CLASS, widthClass, type StatusTone } from "@/lib/status";
 import { isStale, relativeTime } from "@/lib/time";
 import { Sparkline } from "@/components/Sparkline";
 
+export type ContainerInfo = {
+  id: string;
+  name: string;
+  image: string;
+  state: string;
+  cpu_pct: number;
+  mem_used_bytes: number;
+  mem_limit_bytes: number;
+  mem_pct: number;
+};
+
 export type Snapshot = {
   host: string;
   ts: string;
@@ -18,6 +29,7 @@ export type Snapshot = {
   disk_r_bps: number;
   disk_w_bps: number;
   temp_c: number;
+  containers?: ContainerInfo[];
   cpu_series?: number[];
 };
 

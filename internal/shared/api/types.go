@@ -7,6 +7,26 @@ package api
 
 import "time"
 
+// ContainerInfo is one row of the running-container snapshot the agent
+// ships when the local Docker daemon is reachable. NOT persisted to
+// SQLite (variable cardinality per host, ephemeral by nature) — flows
+// only through the in-memory store + WS broadcast so the host detail
+// page can render a live list.
+//
+// Mem fields are bytes (raw, not %); MemPct is precomputed
+// (used / limit * 100) so the UI doesn't have to guard against
+// limit==0 in every cell.
+type ContainerInfo struct {
+	ID            string  `json:"id"`             // short, 12-char
+	Name          string  `json:"name"`           // leading "/" stripped
+	Image         string  `json:"image"`
+	State         string  `json:"state"`          // running, paused, exited, restarting, ...
+	CpuPct        float64 `json:"cpu_pct"`
+	MemUsedBytes  uint64  `json:"mem_used_bytes"`
+	MemLimitBytes uint64  `json:"mem_limit_bytes"`
+	MemPct        float64 `json:"mem_pct"`
+}
+
 // IngestRequest is the body of POST /api/ingest sent by the agent every tick.
 // Metric fields default to zero when the agent couldn't collect them — the
 // hub keeps zeros rather than dropping the whole sample so partial data
@@ -21,21 +41,22 @@ import "time"
 // per-core data only flows through the in-memory hot path (WS stream)
 // to keep storage simple and HDD-friendly.
 type IngestRequest struct {
-	Host       string    `json:"host"`
-	Ts         time.Time `json:"ts"`
-	CpuPct     float64   `json:"cpu_pct"`
-	CpuPerCore []float64 `json:"cpu_per_core,omitempty"`
-	RamPct     float64   `json:"ram_pct"`
-	SwapPct    float64   `json:"swap_pct"`
-	DiskPct    float64   `json:"disk_pct"`
-	Load1      float64   `json:"load1"`
-	Load5      float64   `json:"load5"`
-	Load15     float64   `json:"load15"`
-	NetRxBps   float64   `json:"net_rx_bps"`
-	NetTxBps   float64   `json:"net_tx_bps"`
-	DiskRBps   float64   `json:"disk_r_bps"`
-	DiskWBps   float64   `json:"disk_w_bps"`
-	TempC      float64   `json:"temp_c"`
+	Host       string          `json:"host"`
+	Ts         time.Time       `json:"ts"`
+	CpuPct     float64         `json:"cpu_pct"`
+	CpuPerCore []float64       `json:"cpu_per_core,omitempty"`
+	RamPct     float64         `json:"ram_pct"`
+	SwapPct    float64         `json:"swap_pct"`
+	DiskPct    float64         `json:"disk_pct"`
+	Load1      float64         `json:"load1"`
+	Load5      float64         `json:"load5"`
+	Load15     float64         `json:"load15"`
+	NetRxBps   float64         `json:"net_rx_bps"`
+	NetTxBps   float64         `json:"net_tx_bps"`
+	DiskRBps   float64         `json:"disk_r_bps"`
+	DiskWBps   float64         `json:"disk_w_bps"`
+	TempC      float64         `json:"temp_c"`
+	Containers []ContainerInfo `json:"containers,omitempty"`
 }
 
 // HostSnapshot is the latest known state of a single host as held by the hub.
@@ -43,20 +64,21 @@ type IngestRequest struct {
 // per-host ring buffer; clients use it to draw sparklines without a
 // cold-start gap on connect.
 type HostSnapshot struct {
-	Host       string    `json:"host"`
-	Ts         time.Time `json:"ts"`
-	CpuPct     float64   `json:"cpu_pct"`
-	CpuPerCore []float64 `json:"cpu_per_core,omitempty"`
-	RamPct     float64   `json:"ram_pct"`
-	SwapPct    float64   `json:"swap_pct"`
-	DiskPct    float64   `json:"disk_pct"`
-	Load1      float64   `json:"load1"`
-	Load5      float64   `json:"load5"`
-	Load15     float64   `json:"load15"`
-	NetRxBps   float64   `json:"net_rx_bps"`
-	NetTxBps   float64   `json:"net_tx_bps"`
-	DiskRBps   float64   `json:"disk_r_bps"`
-	DiskWBps   float64   `json:"disk_w_bps"`
-	TempC      float64   `json:"temp_c"`
-	CpuSeries  []float64 `json:"cpu_series,omitempty"`
+	Host       string          `json:"host"`
+	Ts         time.Time       `json:"ts"`
+	CpuPct     float64         `json:"cpu_pct"`
+	CpuPerCore []float64       `json:"cpu_per_core,omitempty"`
+	RamPct     float64         `json:"ram_pct"`
+	SwapPct    float64         `json:"swap_pct"`
+	DiskPct    float64         `json:"disk_pct"`
+	Load1      float64         `json:"load1"`
+	Load5      float64         `json:"load5"`
+	Load15     float64         `json:"load15"`
+	NetRxBps   float64         `json:"net_rx_bps"`
+	NetTxBps   float64         `json:"net_tx_bps"`
+	DiskRBps   float64         `json:"disk_r_bps"`
+	DiskWBps   float64         `json:"disk_w_bps"`
+	TempC      float64         `json:"temp_c"`
+	Containers []ContainerInfo `json:"containers,omitempty"`
+	CpuSeries  []float64       `json:"cpu_series,omitempty"`
 }

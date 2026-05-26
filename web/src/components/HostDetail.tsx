@@ -7,7 +7,7 @@ import {
   type MetricPoint,
 } from "@/lib/api";
 import { UPlotChart } from "@/components/UPlotChart";
-import type { Snapshot } from "@/components/HostCard";
+import type { Snapshot, ContainerInfo } from "@/components/HostCard";
 
 type Range = "1h" | "6h" | "24h";
 
@@ -278,6 +278,10 @@ export function HostDetail({
         </div>
       )}
 
+      {live?.containers && live.containers.length > 0 && (
+        <ContainersTable containers={live.containers} />
+      )}
+
       {resp && (
         <p className="mt-6 text-xs text-[color:var(--color-muted)]">
           {resp.points.length} points · step {resp.step_seconds}s · refreshing
@@ -286,6 +290,123 @@ export function HostDetail({
       )}
     </>
   );
+}
+
+// ContainersTable lists every Docker container the agent reported in the
+// live snapshot. Live-only (no historical query); sorted: running first,
+// then alphabetical, so the top of the list is always the things actually
+// burning CPU/RAM right now.
+function ContainersTable({ containers }: { containers: ContainerInfo[] }) {
+  const sorted = useMemo(() => {
+    return [...containers].sort((a, b) => {
+      if (a.state === "running" && b.state !== "running") return -1;
+      if (a.state !== "running" && b.state === "running") return 1;
+      return a.name.localeCompare(b.name);
+    });
+  }, [containers]);
+  const running = sorted.filter((c) => c.state === "running").length;
+  return (
+    <section className="mt-6 rounded-lg border border-[color:var(--color-border)] bg-[color:var(--color-card)] shadow-sm">
+      <header className="flex items-center justify-between px-4 py-3 border-b border-[color:var(--color-border)]">
+        <span className="text-xs uppercase tracking-wide text-[color:var(--color-muted)]">
+          Containers · {containers.length} total
+        </span>
+        <span className="font-mono text-xs">
+          <span className="text-[color:var(--color-muted)]">running</span>{" "}
+          {running}
+        </span>
+      </header>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-left text-[10px] uppercase tracking-wide text-[color:var(--color-muted)]">
+              <th className="px-4 py-2 font-normal">Name</th>
+              <th className="px-2 py-2 font-normal">State</th>
+              <th className="px-2 py-2 font-normal">Image</th>
+              <th className="px-2 py-2 font-normal text-right">CPU</th>
+              <th className="px-4 py-2 font-normal text-right">Memory</th>
+            </tr>
+          </thead>
+          <tbody>
+            {sorted.map((c) => (
+              <ContainerRow key={c.id} c={c} />
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
+function ContainerRow({ c }: { c: ContainerInfo }) {
+  const dim = c.state !== "running";
+  return (
+    <tr
+      className={`border-t border-[color:var(--color-border)] ${dim ? "opacity-60" : ""}`}
+    >
+      <td className="px-4 py-2 font-mono text-xs">
+        <div>{c.name}</div>
+        <div className="text-[10px] text-[color:var(--color-muted)]">
+          {c.id}
+        </div>
+      </td>
+      <td className="px-2 py-2">
+        <StateBadge state={c.state} />
+      </td>
+      <td className="px-2 py-2 font-mono text-xs text-[color:var(--color-muted)] truncate max-w-[260px]">
+        {c.image}
+      </td>
+      <td className="px-2 py-2 text-right font-mono text-xs tabular-nums">
+        {c.state === "running" ? `${c.cpu_pct.toFixed(1)}%` : "—"}
+      </td>
+      <td className="px-4 py-2 text-right font-mono text-xs tabular-nums">
+        {c.state === "running" ? (
+          <div className="flex items-center justify-end gap-2">
+            <span>{formatBytes(c.mem_used_bytes)}</span>
+            <span className="text-[color:var(--color-muted)]">
+              / {formatBytes(c.mem_limit_bytes)}
+            </span>
+            <span
+              className={
+                c.mem_pct >= 90
+                  ? "text-[color:var(--color-danger)]"
+                  : c.mem_pct >= 70
+                  ? "text-[color:var(--color-warn)]"
+                  : ""
+              }
+            >
+              ({c.mem_pct.toFixed(0)}%)
+            </span>
+          </div>
+        ) : (
+          "—"
+        )}
+      </td>
+    </tr>
+  );
+}
+
+function StateBadge({ state }: { state: string }) {
+  const tone =
+    state === "running" ? "lumen-status-ok"
+    : state === "paused" ? "lumen-status-warn"
+    : state === "restarting" ? "lumen-status-warn"
+    : "lumen-status-muted";
+  return (
+    <span className="inline-flex items-center gap-1.5 font-mono text-xs">
+      <span aria-hidden className={`inline-block h-2 w-2 rounded-full ${tone}`} />
+      {state}
+    </span>
+  );
+}
+
+function formatBytes(b: number): string {
+  if (!b) return "0 B";
+  const abs = Math.abs(b);
+  if (abs >= 1024 * 1024 * 1024) return `${(b / (1024 * 1024 * 1024)).toFixed(2)} GiB`;
+  if (abs >= 1024 * 1024)        return `${(b / (1024 * 1024)).toFixed(1)} MiB`;
+  if (abs >= 1024)               return `${(b / 1024).toFixed(0)} KiB`;
+  return `${b.toFixed(0)} B`;
 }
 
 // PerCoreStrip renders one tile per logical core in an auto-wrapping grid.
