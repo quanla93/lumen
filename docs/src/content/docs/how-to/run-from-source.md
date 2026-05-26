@@ -40,8 +40,12 @@ For a brand-new hub:
 
 1. Start the hub (any mode below).
 2. Open **http://localhost:8090** (or `:5173` for Vite dev).
-3. **Register** the first admin — the form only appears while the hub has
-   no users yet.
+3. **Sign in.** Two options:
+   - **Seeded admin** — if `LUMEN_HUB_ADMIN_USERNAME` + `_PASSWORD` are
+     set in `.env`, the hub created that user on first boot (look for
+     `seed admin created` in the log). Just log in.
+   - **Register first admin via UI** — if the seed vars are empty, the
+     UI shows a register form while the users table is empty.
 4. Go to **Settings → Hosts**, type a host name, click **Create**.
 5. Copy the `lum_…` token shown **once** (paired with a ready-to-paste
    `.env` snippet). The hub stores only its SHA-256 hash; if you lose it,
@@ -184,6 +188,8 @@ All knobs live in `.env`. Defaults shown.
 | `LUMEN_HUB_SECRET` | _random per startup_ | Hex-encoded HMAC secret for session JWTs (>=64 hex chars). If unset, hub generates one at boot and **all sessions die on restart** — set this in prod. Generate with `openssl rand -hex 32`. |
 | `LUMEN_HUB_RETENTION_WINDOW` | `24h` | Snapshots older than `now − WINDOW` are pruned on every sweep. Set to `0` to disable. |
 | `LUMEN_HUB_RETENTION_INTERVAL` | `1h` | Retention sweep cadence. Set to `0` to disable. |
+| `LUMEN_HUB_ADMIN_USERNAME` | _empty_ | Seed admin username. On every boot, if this user doesn't exist yet, the hub creates it with the password below. Existing users are left alone — passwords changed via UI survive restart. |
+| `LUMEN_HUB_ADMIN_PASSWORD` | _empty_ | Plaintext password for the seed admin (Argon2id-hashed at write time). Both vars must be set together; both empty disables the seed and you have to register the first admin via the UI. |
 
 ### Agent
 

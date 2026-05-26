@@ -11,6 +11,8 @@
 //	LUMEN_HUB_INSTALL_DIR         (default "")             - directory holding install.sh + agent binaries; empty disables /install.sh
 //	LUMEN_HUB_RETENTION_WINDOW    (default "24h")          - prune snapshots older than this; "0" disables
 //	LUMEN_HUB_RETENTION_INTERVAL  (default "1h")           - retention sweep cadence; "0" disables
+//	LUMEN_HUB_ADMIN_USERNAME      (default "")             - seed admin username; both this and password required to enable
+//	LUMEN_HUB_ADMIN_PASSWORD      (default "")             - seed admin plaintext password (Argon2id at write time); empty disables seed
 //
 // Phase 1 + 2 endpoints:
 //   - GET  /healthz       — liveness probe
@@ -45,6 +47,8 @@ func main() {
 	secretHex := envcfg.String("LUMEN_HUB_SECRET", "")
 	retentionWindow := envcfg.Duration("LUMEN_HUB_RETENTION_WINDOW", 24*time.Hour)
 	retentionInterval := envcfg.Duration("LUMEN_HUB_RETENTION_INTERVAL", 1*time.Hour)
+	adminUsername := envcfg.String("LUMEN_HUB_ADMIN_USERNAME", "")
+	adminPassword := envcfg.String("LUMEN_HUB_ADMIN_PASSWORD", "")
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
 		Level: levelFor(dev),
@@ -71,6 +75,8 @@ func main() {
 		Secret:            secret,
 		RetentionWindow:   retentionWindow,
 		RetentionInterval: retentionInterval,
+		AdminUsername:     adminUsername,
+		AdminPassword:     adminPassword,
 		Logger:            logger,
 	}); err != nil {
 		logger.Error("hub exited with error", "err", err)

@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -34,6 +35,8 @@ type Config struct {
 	Secret            []byte
 	RetentionWindow   time.Duration // snapshots older than now-Window are pruned; <=0 disables
 	RetentionInterval time.Duration // sweep cadence; <=0 disables
+	AdminUsername     string        // env-seeded admin; empty disables seed
+	AdminPassword     string        // plaintext at boot, hashed via Argon2id before insert
 	Logger            *slog.Logger
 }
 
@@ -51,6 +54,10 @@ func Run(ctx context.Context, cfg Config) error {
 	}
 	defer db.Close()
 	logger.Info("storage ready", "path", cfg.DBPath)
+
+	if err := auth.EnsureUser(ctx, db, cfg.AdminUsername, cfg.AdminPassword, logger); err != nil {
+		return fmt.Errorf("seed admin: %w", err)
+	}
 
 	go retention.Run(ctx, retention.Config{
 		DB:       db,
