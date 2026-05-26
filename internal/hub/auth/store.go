@@ -72,3 +72,35 @@ func GetUserByUsername(ctx context.Context, db *sql.DB, username string) (User, 
 	}
 	return u, hash, nil
 }
+
+// getUserByIDWithHash is the same as GetUserByID but also returns the
+// current password hash — used by ChangePassword to verify the
+// caller-supplied current password before rewriting it.
+func getUserByIDWithHash(ctx context.Context, db *sql.DB, id int64) (User, string, error) {
+	var u User
+	var hash string
+	err := db.QueryRowContext(ctx,
+		`SELECT id, username, created_at, password_hash FROM users WHERE id = ?`, id,
+	).Scan(&u.ID, &u.Username, &u.CreatedAt, &hash)
+	return u, hash, err
+}
+
+// UpdatePasswordHash rewrites the password_hash column. Caller is
+// responsible for hashing (and for verifying the current password
+// first if this is a self-service change).
+func UpdatePasswordHash(ctx context.Context, db *sql.DB, id int64, hash string) error {
+	res, err := db.ExecContext(ctx,
+		`UPDATE users SET password_hash = ? WHERE id = ?`, hash, id,
+	)
+	if err != nil {
+		return fmt.Errorf("update password_hash: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}

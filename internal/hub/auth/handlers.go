@@ -117,6 +117,58 @@ func (h *Handlers) Logout(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// POST /api/account/password — change own password.
+//
+// Body: { current, new }. Returns 204 on success; 401 if `current`
+// doesn't match (constant-time, so brute-forcing `current` doesn't leak
+// anything beyond what login already does); 400 on length validation.
+// The existing session cookie stays valid — the user doesn't have to
+// log back in, since the session token isn't password-derived.
+func (h *Handlers) ChangePassword(w http.ResponseWriter, r *http.Request) {
+	uid := UserIDFrom(r.Context())
+	if uid == 0 {
+		writeJSONError(w, http.StatusUnauthorized, "session required")
+		return
+	}
+	var req struct{ Current, New string }
+	if err := decode(r, &req); err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := validatePassword(req.New); err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if req.Current == req.New {
+		writeJSONError(w, http.StatusBadRequest, "new password must differ from current")
+		return
+	}
+
+	u, oldHash, err := getUserByIDWithHash(r.Context(), h.DB, uid)
+	if err != nil {
+		h.Logger.Error("user lookup failed", "err", err, "uid", uid)
+		writeJSONError(w, http.StatusInternalServerError, "lookup failed")
+		return
+	}
+	if !VerifyPassword(req.Current, oldHash) {
+		writeJSONError(w, http.StatusUnauthorized, "current password is wrong")
+		return
+	}
+	newHash, err := HashPassword(req.New)
+	if err != nil {
+		h.Logger.Error("password hash failed", "err", err)
+		writeJSONError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	if err := UpdatePasswordHash(r.Context(), h.DB, u.ID, newHash); err != nil {
+		h.Logger.Error("update password failed", "err", err, "uid", u.ID)
+		writeJSONError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	h.Logger.Info("password changed", "uid", u.ID, "user", u.Username)
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // GET /api/me — protected; returns 401 if no valid session.
 func (h *Handlers) Me(w http.ResponseWriter, r *http.Request) {
 	uid := UserIDFrom(r.Context())

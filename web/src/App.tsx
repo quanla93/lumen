@@ -62,7 +62,7 @@ export default function App() {
           <Dashboard onSelectHost={onSelectHost} />
         );
       } else {
-        body = <Settings />;
+        body = <Settings user={view.user} />;
       }
       return (
         <AppShell

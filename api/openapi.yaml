@@ -37,6 +37,8 @@ tags:
     description: First-admin registration, login, logout, session lookup.
   - name: hosts
     description: Per-host bearer-token CRUD. Session-protected.
+  - name: settings
+    description: Runtime-mutable hub settings (retention window/interval, …). Session-protected.
 
 paths:
   /healthz:
@@ -214,6 +216,79 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
+
+  /api/account/password:
+    post:
+      tags: [auth]
+      operationId: changePassword
+      summary: Change the signed-in user's password.
+      description: |
+        Requires the current password. Existing session cookie stays valid —
+        the user doesn't have to log back in. Constant-time verification.
+      security: [{ sessionCookie: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [current, new]
+              additionalProperties: false
+              properties:
+                current: { type: string, format: password, description: Current password. }
+                new:     { type: string, format: password, minLength: 8, description: New password (8+ chars). }
+      responses:
+        "204": { description: Password updated. }
+        "400":
+          description: New password failed validation or matches current.
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+        "401":
+          description: Current password wrong (or no session).
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+
+  /api/settings:
+    get:
+      tags: [settings]
+      operationId: getSettings
+      security: [{ sessionCookie: [] }]
+      summary: Current runtime-mutable settings.
+      responses:
+        "200":
+          description: OK.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Settings" }
+    put:
+      tags: [settings]
+      operationId: putSettings
+      security: [{ sessionCookie: [] }]
+      summary: Update settings. Missing fields are left unchanged.
+      description: |
+        Retention changes apply on the NEXT sweep — no hub restart
+        needed. The retention loop polls these values per tick and
+        adjusts its ticker if `retention_interval` changes.
+
+        Bounds: window ∈ [5m, 365d]; interval ∈ [1m, 24h]. Out-of-bound
+        values return 400.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                retention_window:   { type: string, example: "24h", description: Go duration. }
+                retention_interval: { type: string, example: "1h",  description: Go duration. }
+      responses:
+        "200":
+          description: Saved. Body is the now-current state.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Settings" }
+        "400":
+          description: Validation failed (bad duration string or out of bounds).
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
 
   /api/hosts:
     get:
@@ -561,6 +636,13 @@ components:
         mem_used_bytes:  { type: integer, format: int64, minimum: 0, example: 45088768 }
         mem_limit_bytes: { type: integer, format: int64, minimum: 0, example: 8589934592 }
         mem_pct:         { type: number, format: double, minimum: 0, maximum: 100, example: 0.5 }
+
+    Settings:
+      type: object
+      required: [retention_window, retention_interval]
+      properties:
+        retention_window:   { type: string, example: "24h" }
+        retention_interval: { type: string, example: "1h" }
 
     Error:
       type: object

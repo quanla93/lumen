@@ -20,6 +20,7 @@ import (
 	"github.com/lumenhq/lumen/internal/hub/ingest"
 	"github.com/lumenhq/lumen/internal/hub/install"
 	"github.com/lumenhq/lumen/internal/hub/retention"
+	"github.com/lumenhq/lumen/internal/hub/settings"
 	"github.com/lumenhq/lumen/internal/hub/storage"
 	"github.com/lumenhq/lumen/internal/hub/store"
 	"github.com/lumenhq/lumen/internal/hub/stream"
@@ -59,11 +60,21 @@ func Run(ctx context.Context, cfg Config) error {
 		return fmt.Errorf("seed admin: %w", err)
 	}
 
+	// Seed settings table from env defaults on first run. Once a row
+	// exists the UI value wins — env vars become inert (until DB row
+	// is deleted manually).
+	if err := settings.EnsureDefaults(ctx, db, map[string]string{
+		settings.KeyRetentionWindow:   cfg.RetentionWindow.String(),
+		settings.KeyRetentionInterval: cfg.RetentionInterval.String(),
+	}); err != nil {
+		return fmt.Errorf("seed settings: %w", err)
+	}
+
 	go retention.Run(ctx, retention.Config{
-		DB:       db,
-		Window:   cfg.RetentionWindow,
-		Interval: cfg.RetentionInterval,
-		Logger:   logger.With("subsys", "retention"),
+		DB:              db,
+		DefaultWindow:   cfg.RetentionWindow,
+		DefaultInterval: cfg.RetentionInterval,
+		Logger:          logger.With("subsys", "retention"),
 	})
 
 	st := store.New()
@@ -71,6 +82,7 @@ func Run(ctx context.Context, cfg Config) error {
 	streamHandler := stream.New(st, logger, cfg.StreamInterval)
 	authHandlers := auth.NewHandlers(db, cfg.Secret, logger)
 	hostsHandlers := hosts.NewHandlers(db, st, logger)
+	settingsHandlers := settings.NewHandlers(db, logger)
 	installHandler := &install.Handler{InstallDir: cfg.InstallDir, Logger: logger}
 	requireSession := auth.RequireSession(cfg.Secret)
 
@@ -106,6 +118,11 @@ func Run(ctx context.Context, cfg Config) error {
 		r.Delete("/api/hosts/{id}", hostsHandlers.Delete)
 		r.Post("/api/hosts/{id}/rotate", hostsHandlers.Rotate)
 		r.Get("/api/hosts/{id}/metrics", hostsHandlers.Metrics)
+
+		r.Post("/api/account/password", authHandlers.ChangePassword)
+
+		r.Get("/api/settings", settingsHandlers.Get)
+		r.Put("/api/settings", settingsHandlers.Put)
 	})
 
 	// Everything else falls to the embedded web bundle (SPA-style), except

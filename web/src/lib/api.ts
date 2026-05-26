@@ -96,6 +96,25 @@ export const authApi = {
       body: JSON.stringify({ username, password }),
     }),
   logout: () => api<void>("/api/logout", { method: "POST" }),
+  changePassword: (current: string, newPw: string) =>
+    api<void>("/api/account/password", {
+      method: "POST",
+      body: JSON.stringify({ current, new: newPw }),
+    }),
+};
+
+export type SettingsResponse = {
+  retention_window: string;
+  retention_interval: string;
+};
+
+export const settingsApi = {
+  get: () => api<SettingsResponse>("/api/settings"),
+  put: (s: Partial<SettingsResponse>) =>
+    api<SettingsResponse>("/api/settings", {
+      method: "PUT",
+      body: JSON.stringify(s),
+    }),
 };
 
 export const hostsApi = {
