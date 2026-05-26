@@ -73,12 +73,15 @@ func Open(path string) (*sql.DB, error) {
 func InsertSnapshot(ctx context.Context, db *sql.DB, snap api.HostSnapshot) (int64, error) {
 	res, err := db.ExecContext(ctx, `
 		INSERT INTO snapshots
-			(host, ts, cpu_pct, ram_pct, swap_pct, disk_pct, load1, load5, load15)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+			(host, ts, cpu_pct, ram_pct, swap_pct, disk_pct,
+			 load1, load5, load15,
+			 net_rx_bps, net_tx_bps, disk_r_bps, disk_w_bps, temp_c)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
 		snap.Host, formatTS(snap.Ts),
 		snap.CpuPct, snap.RamPct, snap.SwapPct, snap.DiskPct,
 		snap.Load1, snap.Load5, snap.Load15,
+		snap.NetRxBps, snap.NetTxBps, snap.DiskRBps, snap.DiskWBps, snap.TempC,
 	)
 	if err != nil {
 		return 0, fmt.Errorf("insert snapshot: %w", err)

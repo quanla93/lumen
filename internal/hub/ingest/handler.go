@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -66,15 +67,21 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	snap := api.HostSnapshot{
-		Host:    req.Host,
-		Ts:      req.Ts,
-		CpuPct:  req.CpuPct,
-		RamPct:  req.RamPct,
-		SwapPct: req.SwapPct,
-		DiskPct: req.DiskPct,
-		Load1:   req.Load1,
-		Load5:   req.Load5,
-		Load15:  req.Load15,
+		Host:       req.Host,
+		Ts:         req.Ts,
+		CpuPct:     req.CpuPct,
+		CpuPerCore: req.CpuPerCore,
+		RamPct:     req.RamPct,
+		SwapPct:    req.SwapPct,
+		DiskPct:    req.DiskPct,
+		Load1:      req.Load1,
+		Load5:      req.Load5,
+		Load15:     req.Load15,
+		NetRxBps:   req.NetRxBps,
+		NetTxBps:   req.NetTxBps,
+		DiskRBps:   req.DiskRBps,
+		DiskWBps:   req.DiskWBps,
+		TempC:      req.TempC,
 	}
 	// In-memory store extends the per-host CpuSeries ring on top of these fields.
 	h.Store.Put(snap)
@@ -118,9 +125,28 @@ func validate(req *api.IngestRequest) error {
 		v    float64
 	}{
 		{"load1", req.Load1}, {"load5", req.Load5}, {"load15", req.Load15},
+		{"net_rx_bps", req.NetRxBps}, {"net_tx_bps", req.NetTxBps},
+		{"disk_r_bps", req.DiskRBps}, {"disk_w_bps", req.DiskWBps},
 	} {
 		if p.v < 0 {
 			return errors.New(p.name + " must be >= 0")
+		}
+	}
+	// Temperature can be sub-zero (cold rooms, missing sensor returning a
+	// negative sentinel), but a reading above 150 °C is physically absurd
+	// and almost certainly a bad probe.
+	if req.TempC < -50 || req.TempC > 150 {
+		return errors.New("temp_c out of [-50,150]")
+	}
+	// Per-core CPU is optional. If present, each value must be a valid
+	// percentage. Cap the count at 256 cores to keep envelope sizes
+	// bounded against a misbehaving agent.
+	if n := len(req.CpuPerCore); n > 256 {
+		return errors.New("cpu_per_core too many entries (>256)")
+	}
+	for i, v := range req.CpuPerCore {
+		if v < 0 || v > 100 {
+			return fmt.Errorf("cpu_per_core[%d] out of [0,100]", i)
 		}
 	}
 	return nil

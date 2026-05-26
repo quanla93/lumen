@@ -30,3 +30,18 @@ func CPU(ctx context.Context, window time.Duration) (float64, error) {
 	}
 	return pcts[0], nil
 }
+
+// CPUPerCore returns one percentage per logical core. The slice length
+// equals the number of logical CPUs visible to the agent (cgroup-limited
+// inside containers). Window semantics match CPU().
+func CPUPerCore(ctx context.Context, window time.Duration) ([]float64, error) {
+	if window < 100*time.Millisecond {
+		window = 100 * time.Millisecond
+	}
+	_ = ctx
+	pcts, err := cpu.Percent(window, true)
+	if err != nil {
+		return nil, fmt.Errorf("cpu.Percent per-core: %w", err)
+	}
+	return pcts, nil
+}

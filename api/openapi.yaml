@@ -450,26 +450,49 @@ components:
           example: "2026-05-25T07:09:53Z"
           description: RFC3339 sample time (UTC recommended).
         cpu_pct:    { type: number, format: double, minimum: 0, maximum: 100, example: 12.34, description: CPU usage % across all cores for the past interval. }
+        cpu_per_core:
+          type: array
+          items: { type: number, format: double, minimum: 0, maximum: 100 }
+          maxItems: 256
+          example: [10.2, 14.7, 8.0, 22.1]
+          description: |
+            Per-logical-core CPU%. Optional — included when the agent
+            can collect it. NOT persisted to SQLite; lives only in the
+            in-memory store for the live WS stream.
         ram_pct:    { type: number, format: double, minimum: 0, maximum: 100, example: 68.0,  description: RAM used % (gopsutil virtual memory). }
         swap_pct:   { type: number, format: double, minimum: 0, maximum: 100, example: 23.6,  description: Swap used %; 0 if the host has no swap or the lookup failed. }
         disk_pct:   { type: number, format: double, minimum: 0, maximum: 100, example: 73.1,  description: Used % of the filesystem at `LUMEN_AGENT_DISK_PATH` (default `/` or `C:\\`). }
         load1:      { type: number, format: double, minimum: 0, example: 0.42, description: 1-minute load average. 0 if unsupported on this OS. }
         load5:      { type: number, format: double, minimum: 0, example: 0.31, description: 5-minute load average. }
         load15:     { type: number, format: double, minimum: 0, example: 0.28, description: 15-minute load average. }
+        net_rx_bps: { type: number, format: double, minimum: 0, example: 12450.5, description: Network bytes/sec received (summed across all NICs since last tick). 0 on the first tick after agent start. }
+        net_tx_bps: { type: number, format: double, minimum: 0, example: 8120.0,  description: Network bytes/sec transmitted. }
+        disk_r_bps: { type: number, format: double, minimum: 0, example: 5242880, description: Block-device bytes/sec read (summed across all devices). }
+        disk_w_bps: { type: number, format: double, minimum: 0, example: 1048576, description: Block-device bytes/sec written. }
+        temp_c:     { type: number, format: double, minimum: -50, maximum: 150, example: 47.0, description: Hottest CPU-package temperature in °C; 0 when no sensor is available (macOS without root, Windows without WMI, containers). }
 
     HostSnapshot:
       type: object
       required: [host, ts]
       properties:
-        host:     { type: string, example: pve-01 }
-        ts:       { type: string, format: date-time }
-        cpu_pct:  { type: number, format: double, minimum: 0, maximum: 100 }
-        ram_pct:  { type: number, format: double, minimum: 0, maximum: 100 }
-        swap_pct: { type: number, format: double, minimum: 0, maximum: 100 }
-        disk_pct: { type: number, format: double, minimum: 0, maximum: 100 }
-        load1:    { type: number, format: double, minimum: 0 }
-        load5:    { type: number, format: double, minimum: 0 }
-        load15:   { type: number, format: double, minimum: 0 }
+        host:         { type: string, example: pve-01 }
+        ts:           { type: string, format: date-time }
+        cpu_pct:      { type: number, format: double, minimum: 0, maximum: 100 }
+        cpu_per_core:
+          type: array
+          items: { type: number, format: double, minimum: 0, maximum: 100 }
+          description: Live per-logical-core CPU%. Omitted if the agent didn't collect it.
+        ram_pct:      { type: number, format: double, minimum: 0, maximum: 100 }
+        swap_pct:     { type: number, format: double, minimum: 0, maximum: 100 }
+        disk_pct:     { type: number, format: double, minimum: 0, maximum: 100 }
+        load1:        { type: number, format: double, minimum: 0 }
+        load5:        { type: number, format: double, minimum: 0 }
+        load15:       { type: number, format: double, minimum: 0 }
+        net_rx_bps:   { type: number, format: double, minimum: 0 }
+        net_tx_bps:   { type: number, format: double, minimum: 0 }
+        disk_r_bps:   { type: number, format: double, minimum: 0 }
+        disk_w_bps:   { type: number, format: double, minimum: 0 }
+        temp_c:       { type: number, format: double, minimum: -50, maximum: 150 }
         cpu_series:
           type: array
           description: |
@@ -480,16 +503,21 @@ components:
 
     MetricPoint:
       type: object
-      required: [ts, cpu_pct, ram_pct, swap_pct, disk_pct, load1, load5, load15]
+      required: [ts, cpu_pct, ram_pct, swap_pct, disk_pct, load1, load5, load15, net_rx_bps, net_tx_bps, disk_r_bps, disk_w_bps, temp_c]
       properties:
-        ts:       { type: string, format: date-time, description: Bucket start (UTC). }
-        cpu_pct:  { type: number, format: double, minimum: 0, maximum: 100 }
-        ram_pct:  { type: number, format: double, minimum: 0, maximum: 100 }
-        swap_pct: { type: number, format: double, minimum: 0, maximum: 100 }
-        disk_pct: { type: number, format: double, minimum: 0, maximum: 100 }
-        load1:    { type: number, format: double, minimum: 0 }
-        load5:    { type: number, format: double, minimum: 0 }
-        load15:   { type: number, format: double, minimum: 0 }
+        ts:         { type: string, format: date-time, description: Bucket start (UTC). }
+        cpu_pct:    { type: number, format: double, minimum: 0, maximum: 100 }
+        ram_pct:    { type: number, format: double, minimum: 0, maximum: 100 }
+        swap_pct:   { type: number, format: double, minimum: 0, maximum: 100 }
+        disk_pct:   { type: number, format: double, minimum: 0, maximum: 100 }
+        load1:      { type: number, format: double, minimum: 0 }
+        load5:      { type: number, format: double, minimum: 0 }
+        load15:     { type: number, format: double, minimum: 0 }
+        net_rx_bps: { type: number, format: double, minimum: 0 }
+        net_tx_bps: { type: number, format: double, minimum: 0 }
+        disk_r_bps: { type: number, format: double, minimum: 0 }
+        disk_w_bps: { type: number, format: double, minimum: 0 }
+        temp_c:     { type: number, format: double, minimum: -50, maximum: 150 }
 
     MetricsResponse:
       type: object

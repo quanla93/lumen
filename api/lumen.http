@@ -80,7 +80,8 @@ GET {{hub}}/api/hosts/1/metrics
 GET {{hub}}/api/hosts/1/metrics?from=2026-05-26T00:00:00Z&to=2026-05-26T06:00:00Z&step=30s
 
 ###
-# Ingest a full metric envelope. Auth header accepted, not validated yet.
+# Ingest a full metric envelope (with Phase 2 breadth: net+disk IO,
+# temperature, per-core CPU).
 POST {{hub}}/api/ingest
 Content-Type: application/json
 Authorization: Bearer {{token}}
@@ -89,12 +90,18 @@ Authorization: Bearer {{token}}
   "host": "{{host}}",
   "ts": "2026-05-25T07:09:53Z",
   "cpu_pct": 12.34,
+  "cpu_per_core": [10.2, 14.7, 8.0, 22.1],
   "ram_pct": 68.0,
   "swap_pct": 23.6,
   "disk_pct": 73.1,
   "load1": 0.42,
   "load5": 0.31,
-  "load15": 0.28
+  "load15": 0.28,
+  "net_rx_bps": 12450.5,
+  "net_tx_bps": 8120.0,
+  "disk_r_bps": 5242880,
+  "disk_w_bps": 1048576,
+  "temp_c": 47.0
 }
 
 ###

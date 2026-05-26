@@ -49,6 +49,7 @@ func main() {
 	}
 
 	snd := sender.New(hubURL, token)
+	rates := &collector.Rates{}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -65,27 +66,40 @@ func main() {
 			logger.Info("agent stopped")
 			return
 		case <-t.C:
-			env := collect(ctx, logger, host, diskPath)
+			env := collect(ctx, logger, host, diskPath, rates)
 			if err := snd.Send(ctx, env); err != nil {
 				logger.Warn("ingest send failed", "err", err)
 				continue
 			}
 			logger.Info("ingested",
 				"cpu", env.CpuPct, "ram", env.RamPct, "swap", env.SwapPct,
-				"disk", env.DiskPct, "load1", env.Load1)
+				"disk", env.DiskPct, "load1", env.Load1,
+				"net_rx_kBps", env.NetRxBps/1024, "net_tx_kBps", env.NetTxBps/1024,
+				"disk_r_kBps", env.DiskRBps/1024, "disk_w_kBps", env.DiskWBps/1024,
+				"temp_c", env.TempC, "cores", len(env.CpuPerCore))
 		}
 	}
 }
 
 // collect samples every metric the agent reports. Each collector that fails
 // is logged at Warn and contributes a zero value so partial data still ships.
-func collect(ctx context.Context, logger *slog.Logger, host, diskPath string) api.IngestRequest {
+func collect(
+	ctx context.Context, logger *slog.Logger,
+	host, diskPath string, rates *collector.Rates,
+) api.IngestRequest {
 	env := api.IngestRequest{Host: host, Ts: time.Now().UTC()}
 
 	if v, err := collector.CPU(ctx, 500*time.Millisecond); err != nil {
 		logger.Warn("cpu sample failed", "err", err)
 	} else {
 		env.CpuPct = v
+	}
+
+	if perCore, err := collector.CPUPerCore(ctx, 200*time.Millisecond); err != nil {
+		// Per-core is best-effort; aggregate CPU% above is the primary signal.
+		logger.Debug("per-core cpu sample failed", "err", err)
+	} else {
+		env.CpuPerCore = perCore
 	}
 
 	if ram, swap, err := collector.Memory(ctx); err != nil {
@@ -108,6 +122,22 @@ func collect(ctx context.Context, logger *slog.Logger, host, diskPath string) ap
 		env.Load1 = l1
 		env.Load5 = l5
 		env.Load15 = l15
+	}
+
+	if s, err := rates.Sample(ctx, env.Ts); err != nil {
+		logger.Debug("net/disk rate sample partial", "err", err)
+		// s may still be partially populated — fall through and use it.
+		env.NetRxBps, env.NetTxBps = s.NetRxBps, s.NetTxBps
+		env.DiskRBps, env.DiskWBps = s.DiskRBps, s.DiskWBps
+	} else {
+		env.NetRxBps, env.NetTxBps = s.NetRxBps, s.NetTxBps
+		env.DiskRBps, env.DiskWBps = s.DiskRBps, s.DiskWBps
+	}
+
+	if v, err := collector.Temperature(ctx); err != nil {
+		logger.Debug("temperature sample failed", "err", err)
+	} else {
+		env.TempC = v
 	}
 
 	return env

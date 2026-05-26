@@ -6,12 +6,18 @@ export type Snapshot = {
   host: string;
   ts: string;
   cpu_pct: number;
+  cpu_per_core?: number[];
   ram_pct: number;
   swap_pct: number;
   disk_pct: number;
   load1: number;
   load5: number;
   load15: number;
+  net_rx_bps: number;
+  net_tx_bps: number;
+  disk_r_bps: number;
+  disk_w_bps: number;
+  temp_c: number;
   cpu_series?: number[];
 };
 

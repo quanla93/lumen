@@ -10,14 +10,19 @@ import (
 // MetricPoint is one bucket in a downsampled history series. All metric
 // fields are AVG-aggregated across the rows that fell in the bucket.
 type MetricPoint struct {
-	Ts      time.Time `json:"ts"`
-	CpuPct  float64   `json:"cpu_pct"`
-	RamPct  float64   `json:"ram_pct"`
-	SwapPct float64   `json:"swap_pct"`
-	DiskPct float64   `json:"disk_pct"`
-	Load1   float64   `json:"load1"`
-	Load5   float64   `json:"load5"`
-	Load15  float64   `json:"load15"`
+	Ts       time.Time `json:"ts"`
+	CpuPct   float64   `json:"cpu_pct"`
+	RamPct   float64   `json:"ram_pct"`
+	SwapPct  float64   `json:"swap_pct"`
+	DiskPct  float64   `json:"disk_pct"`
+	Load1    float64   `json:"load1"`
+	Load5    float64   `json:"load5"`
+	Load15   float64   `json:"load15"`
+	NetRxBps float64   `json:"net_rx_bps"`
+	NetTxBps float64   `json:"net_tx_bps"`
+	DiskRBps float64   `json:"disk_r_bps"`
+	DiskWBps float64   `json:"disk_w_bps"`
+	TempC    float64   `json:"temp_c"`
 }
 
 // QueryMetrics returns downsampled samples for host between [from, to).
@@ -40,7 +45,10 @@ func QueryMetrics(
 		SELECT
 			CAST(strftime('%s', ts) AS INTEGER) / ? * ? AS bucket,
 			AVG(cpu_pct), AVG(ram_pct), AVG(swap_pct), AVG(disk_pct),
-			AVG(load1), AVG(load5), AVG(load15)
+			AVG(load1), AVG(load5), AVG(load15),
+			AVG(net_rx_bps), AVG(net_tx_bps),
+			AVG(disk_r_bps), AVG(disk_w_bps),
+			AVG(temp_c)
 		FROM snapshots
 		WHERE host = ? AND ts >= ? AND ts < ?
 		GROUP BY bucket
@@ -59,6 +67,9 @@ func QueryMetrics(
 			&bucket,
 			&p.CpuPct, &p.RamPct, &p.SwapPct, &p.DiskPct,
 			&p.Load1, &p.Load5, &p.Load15,
+			&p.NetRxBps, &p.NetTxBps,
+			&p.DiskRBps, &p.DiskWBps,
+			&p.TempC,
 		); err != nil {
 			return nil, fmt.Errorf("scan: %w", err)
 		}
