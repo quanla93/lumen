@@ -288,44 +288,81 @@ export function HostDetail({
   );
 }
 
-// PerCoreStrip renders one fixed-width tile per logical core. Each tile has
-// a visible track so empty (0%) cores are still readable; the bar fills
-// from the bottom with a tone-mapped color (green/amber/red).
+// PerCoreStrip renders one tile per logical core in an auto-wrapping grid.
+// Tile width adapts to core count so 1-core VMs don't look empty and
+// 64-core servers don't paginate forever:
+//   ≤ 8 cores  → wide tiles with idx + percentage label below
+//   ≤ 32 cores → medium tiles, percentage label only
+//   > 32 cores → compact tiles (no labels, just colored fill)
+// Empty tracks stay visible at 0% so the operator can always count cores.
 function PerCoreStrip({ cores }: { cores: number[] }) {
-  const avg = cores.reduce((a, b) => a + b, 0) / cores.length;
+  const n = cores.length;
+  const avg = cores.reduce((a, b) => a + b, 0) / n;
+
+  const layout = n <= 8
+    ? { tile: 64, height: 56, labels: "full" as const }
+    : n <= 32
+    ? { tile: 44, height: 48, labels: "pct" as const }
+    : n <= 64
+    ? { tile: 28, height: 40, labels: "none" as const }
+    : { tile: 18, height: 32, labels: "none" as const };
+
   return (
     <div className="mb-4 rounded-lg border border-[color:var(--color-border)] bg-[color:var(--color-card)] px-4 py-3 shadow-sm">
       <div className="mb-3 flex items-center justify-between">
         <span className="text-xs uppercase tracking-wide text-[color:var(--color-muted)]">
-          per-core CPU · {cores.length} core{cores.length === 1 ? "" : "s"}
+          per-core CPU · {n} core{n === 1 ? "" : "s"}
         </span>
         <span className="font-mono text-xs">
           <span className="text-[color:var(--color-muted)]">avg</span>{" "}
           {avg.toFixed(1)}%
         </span>
       </div>
-      <div className="flex flex-wrap gap-2">
+      <div
+        className="grid gap-1.5"
+        style={{ gridTemplateColumns: `repeat(auto-fit, ${layout.tile}px)` }}
+      >
         {cores.map((pct, i) => (
-          <CoreTile key={i} idx={i} pct={pct} />
+          <CoreTile
+            key={i}
+            idx={i}
+            pct={pct}
+            height={layout.height}
+            labels={layout.labels}
+          />
         ))}
       </div>
     </div>
   );
 }
 
-function CoreTile({ idx, pct }: { idx: number; pct: number }) {
+function CoreTile({
+  idx,
+  pct,
+  height,
+  labels,
+}: {
+  idx: number;
+  pct: number;
+  height: number;
+  labels: "full" | "pct" | "none";
+}) {
   const tone = pct >= 90 ? "danger" : pct >= 60 ? "warn" : "ok";
   const toneClass =
     tone === "danger" ? "lumen-status-danger"
     : tone === "warn" ? "lumen-status-warn"
     : "lumen-status-ok";
-  // pct=0 → empty track (no fill) so an idle core reads as "nothing
-  // happening". Above 0 we show the actual height; visually meaningful
-  // even at 1%.
   const fillPct = Math.min(100, pct);
+
   return (
-    <div className="flex flex-col items-center gap-1 w-16">
-      <div className="relative h-14 w-full rounded-sm border border-[color:var(--color-border)] bg-[color:var(--color-bg)] overflow-hidden">
+    <div
+      className="flex flex-col items-center gap-1"
+      title={`core ${idx} · ${pct.toFixed(1)}%`} /* tooltip works even in compact mode */
+    >
+      <div
+        className="relative w-full rounded-sm border border-[color:var(--color-border)] bg-[color:var(--color-bg)] overflow-hidden"
+        style={{ height: `${height}px` }}
+      >
         {pct > 0 && (
           <div
             className={`absolute bottom-0 left-0 right-0 ${toneClass} opacity-85 transition-[height] duration-300`}
@@ -333,10 +370,18 @@ function CoreTile({ idx, pct }: { idx: number; pct: number }) {
           />
         )}
       </div>
-      <div className="flex w-full items-center justify-between font-mono text-[10px] tabular-nums">
-        <span className="text-[color:var(--color-muted)]">{idx}</span>
-        <span>{pct.toFixed(0)}%</span>
-      </div>
+      {labels === "full" && (
+        <div className="flex w-full items-center justify-between font-mono text-[10px] tabular-nums">
+          <span className="text-[color:var(--color-muted)]">{idx}</span>
+          <span>{pct.toFixed(0)}%</span>
+        </div>
+      )}
+      {labels === "pct" && (
+        <span className="font-mono text-[10px] tabular-nums">
+          {pct.toFixed(0)}
+        </span>
+      )}
+      {/* labels === "none" → no text; hover tooltip on the wrapper still surfaces idx + pct */}
     </div>
   );
 }
