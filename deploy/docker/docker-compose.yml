@@ -54,13 +54,22 @@ services:
     environment:
       # Container-only override: agent reaches the hub via compose DNS.
       LUMEN_HUB_URL: "http://hub:8090"
+    # Override the distroless image's nonroot default. The Docker socket
+    # on Linux (and the macOS Docker Desktop VM) is owned by root:root
+    # mode 660; nonroot (uid 65532) can't read it, and we can't add it
+    # to the docker group inside a distroless image (no /etc/group
+    # editor at runtime). Running as root matches what cAdvisor, Beszel,
+    # node-exporter, and every other monitoring sidecar does — the agent
+    # only READS, never writes, so the elevated UID is for socket /proc
+    # / /sys access, not privilege escalation.
+    user: "0:0"
     volumes:
       # Read-only Docker socket so the agent can list + stats containers
       # on the host. Same pattern as cAdvisor / Beszel / etc.
       #
       # On macOS Docker Desktop, this mount silently no-ops unless you
       # enable Settings → Advanced → "Allow the default Docker socket to
-      # be used (requires password)". When disabled (the new default in
+      # be used (requires password)". When disabled (the default in
       # Docker Desktop 4.x), the agent will log ONE Warn line on
       # startup, then fall back to no container reporting — host-level
       # metrics keep working.
