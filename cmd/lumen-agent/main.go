@@ -12,6 +12,7 @@
 //	LUMEN_AGENT_BUFFER_PATH    (default "./lumen-agent-buffer.db") - on-disk overflow queue; survives restarts and hub outages
 //	LUMEN_AGENT_BUFFER_MAX_AGE (default "24h")                     - frames older than this are pruned even if unsent
 //	LUMEN_AGENT_BUFFER_DRAIN   (default "10")                      - max frames to ship per successful tick (drains backlog gradually)
+//	LUMEN_AGENT_CONFIG         (default "/etc/lumen/agent.yaml")   - optional YAML config; fields fill env-var gaps (env always wins)
 //
 // Every interval, samples CPU%, RAM%, Swap%, Disk%, load averages, network
 // throughput, disk I/O, temperature, per-core CPU, and running Docker
@@ -22,6 +23,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -30,12 +32,32 @@ import (
 
 	"github.com/lumenhq/lumen/internal/agent/buffer"
 	"github.com/lumenhq/lumen/internal/agent/collector"
+	"github.com/lumenhq/lumen/internal/agent/config"
 	"github.com/lumenhq/lumen/internal/agent/sender"
 	"github.com/lumenhq/lumen/internal/shared/api"
 	"github.com/lumenhq/lumen/internal/shared/envcfg"
 )
 
+// defaultConfigPath is the well-known location an Ansible/Salt-style
+// deploy can drop a config without flag plumbing. Missing file is a
+// quiet no-op so env-only setups keep working.
+const defaultConfigPath = "/etc/lumen/agent.yaml"
+
 func main() {
+	// Stage 1: load YAML config (if present) BEFORE envcfg so its
+	// fields are visible to envcfg.String/Duration/etc. The file
+	// only fills gaps — anything already in the process environment
+	// wins. A malformed file is fatal; missing file is a no-op.
+	configPath := os.Getenv("LUMEN_AGENT_CONFIG")
+	if configPath == "" {
+		configPath = defaultConfigPath
+	}
+	cfgLoad, cfgErr := config.LoadFile(configPath)
+	if cfgErr != nil {
+		fmt.Fprintf(os.Stderr, "config load failed: %v\n", cfgErr)
+		os.Exit(1)
+	}
+
 	envcfg.Load()
 	hubURL := envcfg.String("LUMEN_HUB_URL", "http://localhost:8090")
 	token := envcfg.String("LUMEN_AGENT_TOKEN", "")
@@ -90,6 +112,12 @@ func main() {
 		"disk_path", diskPath, "docker_socket", dockerSocket,
 		"buffer_path", bufferPath, "buffer_max_age", bufferMaxAge,
 		"buffer_drain_per_tick", drainPerTick)
+	if cfgLoad.Path != "" {
+		logger.Info("config file loaded",
+			"path", cfgLoad.Path,
+			"applied_from_yaml", cfgLoad.Applied,
+			"skipped_env_wins", cfgLoad.Skipped)
+	}
 
 	// Background prune so the on-disk file doesn't grow without bound
 	// during long hub outages. Once an hour is enough — pruning is just

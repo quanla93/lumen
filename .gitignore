@@ -72,3 +72,4 @@ logs/
 tmp/
 *.tmp
 .screenshots/
+/docs/dist/

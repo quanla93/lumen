@@ -188,6 +188,52 @@ Don't forget to delete the host record in the hub UI (Settings →
 Hosts → trash icon) — the row keeps its `last_seen_at` cosmetic stale
 marker otherwise.
 
+## Config file (YAML)
+
+The installer wires the agent via `Environment=` lines in the systemd
+unit — that's fine for one host but tedious to manage across a fleet
+with Ansible/Salt. Drop a YAML config at `/etc/lumen/agent.yaml` and
+fields fill any env var that isn't already set:
+
+```yaml
+# /etc/lumen/agent.yaml — mode 0600 root:root (token is sensitive)
+hub_url: https://lumen.example.lan
+token: lum_REPLACE_ME
+host: ""              # empty → os.Hostname()
+interval: 5s
+disk_path: /
+docker_socket: /var/run/docker.sock
+
+# Offline buffer (see configure/reliability for details)
+buffer_path: /var/lib/lumen-agent/buffer.db
+buffer_max_age: 24h
+buffer_drain: "10"
+```
+
+Field names map 1:1 to env vars (`hub_url` → `LUMEN_HUB_URL`, etc.).
+Override `LUMEN_AGENT_CONFIG` to point at a different path; missing
+file is a quiet no-op so env-only setups keep working.
+
+**Precedence (highest first)**:
+1. Process env (`Environment=` in the systemd unit)
+2. This YAML file
+3. `.env` in the agent's CWD (dev only)
+4. Hardcoded defaults
+
+That ordering lets you ship one fleet-wide YAML and override per-box
+in the unit when needed. Boot logs name every key that came from
+YAML vs. was already in the environment:
+
+```
+INFO config file loaded path=/etc/lumen/agent.yaml \
+  applied_from_yaml=[LUMEN_HUB_URL LUMEN_AGENT_INTERVAL] \
+  skipped_env_wins=[LUMEN_AGENT_TOKEN]
+```
+
+A malformed file is fatal at boot — half-loaded config is worse than
+loud failure. Run `lumen-agent` once interactively to sanity-check
+after edits.
+
 ## Limits and quirks
 
 **Per-core CPU and containers are live-only**

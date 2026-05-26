@@ -1,0 +1,48 @@
+# Lumen agent YAML config (optional).
+#
+# Drop at /etc/lumen/agent.yaml (or wherever LUMEN_AGENT_CONFIG points)
+# to set defaults for a whole fleet via Ansible/Salt/whatever, then
+# override per-box with `Environment=` lines in the systemd unit if
+# needed.
+#
+# Precedence (highest first):
+#   1. Process env vars (incl. `Environment=` in the systemd unit)
+#   2. This file
+#   3. .env file in CWD (dev only)
+#   4. Hardcoded defaults
+#
+# Every key is OPTIONAL — missing keys fall through to the next layer.
+# A missing file is a quiet no-op; a malformed file is fatal at boot.
+#
+# Field names map 1:1 to env vars, e.g. `host: webA` is identical to
+# setting `LUMEN_AGENT_HOST=webA` in the environment.
+
+# Hub the agent posts to. Must be reachable from this box. Use HTTPS
+# in any non-trivial setup; HTTP is fine for compose-on-localhost.
+hub_url: https://lumen.example.lan
+
+# Per-host bearer token minted at Hub UI → Settings → Hosts → Create.
+# This file is sensitive — install with mode 0600 root:root.
+token: lum_REPLACE_ME
+
+# Friendly host name shown in the dashboard. Empty → os.Hostname().
+host: ""
+
+# How often the agent collects + ships. 5s is plenty for homelab; 30s
+# is fine for low-noise dashboards.
+interval: 5s
+
+# Filesystem path to report disk% for. Most setups want "/"; LXC and
+# containers sometimes want "/host" if /proc is bind-mounted.
+disk_path: /
+
+# Docker Engine API socket. Empty / missing → container collection
+# silently disabled (host metrics still work).
+docker_socket: /var/run/docker.sock
+
+# Offline buffer — a bbolt file the agent appends to when the hub is
+# unreachable, replays on reconnect. See docs/configure/reliability.md
+# for the full behavior.
+buffer_path: /var/lib/lumen-agent/buffer.db
+buffer_max_age: 24h
+buffer_drain: "10"

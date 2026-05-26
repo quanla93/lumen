@@ -1,14 +1,14 @@
 /* Lumen brand colors */
 :root {
-  --sl-color-accent-low: #042f2e;
-  --sl-color-accent: #14b8a6;
-  --sl-color-accent-high: #5eead4;
+	--sl-color-accent-low: #042f2e;
+	--sl-color-accent: #14b8a6;
+	--sl-color-accent-high: #5eead4;
 
-  --sl-color-bg-nav: var(--sl-color-bg);
+	--sl-color-bg-nav: var(--sl-color-bg);
 }
 
 :root[data-theme="light"] {
-  --sl-color-accent-low: #ccfbf1;
-  --sl-color-accent: #0d9488;
-  --sl-color-accent-high: #134e4a;
+	--sl-color-accent-low: #ccfbf1;
+	--sl-color-accent: #0d9488;
+	--sl-color-accent-high: #134e4a;
 }

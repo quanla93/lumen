@@ -1,5 +1,26 @@
 name: Release
 
+# Runs on every annotated `v*` tag (e.g. v0.1.0, v0.2.0-rc1).
+#
+# What it produces:
+#   • Hub tarballs (amd64 / arm64 / armv7) attached to the GitHub Release
+#   • lumen-agent binaries (amd64 / arm64 / armv7) attached to the Release
+#   • ghcr.io/lumenhq/lumen-hub:<version> + :latest  (multi-arch image)
+#   • ghcr.io/lumenhq/lumen-agent:<version> + :latest (multi-arch image)
+#
+# Permissions:
+#   contents: write   — needed to create the GitHub Release
+#   packages: write   — needed to push to ghcr.io as ${{ github.actor }}
+#
+# Notes:
+#   - Multi-arch images are built via QEMU + Buildx. amd64 is native;
+#     arm64 + armv7 are emulated. Build is slow (~6–10 min on free
+#     runners) but produces real cross-arch manifests.
+#   - GoReleaser was tried earlier but it duplicated the existing Make
+#     targets; we already have HUB_TARBALL_RECIPE that bundles binary +
+#     install.sh + unit file. Calling `make release-hub-tarballs`
+#     keeps "what the release contains" defined in one place.
+
 on:
   push:
     tags:
@@ -9,13 +30,19 @@ permissions:
   contents: write
   packages: write
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
-  release:
+  # ─── 1. Build all binaries + tarballs on a single Linux runner ──────────────
+  binaries:
+    name: Build binaries + tarballs
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 0 # `git describe` needs full history for VERSION
 
       - uses: actions/setup-go@v5
         with:
@@ -31,16 +58,38 @@ jobs:
           node-version: "20"
           cache: pnpm
 
-      - name: Build web bundle (embedded into hub)
-        run: |
-          pnpm install --frozen-lockfile
-          pnpm --filter web run build
+      - name: Install web deps
+        run: pnpm install --frozen-lockfile
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+      - name: Build web bundle (embedded into the hub binary)
+        run: make build-web
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      - name: Cross-build hub + agent for all archs
+        run: make build-all
+
+      - name: Stage hub tarballs (binary + install.sh + unit file)
+        run: make release-hub-tarballs
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-assets
+          path: |
+            dist/lumen-hub-linux-*.tar.gz
+            dist/lumen-agent-linux-*
+          retention-days: 7
+
+  # ─── 2. Build + push multi-arch container images to ghcr.io ─────────────────
+  images:
+    name: Push images to ghcr.io
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
 
       - name: Log in to ghcr.io
         uses: docker/login-action@v3
@@ -49,10 +98,82 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: GoReleaser
-        uses: goreleaser/goreleaser-action@v6
+      - name: Extract version from tag
+        id: ver
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Build + push hub image (amd64 + arm64)
+        uses: docker/build-push-action@v6
         with:
-          version: latest
-          args: release --clean
+          context: .
+          file: deploy/docker/Dockerfile.hub
+          platforms: linux/amd64,linux/arm64
+          push: true
+          build-args: |
+            VERSION=${{ steps.ver.outputs.VERSION }}
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/lumen-hub:${{ steps.ver.outputs.VERSION }}
+            ghcr.io/${{ github.repository_owner }}/lumen-hub:latest
+
+      - name: Build + push agent image (amd64 + arm64 + armv7)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/docker/Dockerfile.agent
+          platforms: linux/amd64,linux/arm64,linux/arm/v7
+          push: true
+          build-args: |
+            VERSION=${{ steps.ver.outputs.VERSION }}
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/lumen-agent:${{ steps.ver.outputs.VERSION }}
+            ghcr.io/${{ github.repository_owner }}/lumen-agent:latest
+
+  # ─── 3. Create the GitHub Release with binaries + tarballs attached ─────────
+  release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: [binaries, images]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-assets
+          path: dist/
+
+      - name: Generate release notes
+        id: notes
+        run: |
+          PREV_TAG=$(git tag --sort=-v:refname | grep -v "^${GITHUB_REF_NAME}$" | head -1 || true)
+          if [ -n "$PREV_TAG" ]; then
+            RANGE="${PREV_TAG}..${GITHUB_REF_NAME}"
+            echo "Changes since $PREV_TAG:" > /tmp/notes.md
+          else
+            RANGE="${GITHUB_REF_NAME}"
+            echo "Initial release." > /tmp/notes.md
+          fi
+          echo "" >> /tmp/notes.md
+          git log --pretty=format:"- %s" "$RANGE" --no-merges >> /tmp/notes.md || true
+          echo "" >> /tmp/notes.md
+          echo "" >> /tmp/notes.md
+          echo "## Container images" >> /tmp/notes.md
+          echo '```' >> /tmp/notes.md
+          echo "ghcr.io/${{ github.repository_owner }}/lumen-hub:${GITHUB_REF_NAME#v}" >> /tmp/notes.md
+          echo "ghcr.io/${{ github.repository_owner }}/lumen-agent:${GITHUB_REF_NAME#v}" >> /tmp/notes.md
+          echo '```' >> /tmp/notes.md
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ github.ref_name }}
+          body_path: /tmp/notes.md
+          files: |
+            dist/lumen-hub-linux-*.tar.gz
+            dist/lumen-agent-linux-*
+          fail_on_unmatched_files: true
+          # Tag may be a pre-release if it has a -rc/-alpha/-beta suffix.
+          prerelease: ${{ contains(github.ref_name, '-') }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
