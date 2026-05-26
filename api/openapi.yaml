@@ -65,8 +65,13 @@ paths:
       summary: Push one metric snapshot for a host.
       description: |
         Agents call this every `LUMEN_AGENT_INTERVAL` (default 5s) with the
-        latest host sample. The hub keeps only the most recent snapshot per
-        host in memory (Phase 1); Phase 2 batches into SQLite every 60s.
+        latest host sample. Every accepted snapshot is held in the
+        in-memory store (hot path for `/api/stream`) and appended to the
+        SQLite `snapshots` table (history archive).
+
+        Strict bearer-token auth: requests without a valid `Authorization:
+        Bearer <token>` are rejected 401. The token's host name (looked
+        up server-side) overrides whatever the agent put in `body.host`.
       security:
         - bearerAuth: []
       requestBody:
@@ -110,11 +115,9 @@ paths:
                   value: { error: "cpu_pct out of [0,100]" }
         "401":
           description: |
-            Bearer token present but invalid. Returned when the
-            `Authorization` header carries a token not matching any host.
-            (Requests **without** an Authorization header still succeed —
-            strict-mode is opt-in via env LUMEN_HUB_REQUIRE_TOKEN, not
-            yet wired.)
+            Missing or invalid `Authorization: Bearer <token>` header.
+            Mint a token in Settings → Hosts and set it as
+            `LUMEN_AGENT_TOKEN` in the agent's env.
 
   /api/setup-status:
     get:

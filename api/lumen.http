@@ -8,7 +8,9 @@
 
 @hub = http://localhost:8090
 @host = pve-01
-@token = devtoken
+# Strict bearer-token auth: ingest now requires a real token. Mint one
+# in Settings → Hosts after sign-in, paste it here.
+@token = lum_REPLACE_ME
 @username = admin
 @password = correcthorse
 

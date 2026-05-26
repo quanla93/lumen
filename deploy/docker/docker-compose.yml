@@ -31,16 +31,15 @@ services:
       - lumen-data:/data
     restart: unless-stopped
 
-  # NOTE: The hub validates Bearer tokens against the hosts table. On a
-  # fresh stack `devtoken` doesn't exist yet, so this agent will log
-  # `ingest send failed: hub returned 401: invalid token` until you:
-  #   1. Open http://localhost:8090 and register the first admin.
-  #   2. Create a host in Settings → copy the real token.
-  #   3. Either `docker compose down`, set LUMEN_AGENT_TOKEN in your
-  #      shell / a local .env file, and `docker compose up -d agent`;
-  #      or just run the agent on a different machine pointed at the
-  #      hub URL.
-  # The 401s are harmless — the agent keeps trying every interval.
+  # NOTE: Strict bearer-token auth. Without a valid LUMEN_AGENT_TOKEN
+  # the hub returns 401 to every ingest until you:
+  #   1. Sign in at http://localhost:8090 (seeded admin if
+  #      LUMEN_HUB_ADMIN_* are set in .env; otherwise the UI will offer
+  #      a register form).
+  #   2. Settings → Hosts → Create → copy the one-shot `lum_...` token.
+  #   3. Put LUMEN_AGENT_TOKEN=lum_... in .env, then:
+  #        docker compose -f deploy/docker/docker-compose.yml up -d agent
+  # The 401s are loud but harmless — the agent retries every interval.
   agent:
     build:
       context: ../..
