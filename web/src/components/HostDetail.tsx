@@ -4,6 +4,7 @@ import {
   hostsApi,
   ApiError,
   type MetricsResponse,
+  type MetricPoint,
 } from "@/lib/api";
 import { UPlotChart } from "@/components/UPlotChart";
 import type { Snapshot } from "@/components/HostCard";
@@ -18,24 +19,31 @@ const RANGE_SECONDS: Record<Range, number> = {
 
 const REFRESH_MS = 30_000;
 
-// uPlot draws to <canvas>, so we have to bake colors at construction time.
-// These oklch tokens come from index.css; they're tuned to look fine in
-// both light and dark themes. Charts are recreated when the host or range
-// changes, but NOT when the user toggles theme — re-toggling forces a
-// refetch via range click if a refresh is needed.
+// Series strokes. uPlot draws to canvas, so colors are baked at construction
+// time; on theme toggle the whole chart remounts via themeKey so they re-resolve.
 const COLOR = {
-  cpu:    "oklch(70% 0.16 145)", // accent green
-  ram:    "oklch(68% 0.13 240)", // blue
-  disk:   "oklch(75% 0.16 75)",  // amber
-  load1:  "oklch(65% 0.22 30)",  // red
-  load5:  "oklch(68% 0.14 200)", // teal
-  load15: "oklch(62% 0.12 290)", // purple
-  netRx:  "oklch(70% 0.16 145)", // green for "in"
-  netTx:  "oklch(65% 0.22 30)",  // red for "out"
-  diskR:  "oklch(68% 0.13 240)", // blue for "read"
-  diskW:  "oklch(75% 0.16 75)",  // amber for "write"
-  temp:   "oklch(65% 0.22 30)",  // red
+  cpu:    "oklch(70% 0.16 145)",  // green
+  ram:    "oklch(68% 0.13 240)",  // blue
+  disk:   "oklch(75% 0.16 75)",   // amber
+  load1:  "oklch(65% 0.22 30)",   // red
+  load5:  "oklch(68% 0.14 200)",  // teal
+  load15: "oklch(62% 0.12 290)",  // purple
+  netRx:  "oklch(70% 0.16 145)",  // green
+  netTx:  "oklch(65% 0.22 30)",   // red
+  diskR:  "oklch(68% 0.13 240)",  // blue
+  diskW:  "oklch(75% 0.16 75)",   // amber
+  temp:   "oklch(65% 0.22 30)",   // red
 };
+
+// themeColors reads runtime CSS vars so uPlot axes adapt to dark/light.
+// Called fresh inside each opts builder to avoid baking a stale palette.
+function themeColors() {
+  const s = getComputedStyle(document.documentElement);
+  return {
+    muted: s.getPropertyValue("--color-muted").trim() || "#888",
+    border: s.getPropertyValue("--color-border").trim() || "#ddd",
+  };
+}
 
 export function HostDetail({
   hostName,
@@ -52,8 +60,11 @@ export function HostDetail({
   const [loading, setLoading] = useState(true);
   const reqIdRef = useRef(0);
 
-  // Resolve hostName → id once on mount. The hosts list is small and the
-  // dashboard already pays the WS cost, so a one-shot fetch here is fine.
+  // themeKey changes when the user toggles dark/light. uPlot charts mount
+  // their canvas paints with the colors that were active at construction;
+  // forcing a key change remounts them with the new palette.
+  const themeKey = useThemeKey();
+
   useEffect(() => {
     let cancelled = false;
     hostsApi.list().then((hosts) => {
@@ -74,9 +85,6 @@ export function HostDetail({
     return () => { cancelled = true; };
   }, [hostName]);
 
-  // WS subscription: picks out the live snapshot for THIS host so we can
-  // show fields we don't persist historically (per-core CPU strip) and a
-  // current-rate footer that updates faster than the 30s metrics refresh.
   useEffect(() => {
     const scheme = window.location.protocol === "https:" ? "wss" : "ws";
     const ws = new WebSocket(`${scheme}://${window.location.host}/api/stream`);
@@ -85,9 +93,7 @@ export function HostDetail({
         const arr = JSON.parse(e.data as string) as Snapshot[];
         const match = arr.find((s) => s.host === hostName);
         if (match) setLive(match);
-      } catch {
-        // ignore malformed
-      }
+      } catch { /* ignore malformed */ }
     });
     return () => ws.close();
   }, [hostName]);
@@ -126,6 +132,12 @@ export function HostDetail({
     () => !!resp?.points.some((p) => p.temp_c > 0),
     [resp],
   );
+  // Prefer the live WS value for "current"; fall back to last historical point.
+  const last = useMemo<Partial<MetricPoint & Snapshot> | null>(() => {
+    if (live) return live;
+    if (resp && resp.points.length > 0) return resp.points[resp.points.length - 1];
+    return null;
+  }, [live, resp]);
 
   return (
     <>
@@ -144,11 +156,7 @@ export function HostDetail({
         </div>
         <div className="flex items-center gap-1">
           {(Object.keys(RANGE_SECONDS) as Range[]).map((r) => (
-            <RangeButton
-              key={r}
-              active={r === range}
-              onClick={() => setRange(r)}
-            >
+            <RangeButton key={r} active={r === range} onClick={() => setRange(r)}>
               {r}
             </RangeButton>
           ))}
@@ -178,51 +186,89 @@ export function HostDetail({
         </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <ChartCard title="CPU %">
+          <ChartCard
+            title="CPU"
+            badges={[swatch(COLOR.cpu, `${(last?.cpu_pct ?? 0).toFixed(1)}%`)]}
+          >
             <UPlotChart
+              key={`cpu-${themeKey}`}
               data={data.cpu}
-              options={percentOpts("CPU", COLOR.cpu)}
+              options={percentOpts(COLOR.cpu)}
               className="h-[220px] w-full"
             />
           </ChartCard>
-          <ChartCard title="RAM %">
+          <ChartCard
+            title="RAM"
+            badges={[swatch(COLOR.ram, `${(last?.ram_pct ?? 0).toFixed(1)}%`)]}
+          >
             <UPlotChart
+              key={`ram-${themeKey}`}
               data={data.ram}
-              options={percentOpts("RAM", COLOR.ram)}
+              options={percentOpts(COLOR.ram)}
               className="h-[220px] w-full"
             />
           </ChartCard>
-          <ChartCard title="Disk %">
+          <ChartCard
+            title="Disk"
+            badges={[swatch(COLOR.disk, `${(last?.disk_pct ?? 0).toFixed(1)}%`)]}
+          >
             <UPlotChart
+              key={`disk-${themeKey}`}
               data={data.disk}
-              options={percentOpts("Disk", COLOR.disk)}
+              options={percentOpts(COLOR.disk)}
               className="h-[220px] w-full"
             />
           </ChartCard>
-          <ChartCard title="Load avg (1 / 5 / 15)">
+          <ChartCard
+            title="Load avg"
+            badges={[
+              swatch(COLOR.load1, `1m ${(last?.load1 ?? 0).toFixed(2)}`),
+              swatch(COLOR.load5, `5m ${(last?.load5 ?? 0).toFixed(2)}`),
+              swatch(COLOR.load15, `15m ${(last?.load15 ?? 0).toFixed(2)}`),
+            ]}
+          >
             <UPlotChart
+              key={`load-${themeKey}`}
               data={data.load}
               options={loadOpts()}
               className="h-[220px] w-full"
             />
           </ChartCard>
-          <ChartCard title="Network (rx / tx)">
+          <ChartCard
+            title="Network"
+            badges={[
+              swatch(COLOR.netRx, `↓ ${formatBps(last?.net_rx_bps ?? 0)}`),
+              swatch(COLOR.netTx, `↑ ${formatBps(last?.net_tx_bps ?? 0)}`),
+            ]}
+          >
             <UPlotChart
+              key={`net-${themeKey}`}
               data={data.net}
-              options={bpsOpts({ rx: "rx", tx: "tx" }, [COLOR.netRx, COLOR.netTx])}
+              options={bpsOpts([COLOR.netRx, COLOR.netTx])}
               className="h-[220px] w-full"
             />
           </ChartCard>
-          <ChartCard title="Disk I/O (read / write)">
+          <ChartCard
+            title="Disk I/O"
+            badges={[
+              swatch(COLOR.diskR, `read ${formatBps(last?.disk_r_bps ?? 0)}`),
+              swatch(COLOR.diskW, `write ${formatBps(last?.disk_w_bps ?? 0)}`),
+            ]}
+          >
             <UPlotChart
+              key={`dio-${themeKey}`}
               data={data.diskIO}
-              options={bpsOpts({ rx: "read", tx: "write" }, [COLOR.diskR, COLOR.diskW])}
+              options={bpsOpts([COLOR.diskR, COLOR.diskW])}
               className="h-[220px] w-full"
             />
           </ChartCard>
           {hasTemp && (
-            <ChartCard title="Temperature (°C)">
+            <ChartCard
+              title="Temperature"
+              badges={[swatch(COLOR.temp, `${(last?.temp_c ?? 0).toFixed(1)}°C`)]}
+            >
               <UPlotChart
+                key={`temp-${themeKey}`}
                 data={data.temp}
                 options={tempOpts()}
                 className="h-[220px] w-full"
@@ -236,78 +282,101 @@ export function HostDetail({
         <p className="mt-6 text-xs text-[color:var(--color-muted)]">
           {resp.points.length} points · step {resp.step_seconds}s · refreshing
           every {Math.round(REFRESH_MS / 1000)}s
-          {live && (
-            <>
-              {" · "}
-              <span className="font-mono">
-                now: ↓ {formatBps(live.net_rx_bps)} · ↑ {formatBps(live.net_tx_bps)}
-                {" · "}
-                read {formatBps(live.disk_r_bps)} · write {formatBps(live.disk_w_bps)}
-                {live.temp_c > 0 && <> · {live.temp_c.toFixed(1)}°C</>}
-              </span>
-            </>
-          )}
         </p>
       )}
     </>
   );
 }
 
+// PerCoreStrip renders one fixed-width tile per logical core. Each tile has
+// a visible track so empty (0%) cores are still readable; the bar fills
+// from the bottom with a tone-mapped color (green/amber/red).
 function PerCoreStrip({ cores }: { cores: number[] }) {
+  const avg = cores.reduce((a, b) => a + b, 0) / cores.length;
   return (
-    <div className="mb-4 rounded-lg border border-[color:var(--color-border)] bg-[color:var(--color-card)] p-3 shadow-sm">
-      <div className="mb-2 flex items-center justify-between">
+    <div className="mb-4 rounded-lg border border-[color:var(--color-border)] bg-[color:var(--color-card)] px-4 py-3 shadow-sm">
+      <div className="mb-3 flex items-center justify-between">
         <span className="text-xs uppercase tracking-wide text-[color:var(--color-muted)]">
           per-core CPU · {cores.length} core{cores.length === 1 ? "" : "s"}
         </span>
-        <span className="font-mono text-xs text-[color:var(--color-muted)]">
-          avg {(cores.reduce((a, b) => a + b, 0) / cores.length).toFixed(1)}%
+        <span className="font-mono text-xs">
+          <span className="text-[color:var(--color-muted)]">avg</span>{" "}
+          {avg.toFixed(1)}%
         </span>
       </div>
-      <div
-        className="grid gap-1"
-        style={{
-          gridTemplateColumns: `repeat(${Math.min(cores.length, 16)}, minmax(0, 1fr))`,
-        }}
-      >
+      <div className="flex flex-wrap gap-2">
         {cores.map((pct, i) => (
-          <div key={i} className="flex flex-col items-center gap-0.5">
-            <div className="h-10 w-full rounded-sm bg-[color:var(--color-border)] overflow-hidden flex flex-col-reverse">
-              <div
-                className={`w-full ${coreToneClass(pct)} transition-[height] duration-300`}
-                style={{ height: `${Math.max(2, Math.min(100, pct))}%` }}
-              />
-            </div>
-            <span className="font-mono text-[10px] text-[color:var(--color-muted)] tabular-nums">
-              {pct.toFixed(0)}
-            </span>
-          </div>
+          <CoreTile key={i} idx={i} pct={pct} />
         ))}
       </div>
     </div>
   );
 }
 
-function coreToneClass(pct: number): string {
-  if (pct >= 90) return "lumen-status-danger";
-  if (pct >= 60) return "lumen-status-warn";
-  return "lumen-status-ok";
+function CoreTile({ idx, pct }: { idx: number; pct: number }) {
+  const tone = pct >= 90 ? "danger" : pct >= 60 ? "warn" : "ok";
+  const toneClass =
+    tone === "danger" ? "lumen-status-danger"
+    : tone === "warn" ? "lumen-status-warn"
+    : "lumen-status-ok";
+  // pct=0 → empty track (no fill) so an idle core reads as "nothing
+  // happening". Above 0 we show the actual height; visually meaningful
+  // even at 1%.
+  const fillPct = Math.min(100, pct);
+  return (
+    <div className="flex flex-col items-center gap-1 w-16">
+      <div className="relative h-14 w-full rounded-sm border border-[color:var(--color-border)] bg-[color:var(--color-bg)] overflow-hidden">
+        {pct > 0 && (
+          <div
+            className={`absolute bottom-0 left-0 right-0 ${toneClass} opacity-85 transition-[height] duration-300`}
+            style={{ height: `${fillPct}%` }}
+          />
+        )}
+      </div>
+      <div className="flex w-full items-center justify-between font-mono text-[10px] tabular-nums">
+        <span className="text-[color:var(--color-muted)]">{idx}</span>
+        <span>{pct.toFixed(0)}%</span>
+      </div>
+    </div>
+  );
 }
 
 function ChartCard({
   title,
+  badges,
   children,
 }: {
   title: string;
+  badges?: React.ReactNode[];
   children: React.ReactNode;
 }) {
   return (
     <div className="rounded-lg border border-[color:var(--color-border)] bg-[color:var(--color-card)] p-3 shadow-sm">
-      <div className="mb-2 text-xs uppercase tracking-wide text-[color:var(--color-muted)]">
-        {title}
+      <div className="mb-2 flex items-center justify-between gap-2 flex-wrap">
+        <span className="text-xs uppercase tracking-wide text-[color:var(--color-muted)]">
+          {title}
+        </span>
+        {badges && badges.length > 0 && (
+          <div className="flex items-center gap-3 font-mono text-xs tabular-nums">
+            {badges.map((b, i) => <span key={i}>{b}</span>)}
+          </div>
+        )}
       </div>
       {children}
     </div>
+  );
+}
+
+function swatch(color: string, text: string) {
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <span
+        aria-hidden
+        className="inline-block h-2 w-2 rounded-[2px]"
+        style={{ backgroundColor: color }}
+      />
+      {text}
+    </span>
   );
 }
 
@@ -366,61 +435,74 @@ function buildSeries(r: MetricsResponse | null) {
   };
 }
 
-function percentOpts(label: string, color: string): Omit<Options, "width" | "height"> {
+// Theme-aware base options. uPlot uses axis.stroke for tick labels and
+// axis.grid.stroke for the faint guide lines; defaults are black/grey
+// which look invisible in dark mode. We resolve the CSS vars at chart
+// build time and remount on theme toggle (see themeKey).
+function baseAxes(yValues?: (u: uPlot, vals: number[]) => string[], leftSize = 50) {
+  const t = themeColors();
+  return [
+    { stroke: t.muted, grid: { stroke: t.border, width: 1 }, ticks: { stroke: t.border } },
+    {
+      stroke: t.muted,
+      grid: { stroke: t.border, width: 1 },
+      ticks: { stroke: t.border },
+      size: leftSize,
+      ...(yValues ? { values: yValues } : {}),
+    },
+  ];
+}
+
+function percentOpts(color: string): Omit<Options, "width" | "height"> {
   return {
     scales: { y: { range: [0, 100] } },
-    axes: [{}, { values: (_u, vals) => vals.map((v) => `${v}%`) }],
+    axes: baseAxes((_u, vals) => vals.map((v) => `${v}%`), 44),
+    legend: { show: false },
     series: [
       {},
       {
-        label,
         stroke: color,
-        width: 1.5,
-        fill: color.replace(/^oklch\((\d+)%/, "oklch($1% / 0.12)"),
+        width: 1.75,
+        fill: color.replace(/^oklch\((\d+)%/, "oklch($1% / 0.14)"),
         points: { show: false },
       },
     ],
-    legend: { show: true },
   };
 }
 
 function loadOpts(): Omit<Options, "width" | "height"> {
   return {
+    axes: baseAxes(undefined, 44),
+    legend: { show: false },
     series: [
       {},
-      { label: "1m",  stroke: COLOR.load1,  width: 1.5, points: { show: false } },
-      { label: "5m",  stroke: COLOR.load5,  width: 1.25, points: { show: false } },
-      { label: "15m", stroke: COLOR.load15, width: 1.25, points: { show: false } },
+      { stroke: COLOR.load1,  width: 1.75, points: { show: false } },
+      { stroke: COLOR.load5,  width: 1.5,  points: { show: false } },
+      { stroke: COLOR.load15, width: 1.5,  points: { show: false } },
     ],
-    legend: { show: true },
   };
 }
 
-function bpsOpts(
-  labels: { rx: string; tx: string },
-  colors: [string, string],
-): Omit<Options, "width" | "height"> {
+function bpsOpts(colors: [string, string]): Omit<Options, "width" | "height"> {
   return {
-    // Y-axis size 80 (default ~50) gives MB/s labels enough room not to
-    // truncate to ".00 MB/s" when the chart is narrow.
-    axes: [{}, { size: 80, values: (_u, vals) => vals.map((v) => formatBps(v)) }],
+    axes: baseAxes((_u, vals) => vals.map((v) => formatBps(v)), 80),
+    legend: { show: false },
     series: [
       {},
-      { label: labels.rx, stroke: colors[0], width: 1.5, points: { show: false }, value: (_u, v) => formatBps(v ?? 0) },
-      { label: labels.tx, stroke: colors[1], width: 1.5, points: { show: false }, value: (_u, v) => formatBps(v ?? 0) },
+      { stroke: colors[0], width: 1.75, points: { show: false } },
+      { stroke: colors[1], width: 1.75, points: { show: false } },
     ],
-    legend: { show: true },
   };
 }
 
 function tempOpts(): Omit<Options, "width" | "height"> {
   return {
-    axes: [{}, { values: (_u, vals) => vals.map((v) => `${v}°`) }],
+    axes: baseAxes((_u, vals) => vals.map((v) => `${v}°`), 44),
+    legend: { show: false },
     series: [
       {},
-      { label: "°C", stroke: COLOR.temp, width: 1.5, points: { show: false } },
+      { stroke: COLOR.temp, width: 1.75, points: { show: false } },
     ],
-    legend: { show: true },
   };
 }
 
@@ -431,3 +513,22 @@ function formatBps(bps: number): string {
   if (abs >= 1_000)         return `${(bps / 1_000).toFixed(1)} kB/s`;
   return `${bps.toFixed(0)} B/s`;
 }
+
+// useThemeKey returns a counter that bumps whenever the `dark` class is
+// added/removed on <html>. Components key off this to force-remount
+// canvas-backed children (uPlot) so they re-read CSS vars.
+function useThemeKey(): number {
+  const [k, setK] = useState(0);
+  useEffect(() => {
+    const obs = new MutationObserver(() => setK((x) => x + 1));
+    obs.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["class"],
+    });
+    return () => obs.disconnect();
+  }, []);
+  return k;
+}
+
+// Pull in uPlot type only for the function signature above; not exported.
+import type uPlot from "uplot";
