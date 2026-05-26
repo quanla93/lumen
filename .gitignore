@@ -71,3 +71,4 @@ logs/
 # Temp
 tmp/
 *.tmp
+.screenshots/

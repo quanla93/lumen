@@ -1,0 +1,36 @@
+[Unit]
+# Lumen agent — push host + container metrics to a Lumen hub.
+# See: docs/install/agent-linux.md for a walkthrough.
+Description=Lumen agent
+Documentation=https://github.com/quanla93/lumen
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Root is required to read /proc, /sys/class/hwmon (temperature), and the
+# Docker socket. The agent only READS; no writes, no privilege escalation.
+# Same posture as cAdvisor / node-exporter / Beszel.
+User=root
+EnvironmentFile=/etc/lumen/agent.env
+ExecStart=/usr/local/bin/lumen-agent
+
+Restart=always
+RestartSec=5s
+
+# Mild hardening — agent needs raw access to host resources so the
+# strictest systemd flags don't apply, but we can still keep it from
+# tunnelling out of its job.
+NoNewPrivileges=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+LockPersonality=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+PrivateTmp=true
+
+MemoryMax=128M
+TasksMax=64
+
+[Install]
+WantedBy=multi-user.target

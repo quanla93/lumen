@@ -86,6 +86,7 @@ Mỗi quyết định ghi 1 dòng. Không xóa, không sửa — nếu đổi ý
 | 2026-05-26 | Per-core CPU = live only, not persisted | Variable-cardinality per host. Stored only in the in-memory snapshot; flows through WS to the host detail page's per-core strip. Aggregate `cpu_pct` is what historical buckets average. Avoids a JSON column or a join table for modest pre-v1 value. |
 | 2026-05-26 | Docker collector = stdlib HTTP-over-unix-socket, no docker/docker SDK | The official Go SDK pulls ~200 transitive deps + adds 30+ MB to the agent binary. We only need `/containers/json` + `/containers/{id}/stats?stream=false`. A ~150-line HTTP client over `net.Dialer{Unix}` covers both. Trade-off: we have to track Engine API field shapes manually (`cpu_stats` / `precpu_stats` deltas, `memory_stats.stats.inactive_file` subtraction) instead of inheriting them. Acceptable — the wire format is stable since API v1.21 (2015). |
 | 2026-05-26 | Containers = live only, not persisted | Same rationale as per-core CPU. Cardinality varies per host and over time; persisting requires a join table or JSON column. Live-only fits the homelab "what's running RIGHT NOW" question; historical container metrics land later if user demand surfaces. |
+| 2026-05-26 | Hub install = self-contained tarball + idempotent install-hub.sh | Pre-v0.1 the repo is private staging, so no GitHub Releases. Operator runs `make release-hub-tarballs` on a build box → `lumen-hub-linux-<arch>.tar.gz` (5 MB) holds binary + install.sh + systemd unit + env template + README. install.sh creates `lumen` system user, /etc/lumen (640 root:lumen), /var/lib/lumen (lumen:lumen), generates LUMEN_HUB_SECRET, drops the systemd unit, enables it. Re-runnable for in-place upgrades. `--purge` for clean wipe. Verified end-to-end in fresh Debian:12 container. |
 
 ---
 
@@ -204,8 +205,8 @@ Mỗi quyết định ghi 1 dòng. Không xóa, không sửa — nếu đổi ý
 - [x] Docker collector (Engine API, minimal stdlib unix-socket client — no docker/docker SDK). Lists running + stopped containers, computes per-container CPU% (delta) + memory used/limit. Live-only, not persisted. Warns once on macOS Docker Desktop when socket sharing is disabled.
 - [ ] Local BoltDB buffer cho offline
 - [ ] Config file YAML + env override (currently env-only via godotenv)
-- [ ] Systemd service file
-- [ ] Install script `get.lumenhq.dev/agent`
+- [x] Systemd service file (`deploy/systemd/lumen-agent.service` — hardened nonroot-ish, runs as root for /proc + /sys + docker.sock)
+- [x] Install script `<hub>/install.sh` (already shipped earlier — hub serves it w/ baked-in URL + binaries)
 
 #### Web
 - [x] Overview page: host cards + CPU sparkline + 3 metric bars (CPU/RAM/Disk) + load avg footer
@@ -216,11 +217,12 @@ Mỗi quyết định ghi 1 dòng. Không xóa, không sửa — nếu đổi ý
 - [ ] PWA manifest + service worker
 
 #### Docs (parallel)
-- [ ] `install/hub-compose.md`
-- [ ] `install/hub-binary.md`
-- [ ] `install/agent-linux.md`
+- [x] `install/hub-compose.md`
+- [x] `install/hub-binary.md`
+- [x] `install/hub-lxc.md` (Proxmox LXC walkthrough — both native + Docker-in-LXC shapes)
+- [x] `install/agent-linux.md`
 - [ ] `install/agent-docker.md`
-- [ ] `configure/hosts-and-tokens.md`
+- [x] `configure/hosts-and-tokens.md`
 - [ ] `configure/retention.md`
 - [ ] `reference/architecture.md`
 - [ ] `reference/api.md`

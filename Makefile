@@ -117,6 +117,41 @@ release-agents: ## Cross-build agent binaries + stage install.sh for hub /instal
 	CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 $(GO) build -trimpath -ldflags '$(LDFLAGS)' -o $(DIST)/lumen-agent-linux-armv7 ./cmd/lumen-agent
 	cp scripts/install-agent.sh $(DIST)/install.sh
 
+# Tarball recipe shared by per-arch release-hub-tarball targets below.
+# $(1) = arch suffix (amd64, arm64, armv7), $(2) = GOARCH, $(3) = GOARM
+#
+# PREREQUISITE: run `make build-web` first so internal/hub/web/dist/ has
+# the embedded UI. The recipe fails fast with a helpful message if not.
+define HUB_TARBALL_RECIPE
+	@test -f internal/hub/web/dist/index.html || { \
+	  echo "ERR: web bundle not staged at internal/hub/web/dist/index.html."; \
+	  echo "     Run \`make build-web\` first (needs pnpm + node)."; \
+	  exit 1; }
+	@echo "==> Packaging lumen-hub-linux-$(1).tar.gz"
+	mkdir -p $(DIST)/.hub-$(1)/lumen-hub-linux-$(1)
+	CGO_ENABLED=0 GOOS=linux GOARCH=$(2) $(3) $(GO) build -trimpath -ldflags '$(LDFLAGS)' \
+		-o $(DIST)/.hub-$(1)/lumen-hub-linux-$(1)/lumen-hub ./cmd/lumen-hub
+	cp scripts/install-hub.sh                  $(DIST)/.hub-$(1)/lumen-hub-linux-$(1)/install-hub.sh
+	cp deploy/systemd/lumen-hub.service         $(DIST)/.hub-$(1)/lumen-hub-linux-$(1)/lumen-hub.service
+	cp deploy/systemd/hub.env.example           $(DIST)/.hub-$(1)/lumen-hub-linux-$(1)/hub.env.example
+	cp scripts/release-tarball-README.md        $(DIST)/.hub-$(1)/lumen-hub-linux-$(1)/README.md
+	chmod +x $(DIST)/.hub-$(1)/lumen-hub-linux-$(1)/install-hub.sh
+	tar -czf $(DIST)/lumen-hub-linux-$(1).tar.gz -C $(DIST)/.hub-$(1) lumen-hub-linux-$(1)
+	rm -rf $(DIST)/.hub-$(1)
+	@echo "    $(DIST)/lumen-hub-linux-$(1).tar.gz"
+endef
+
+.PHONY: release-hub-tarball-amd64 release-hub-tarball-arm64 release-hub-tarball-armv7
+release-hub-tarball-amd64: ## Tarball lumen-hub for linux/amd64 (build-web prereq)
+	$(call HUB_TARBALL_RECIPE,amd64,amd64,)
+release-hub-tarball-arm64: ## Tarball lumen-hub for linux/arm64 — Pi 4/5, Ampere (build-web prereq)
+	$(call HUB_TARBALL_RECIPE,arm64,arm64,)
+release-hub-tarball-armv7: ## Tarball lumen-hub for linux/armv7 — Pi 2/3 (build-web prereq)
+	$(call HUB_TARBALL_RECIPE,armv7,arm,GOARM=7)
+
+.PHONY: release-hub-tarballs
+release-hub-tarballs: release-hub-tarball-amd64 release-hub-tarball-arm64 release-hub-tarball-armv7 ## All hub tarballs (amd64 + arm64 + armv7)
+
 # ============================================================
 # Docker
 # ============================================================
