@@ -108,10 +108,18 @@ log "Installing to $BIN_PATH"
 install -m 0755 "$TMP" "$BIN_PATH"
 rm -f "$TMP"
 
+# Persistent buffer dir for the on-disk offline queue. The agent
+# writes a small bbolt file here when the hub is unreachable so
+# frames replay after reconnect. Root-owned because the agent runs
+# as root (needed for /proc + docker.sock).
+BUFFER_DIR="/var/lib/lumen-agent"
+log "Ensuring buffer dir $BUFFER_DIR"
+install -d -m 0750 "$BUFFER_DIR"
+
 if ! command -v systemctl >/dev/null 2>&1; then
   warn "systemd not detected — binary installed at $BIN_PATH but no service registered."
   warn "Run it manually with:"
-  warn "  LUMEN_HUB_URL='$HUB_URL' LUMEN_AGENT_HOST='$AGENT_HOST' LUMEN_AGENT_TOKEN='$AGENT_TOKEN' $BIN_PATH"
+  warn "  LUMEN_HUB_URL='$HUB_URL' LUMEN_AGENT_HOST='$AGENT_HOST' LUMEN_AGENT_TOKEN='$AGENT_TOKEN' LUMEN_AGENT_BUFFER_PATH=$BUFFER_DIR/buffer.db $BIN_PATH"
   exit 0
 fi
 
@@ -129,6 +137,7 @@ Environment=LUMEN_HUB_URL=$HUB_URL
 Environment=LUMEN_AGENT_HOST=$AGENT_HOST
 Environment=LUMEN_AGENT_TOKEN=$AGENT_TOKEN
 Environment=LUMEN_AGENT_INTERVAL=$AGENT_INTERVAL
+Environment=LUMEN_AGENT_BUFFER_PATH=$BUFFER_DIR/buffer.db
 ExecStart=$BIN_PATH
 Restart=always
 RestartSec=5s
@@ -137,6 +146,9 @@ NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
 PrivateTmp=true
+# Carve out the buffer dir so ProtectSystem=strict still lets the
+# agent persist its offline queue across restarts.
+ReadWritePaths=$BUFFER_DIR
 
 [Install]
 WantedBy=multi-user.target

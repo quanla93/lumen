@@ -54,6 +54,9 @@ services:
     environment:
       # Container-only override: agent reaches the hub via compose DNS.
       LUMEN_HUB_URL: "http://hub:8090"
+      # Persistent offline queue path — lives on the lumen-agent-data
+      # volume so the bbolt file survives `docker compose down`.
+      LUMEN_AGENT_BUFFER_PATH: "/data/buffer.db"
     # Override the distroless image's nonroot default. The Docker socket
     # on Linux (and the macOS Docker Desktop VM) is owned by root:root
     # mode 660; nonroot (uid 65532) can't read it, and we can't add it
@@ -79,6 +82,9 @@ services:
       # To disable container monitoring entirely (or if the host isn't
       # running Docker), remove this line.
       - /var/run/docker.sock:/var/run/docker.sock:ro
+      # Persistent buffer file. Without this, restarting the agent loses
+      # any frames queued during a hub outage.
+      - lumen-agent-data:/data
     restart: unless-stopped
 
   # Second agent — opt-in via `--profile extra`. Workflow:
@@ -106,3 +112,4 @@ services:
 
 volumes:
   lumen-data:
+  lumen-agent-data:

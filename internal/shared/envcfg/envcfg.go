@@ -38,6 +38,18 @@ func Bool(key string, def bool) bool {
 	return b
 }
 
+func Int(key string, def int) int {
+	v, ok := os.LookupEnv(key)
+	if !ok || v == "" {
+		return def
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil {
+		return def
+	}
+	return n
+}
+
 func Duration(key string, def time.Duration) time.Duration {
 	v, ok := os.LookupEnv(key)
 	if !ok || v == "" {

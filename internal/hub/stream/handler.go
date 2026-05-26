@@ -1,16 +1,35 @@
-// Package stream exposes a WebSocket endpoint that pushes the current
-// per-host snapshot to subscribers every Interval. Phase 1 spike: no
-// filtering, no diffing — clients get the full snapshot each tick.
+// Package stream exposes a WebSocket endpoint that pushes per-host
+// snapshots to subscribers every Interval. Clients can optionally send
+// a control frame to narrow what they receive — see api.StreamControl.
+//
+// Wire format (server → client): an array of HostSnapshot, JSON-encoded.
+// Wire format (client → server): api.StreamControl frames, JSON-encoded.
+//
+// Subscription rules:
+//   - A connection starts with no filter — every host snapshot ships.
+//     This keeps older web builds (Phase 1 dashboard) working with no
+//     changes; they just ignore the bandwidth.
+//   - A {"type":"subscribe","hosts":[...]} replaces the filter. The
+//     special value "*" means "all hosts" (used to revert from a
+//     specific subscription back to firehose mode when leaving a
+//     detail view).
+//   - The empty list is treated as the unsubscribed/firehose default
+//     rather than "send nothing" — the latter is almost never what a
+//     client wants, and a buggy client sending [] should still see
+//     data so the operator notices.
 package stream
 
 import (
+	"encoding/json"
 	"log/slog"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
 
 	"github.com/lumenhq/lumen/internal/hub/store"
+	"github.com/lumenhq/lumen/internal/shared/api"
 )
 
 // CheckOrigin is permissive in dev: any origin may connect. Phase 2 will
@@ -32,6 +51,51 @@ func New(s *store.Store, logger *slog.Logger, interval time.Duration) *Handler {
 	return &Handler{Store: s, Logger: logger, Interval: interval}
 }
 
+// subscription is the per-connection filter state. Guarded by mu so the
+// reader goroutine (control frames) and the writer (ticker) coexist
+// safely without a channel hop on every snapshot.
+type subscription struct {
+	mu      sync.RWMutex
+	allowed map[string]bool // nil → firehose (all hosts)
+}
+
+func (s *subscription) set(hosts []string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	// Empty list or {"*"} both mean firehose. The wildcard is the
+	// explicit revert path the UI uses when leaving a detail view.
+	if len(hosts) == 0 {
+		s.allowed = nil
+		return
+	}
+	for _, h := range hosts {
+		if h == "*" {
+			s.allowed = nil
+			return
+		}
+	}
+	m := make(map[string]bool, len(hosts))
+	for _, h := range hosts {
+		m[h] = true
+	}
+	s.allowed = m
+}
+
+func (s *subscription) filter(in []api.HostSnapshot) []api.HostSnapshot {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.allowed == nil {
+		return in
+	}
+	out := make([]api.HostSnapshot, 0, len(in))
+	for _, snap := range in {
+		if s.allowed[snap.Host] {
+			out = append(out, snap)
+		}
+	}
+	return out
+}
+
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
@@ -43,21 +107,40 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.Logger.Debug("ws client connected", "remote", r.RemoteAddr)
 	defer h.Logger.Debug("ws client disconnected", "remote", r.RemoteAddr)
 
-	// Detect client-initiated close via a reader goroutine — gorilla's
-	// ReadMessage is the canonical way to surface ping/pong/close frames.
+	sub := &subscription{}
+
+	// Reader goroutine surfaces close/ping AND parses control frames.
+	// We accept text frames as JSON; binary frames are ignored.
 	closed := make(chan struct{})
 	go func() {
 		defer close(closed)
 		for {
-			if _, _, err := conn.NextReader(); err != nil {
+			msgType, data, err := conn.ReadMessage()
+			if err != nil {
 				return
+			}
+			if msgType != websocket.TextMessage {
+				continue
+			}
+			var ctrl api.StreamControl
+			if err := json.Unmarshal(data, &ctrl); err != nil {
+				h.Logger.Debug("ws control parse failed", "err", err, "remote", r.RemoteAddr)
+				continue
+			}
+			switch ctrl.Type {
+			case "subscribe":
+				sub.set(ctrl.Hosts)
+				h.Logger.Debug("ws subscription updated",
+					"remote", r.RemoteAddr, "hosts", ctrl.Hosts)
+			default:
+				h.Logger.Debug("ws unknown control type", "type", ctrl.Type)
 			}
 		}
 	}()
 
 	// Push an initial snapshot immediately so the client doesn't wait a
 	// full tick before seeing data.
-	if err := writeSnapshot(conn, h.Store); err != nil {
+	if err := writeSnapshot(conn, h.Store, sub); err != nil {
 		return
 	}
 
@@ -71,16 +154,17 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		case <-closed:
 			return
 		case <-t.C:
-			if err := writeSnapshot(conn, h.Store); err != nil {
+			if err := writeSnapshot(conn, h.Store, sub); err != nil {
 				return
 			}
 		}
 	}
 }
 
-func writeSnapshot(conn *websocket.Conn, s *store.Store) error {
+func writeSnapshot(conn *websocket.Conn, s *store.Store, sub *subscription) error {
 	if err := conn.SetWriteDeadline(time.Now().Add(5 * time.Second)); err != nil {
 		return err
 	}
-	return conn.WriteJSON(s.Snapshot())
+	snaps := sub.filter(s.Snapshot())
+	return conn.WriteJSON(snaps)
 }

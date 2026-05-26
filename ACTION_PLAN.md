@@ -89,6 +89,9 @@ Mỗi quyết định ghi 1 dòng. Không xóa, không sửa — nếu đổi ý
 | 2026-05-26 | Hub install = self-contained tarball + idempotent install-hub.sh | Pre-v0.1 the repo is private staging, so no GitHub Releases. Operator runs `make release-hub-tarballs` on a build box → `lumen-hub-linux-<arch>.tar.gz` (5 MB) holds binary + install.sh + systemd unit + env template + README. install.sh creates `lumen` system user, /etc/lumen (640 root:lumen), /var/lib/lumen (lumen:lumen), generates LUMEN_HUB_SECRET, drops the systemd unit, enables it. Re-runnable for in-place upgrades. `--purge` for clean wipe. Verified end-to-end in fresh Debian:12 container. |
 | 2026-05-26 | Settings = key/value table; env seeds defaults on first read | New `settings` table (migration 0005) holds runtime-mutable knobs. Env vars (LUMEN_HUB_RETENTION_*) seed rows on first boot; once a row exists the UI value wins (env becomes inert). Pattern extends to future user-prefs without schema churn. |
 | 2026-05-26 | Retention loop = heartbeat-driven, not ticker-locked | Original design used `time.NewTicker(currentInterval)` — meant a UI change to interval only applied AFTER the old interval elapsed (up to 1h). Refactored to a 30s heartbeat that reads settings each tick + tracks `lastSweep`; sweep fires when `time.Since(lastSweep) >= interval`. UI changes apply within ≤30s instead of ≤1h. Cost: one SELECT per 30s — negligible. |
+| 2026-05-26 | Agent offline buffer = bbolt (single-file embedded KV) | Need durable FIFO across agent restart + hub outage; SQLite would pull migrations + a goroutine for one bucket of bytes. bbolt: single ~150-line wrapper, no schema, mmap-backed, file lock prevents two agents stomping the same path. Key = `[ts-nano BE][seq BE]` so range scans drain in capture order; value = JSON envelope. Default cap 24h × 5s ticks ≈ 17k rows. Compose mounts `lumen-agent-data:/data`; systemd installer carves `ReadWritePaths=/var/lib/lumen-agent`. |
+| 2026-05-26 | Hub ingest persistence = batch flush ring (60s) | Per-ingest INSERT = one fsync per ingest under WAL+synchronous=NORMAL. At 200 hosts × 5s = 40 fsyncs/s on the homelab HDD. Switched ingest to enqueue into an in-memory channel (queue 10k); a single goroutine flushes every 60s (or 5000 rows, whichever first) in one transaction with a prepared INSERT. Worst-case loss on hub crash = one flush interval — agent's bbolt buffer replays it on reconnect, so the failure mode is "delayed write" not "data lost." Hot path (in-memory store + WS broadcast) unchanged. |
+| 2026-05-26 | WS stream = optional subscribe filter, default firehose | Phase 1 broadcasts every host to every WS client. HostDetail only cares about one host; on a 200-host fleet that's 99.5% wasted bandwidth. Added `{"type":"subscribe","hosts":["..."]}` control frame; the special host `*` reverts to firehose. Empty or no message = firehose (old web builds keep working). Mutex-protected `allowed` map filters in `writeSnapshot`. Per-conn state, no shared registry. |
 
 ---
 
@@ -195,9 +198,9 @@ Mỗi quyết định ghi 1 dòng. Không xóa, không sửa — nếu đổi ý
 - [x] Hosts CRUD + token generation (lum_… one-shot; SHA-256 hash stored; rotate; delete; ingest validates and overwrites body.host)
 - [x] SQLite schema migration framework (pressly/goose v3, embedded migrations, WAL pragmas)
 - [x] Per-host CPU ring buffer in-memory (120 samples, ships on WS)
-- [ ] Batch flush ring → SQLite mỗi 60s (currently every ingest is a sync INSERT — fine for spike load; batching is an optimization)
+- [x] Batch flush ring → SQLite mỗi 60s (coalesce N INSERTs into one tx; flush_size=5000; final flush on shutdown). HDD-friendly wedge — cuts fsync pressure ~100× at fleet scale.
 - [x] Query API: `GET /api/hosts/:id/metrics?from&to&step` (SQLite AVG buckets, auto-step, capped at 2000 points / 7d window)
-- [ ] WS subscribe/unsubscribe protocol (currently broadcasts everything to everyone)
+- [x] WS subscribe/unsubscribe protocol — client → server `{"type":"subscribe","hosts":["a","b"]}`; `["*"]` reverts to firehose; empty/no-message keeps Phase 1 behavior. HostDetail subscribes to its single host on open.
 - [x] Retention task (default 1h sweep, delete snapshots older than 24h; `LUMEN_HUB_RETENTION_{WINDOW,INTERVAL}`)
 - [x] Settings page: retention (window/interval — UI changes apply within 30s via heartbeat), password change (current+new+confirm, Argon2id rehash)
 
@@ -205,7 +208,7 @@ Mỗi quyết định ghi 1 dòng. Không xóa, không sửa — nếu đổi ý
 - [x] Host collector: CPU%, RAM%, Swap%, Disk%, load1/5/15 (gopsutil v4)
 - [x] Per-core CPU + disk I/O + network throughput + temperature (rate-from-cumulative state in `collector.Rates`; temperature picker prefers coretemp/k10temp)
 - [x] Docker collector (Engine API, minimal stdlib unix-socket client — no docker/docker SDK). Lists running + stopped containers, computes per-container CPU% (delta) + memory used/limit. Live-only, not persisted. Warns once on macOS Docker Desktop when socket sharing is disabled.
-- [ ] Local BoltDB buffer cho offline
+- [x] Local bbolt buffer cho offline — `internal/agent/buffer`; default cap 24h × 5s ticks (~17k rows); replays gradually (10 frames per successful tick) so a backlog drains without thundering herd. Corruption-tolerant: bad file renamed `.corrupt-<unix>` and a fresh DB is opened.
 - [ ] Config file YAML + env override (currently env-only via godotenv)
 - [x] Systemd service file (`deploy/systemd/lumen-agent.service` — hardened nonroot-ish, runs as root for /proc + /sys + docker.sock)
 - [x] Install script `<hub>/install.sh` (already shipped earlier — hub serves it w/ baked-in URL + binaries)

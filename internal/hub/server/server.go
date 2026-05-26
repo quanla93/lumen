@@ -36,6 +36,8 @@ type Config struct {
 	Secret            []byte
 	RetentionWindow   time.Duration // snapshots older than now-Window are pruned; <=0 disables
 	RetentionInterval time.Duration // sweep cadence; <=0 disables
+	BatchFlushEvery   time.Duration // coalesced INSERT cadence; <=0 → 60s default
+	BatchFlushSize    int           // flush early once pending hits this; <=0 → 5000
 	AdminUsername     string        // env-seeded admin; empty disables seed
 	AdminPassword     string        // plaintext at boot, hashed via Argon2id before insert
 	Logger            *slog.Logger
@@ -77,8 +79,24 @@ func Run(ctx context.Context, cfg Config) error {
 		Logger:          logger.With("subsys", "retention"),
 	})
 
+	// Batch flush ring: ingest pushes snapshots into the channel here,
+	// the goroutine coalesces them into one transaction per FlushEvery.
+	// Lifecycle is tied to ctx — on shutdown Run() performs a final
+	// flush so in-flight rows survive a SIGTERM.
+	batcher := storage.NewBatcher(storage.BatcherConfig{
+		DB:            db,
+		FlushInterval: cfg.BatchFlushEvery,
+		FlushSize:     cfg.BatchFlushSize,
+		Logger:        logger.With("subsys", "batcher"),
+	})
+	batcherDone := make(chan struct{})
+	go func() {
+		defer close(batcherDone)
+		batcher.Run(ctx)
+	}()
+
 	st := store.New()
-	ingestHandler := ingest.New(st, db, logger)
+	ingestHandler := ingest.New(st, db, batcher, logger)
 	streamHandler := stream.New(st, logger, cfg.StreamInterval)
 	authHandlers := auth.NewHandlers(db, cfg.Secret, logger)
 	hostsHandlers := hosts.NewHandlers(db, st, logger)
@@ -162,6 +180,14 @@ func Run(ctx context.Context, cfg Config) error {
 	defer cancel()
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		return err
+	}
+	// Wait for the batcher's final flush so the SQLite file is
+	// consistent before the process exits. Bounded by the same
+	// shutdown deadline as the HTTP server.
+	select {
+	case <-batcherDone:
+	case <-shutdownCtx.Done():
+		logger.Warn("batcher did not drain within shutdown deadline — last batch may be lost")
 	}
 	logger.Info("hub stopped")
 	return nil

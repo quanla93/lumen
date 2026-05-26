@@ -88,6 +88,15 @@ export function HostDetail({
   useEffect(() => {
     const scheme = window.location.protocol === "https:" ? "wss" : "ws";
     const ws = new WebSocket(`${scheme}://${window.location.host}/api/stream`);
+    // Narrow the firehose to just this host once the socket opens.
+    // The hub falls back to broadcasting everything if we never send
+    // a subscribe frame, so the dashboard view (no subscribe) keeps
+    // working unchanged. See internal/hub/stream/handler.go.
+    ws.addEventListener("open", () => {
+      try {
+        ws.send(JSON.stringify({ type: "subscribe", hosts: [hostName] }));
+      } catch { /* socket may have closed in the meantime */ }
+    });
     ws.addEventListener("message", (e) => {
       try {
         const arr = JSON.parse(e.data as string) as Snapshot[];

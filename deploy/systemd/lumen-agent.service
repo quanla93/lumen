@@ -32,5 +32,9 @@ PrivateTmp=true
 MemoryMax=128M
 TasksMax=64
 
+# Persistent offline queue. agent.env can override LUMEN_AGENT_BUFFER_PATH
+# but the default points here so the bbolt file survives restarts.
+ReadWritePaths=/var/lib/lumen-agent
+
 [Install]
 WantedBy=multi-user.target

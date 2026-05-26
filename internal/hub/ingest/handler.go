@@ -16,14 +16,21 @@ import (
 	"github.com/lumenhq/lumen/internal/shared/api"
 )
 
+// SnapshotSink absorbs snapshots into the persistent layer. The hub
+// uses storage.Batcher (coalesced 60s flushes); tests inject a stub.
+type SnapshotSink interface {
+	Add(api.HostSnapshot)
+}
+
 type Handler struct {
 	Store  *store.Store
 	DB     *sql.DB
+	Sink   SnapshotSink // nil => synchronous per-row insert (kept as fallback)
 	Logger *slog.Logger
 }
 
-func New(s *store.Store, db *sql.DB, logger *slog.Logger) *Handler {
-	return &Handler{Store: s, DB: db, Logger: logger}
+func New(s *store.Store, db *sql.DB, sink SnapshotSink, logger *slog.Logger) *Handler {
+	return &Handler{Store: s, DB: db, Sink: sink, Logger: logger}
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -87,9 +94,16 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// In-memory store extends the per-host CpuSeries ring on top of these fields.
 	h.Store.Put(snap)
 
-	// Best-effort archive: SQLite failures are logged but don't fail the
-	// ingest (the client already got a usable result via the in-memory store).
-	if h.DB != nil {
+	// Archive path. Two modes:
+	//   - Sink set (production): non-blocking enqueue into the batcher;
+	//     a flush every FlushInterval coalesces hundreds of rows into
+	//     one transaction (HDD-friendly, see internal/hub/storage/batcher).
+	//   - Sink nil (tests / single-host dev): fall back to the original
+	//     synchronous INSERT so unit tests that read SQLite immediately
+	//     after an ingest don't have to wait for a flush tick.
+	if h.Sink != nil {
+		h.Sink.Add(snap)
+	} else if h.DB != nil {
 		if id, err := storage.InsertSnapshot(r.Context(), h.DB, snap); err != nil {
 			h.Logger.Warn("snapshot persist failed", "err", err, "host", snap.Host)
 		} else {

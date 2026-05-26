@@ -59,6 +59,21 @@ type IngestRequest struct {
 	Containers []ContainerInfo `json:"containers,omitempty"`
 }
 
+// StreamControl is a client → server message on /api/stream. Today only
+// one verb exists; the wrapper struct exists so we can grow the
+// protocol (acks, pings, server-side filters) without breaking
+// existing clients.
+//
+//	{"type":"subscribe","hosts":["webA","webB"]}  // filter to these
+//	{"type":"subscribe","hosts":["*"]}            // unfiltered (default)
+//
+// A connection that never sends a control frame stays in the default
+// "all hosts" mode — older web builds keep working with no changes.
+type StreamControl struct {
+	Type  string   `json:"type"`
+	Hosts []string `json:"hosts,omitempty"`
+}
+
 // HostSnapshot is the latest known state of a single host as held by the hub.
 // CpuSeries is the recent CPU history (oldest first) the hub kept in its
 // per-host ring buffer; clients use it to draw sparklines without a
