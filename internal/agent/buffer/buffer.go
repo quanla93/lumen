@@ -43,6 +43,7 @@ import (
 	"time"
 
 	"go.etcd.io/bbolt"
+	bbolterrors "go.etcd.io/bbolt/errors"
 
 	"github.com/lumenhq/lumen/internal/shared/api"
 )
@@ -130,7 +131,7 @@ func openWithCorruptionGuard(path string, logger *slog.Logger) (*bbolt.DB, error
 	if err == nil {
 		return db, nil
 	}
-	if !errors.Is(err, bbolt.ErrInvalid) && !errors.Is(err, bbolt.ErrVersionMismatch) {
+	if !errors.Is(err, bbolterrors.ErrInvalid) && !errors.Is(err, bbolterrors.ErrVersionMismatch) {
 		return nil, fmt.Errorf("bbolt open: %w", err)
 	}
 	dst := fmt.Sprintf("%s.corrupt-%d", path, time.Now().Unix())

@@ -26,7 +26,9 @@ jobs:
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v6
         with:
-          version: latest
+          # Pinned so a future golangci-lint release can't break CI on
+          # a quiet day. Bump when adopting a new lint rule.
+          version: v2.12.2
           args: --timeout=5m
 
   lint-web:

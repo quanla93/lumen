@@ -49,7 +49,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// affordance and is now closed.
 	hdr := r.Header.Get("Authorization")
 	if !strings.HasPrefix(hdr, "Bearer ") {
-		writeErr(w, http.StatusUnauthorized, errors.New("Authorization: Bearer <token> required"))
+		writeErr(w, http.StatusUnauthorized, errors.New("missing or malformed Authorization: Bearer <token> header"))
 		return
 	}
 	token := strings.TrimPrefix(hdr, "Bearer ")
