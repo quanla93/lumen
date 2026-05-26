@@ -1,12 +1,21 @@
 name: CodeQL
 
+# Manual-only until either:
+#   (a) the repo flips to public (CodeQL is free on public repos), or
+#   (b) GitHub Advanced Security is enabled on this private repo.
+#
+# Until then, the analyze step ends with "Code scanning is not
+# enabled for this repository" — a repo-settings failure, not a
+# code failure. Running on every push painted the Actions tab red
+# without telling us anything actionable; switching to manual
+# dispatch keeps the workflow file around for the day code
+# scanning becomes available.
+#
+# To run on demand: gh workflow run CodeQL  (or click "Run workflow"
+# in the GitHub UI). To re-enable on push, add the `push:` /
+# `pull_request:` / `schedule:` triggers back.
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
-  schedule:
-    - cron: "30 1 * * 0"
+  workflow_dispatch:
 
 permissions:
   actions: read
