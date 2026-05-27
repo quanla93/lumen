@@ -31,6 +31,32 @@ func New(hubURL, token string) *Sender {
 	}
 }
 
+// FetchPolicy gets runtime operator policy from the hub. It is best-effort;
+// callers should keep their current local config if this fails.
+func (s *Sender) FetchPolicy(ctx context.Context) (api.AgentPolicyResponse, error) {
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, s.HubURL+"/api/agent/policy", nil)
+	if err != nil {
+		return api.AgentPolicyResponse{}, fmt.Errorf("build policy request: %w", err)
+	}
+	if s.Token != "" {
+		httpReq.Header.Set("Authorization", "Bearer "+s.Token)
+	}
+	resp, err := s.HTTP.Do(httpReq)
+	if err != nil {
+		return api.AgentPolicyResponse{}, fmt.Errorf("get policy: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		return api.AgentPolicyResponse{}, fmt.Errorf("hub returned %d: %s", resp.StatusCode, bytes.TrimSpace(snippet))
+	}
+	var out api.AgentPolicyResponse
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return api.AgentPolicyResponse{}, fmt.Errorf("decode policy: %w", err)
+	}
+	return out, nil
+}
+
 // Send POSTs one ingest envelope to the hub.
 func (s *Sender) Send(ctx context.Context, req api.IngestRequest) error {
 	body, err := json.Marshal(req)

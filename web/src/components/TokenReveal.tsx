@@ -36,7 +36,8 @@ export function TokenReveal({
   const safeHostName = hostName.replace(/[^A-Za-z0-9_.-]/g, "-");
 
   const oneLiner = `curl -fsSL ${hubUrl}/install.sh | sudo bash -s -- --token ${token} --host ${hostName}`;
-  const dockerRun = `docker run -d --name lumen-agent-${safeHostName} --restart unless-stopped -e LUMEN_HUB_URL=${dockerHubUrl} -e LUMEN_AGENT_TOKEN=${token} -e LUMEN_AGENT_HOST=${hostName} -e LUMEN_AGENT_INTERVAL=5s -e LUMEN_AGENT_BUFFER_PATH=/data/buffer.db -v lumen-agent-${safeHostName}-data:/data -v /var/run/docker.sock:/var/run/docker.sock:ro --user 0:0 lumen-agent:dev`;
+  const agentImage = "ghcr.io/quanla93/lumen-agent:latest";
+  const dockerRun = `docker run -d --pull always --name lumen-agent-${safeHostName} --restart unless-stopped -e LUMEN_HUB_URL=${dockerHubUrl} -e LUMEN_AGENT_TOKEN=${token} -e LUMEN_AGENT_HOST=${hostName} -e LUMEN_AGENT_INTERVAL=5s -e LUMEN_AGENT_BUFFER_PATH=/data/buffer.db -v lumen-agent-${safeHostName}-data:/data -v /var/run/docker.sock:/var/run/docker.sock:ro --user 0:0 ${agentImage}`;
   const envSnippet = `LUMEN_HUB_URL=${hubUrl}\nLUMEN_AGENT_TOKEN=${token}\nLUMEN_AGENT_HOST=${hostName}`;
 
   async function copy(text: string, which: "token" | "oneliner" | "docker" | "env") {
@@ -96,7 +97,8 @@ export function TokenReveal({
         </div>
         <pre className="text-xs font-mono bg-[color:var(--color-card)] border border-[color:var(--color-border)] rounded p-3 overflow-x-auto whitespace-pre-wrap">{dockerRun}</pre>
         <p className="text-xs text-[color:var(--color-muted)] mt-2">
-          Use this when the target host already runs Docker. If the hub is on the
+          Use this when the target host already runs Docker. The command pulls
+          the latest published agent image before starting. If the hub is on the
           host machine but the agent runs in Docker Desktop, use <code>host.docker.internal</code>
           as the hub hostname.
         </p>

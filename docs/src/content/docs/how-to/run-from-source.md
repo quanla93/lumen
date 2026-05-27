@@ -188,6 +188,7 @@ All knobs live in `.env`. Defaults shown.
 | `LUMEN_HUB_SECRET` | _random per startup_ | Hex-encoded HMAC secret for session JWTs (>=64 hex chars). If unset, hub generates one at boot and **all sessions die on restart** — set this in prod. Generate with `openssl rand -hex 32`. |
 | `LUMEN_HUB_RETENTION_WINDOW` | `24h` | Snapshots older than `now − WINDOW` are pruned on every sweep. Set to `0` to disable. |
 | `LUMEN_HUB_RETENTION_INTERVAL` | `1h` | Retention sweep cadence. Set to `0` to disable. |
+| `LUMEN_HUB_AGENT_INTERVAL` | `5s` | Runtime policy for agent collection cadence. Seeds the DB on first hub startup; later edits happen in Settings → Runtime. |
 | `LUMEN_HUB_ADMIN_USERNAME` | _empty_ | Seed admin username. On every boot, if this user doesn't exist yet, the hub creates it with the password below. Existing users are left alone — passwords changed via UI survive restart. |
 | `LUMEN_HUB_ADMIN_PASSWORD` | _empty_ | Plaintext password for the seed admin (Argon2id-hashed at write time). Both vars must be set together; both empty disables the seed and you have to register the first admin via the UI. |
 
@@ -196,8 +197,8 @@ All knobs live in `.env`. Defaults shown.
 | Var | Default | Meaning |
 |---|---|---|
 | `LUMEN_HUB_URL` | `http://localhost:8090` | Hub base URL (no trailing slash). |
-| `LUMEN_AGENT_TOKEN` | _empty_ | Per-host bearer token minted in Settings → Hosts. The hub validates the token if present; requests without a token still succeed today (strict-mode is a follow-up). |
-| `LUMEN_AGENT_INTERVAL` | `5s` | How often the agent samples + POSTs. |
+| `LUMEN_AGENT_TOKEN` | _empty_ | Per-host bearer token minted in Settings → Hosts. Required by strict ingest. |
+| `LUMEN_AGENT_INTERVAL` | `5s` | Bootstrap sample interval. After connect, the hub Runtime setting can override it without redeploying the agent. |
 | `LUMEN_AGENT_HOST` | `os.Hostname()` | Override the host identifier. |
 
 ---

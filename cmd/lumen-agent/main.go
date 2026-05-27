@@ -126,7 +126,8 @@ func main() {
 		go runPrune(ctx, buf, logger.With("subsys", "buffer"))
 	}
 
-	t := time.NewTicker(interval)
+	currentInterval := interval
+	t := time.NewTimer(currentInterval)
 	defer t.Stop()
 
 	for {
@@ -137,8 +138,30 @@ func main() {
 		case <-t.C:
 			env := collect(ctx, logger, host, diskPath, dockerSocket, rates)
 			tickOnce(ctx, logger, snd, buf, drainPerTick, env)
+			if next := fetchPolicyInterval(ctx, logger, snd, currentInterval); next != currentInterval {
+				currentInterval = next
+				logger.Info("agent interval updated", "interval", currentInterval)
+			}
+			t.Reset(currentInterval)
 		}
 	}
+}
+
+func fetchPolicyInterval(ctx context.Context, logger *slog.Logger, snd *sender.Sender, current time.Duration) time.Duration {
+	policy, err := snd.FetchPolicy(ctx)
+	if err != nil {
+		logger.Debug("agent policy fetch failed", "err", err)
+		return current
+	}
+	if policy.CollectionInterval == "" {
+		return current
+	}
+	next, err := time.ParseDuration(policy.CollectionInterval)
+	if err != nil || next <= 0 {
+		logger.Warn("agent policy interval invalid", "interval", policy.CollectionInterval, "err", err)
+		return current
+	}
+	return next
 }
 
 // tickOnce ships the current envelope and, if successful, opportunistically

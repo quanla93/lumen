@@ -12,11 +12,12 @@ import { relativeTime } from "@/lib/time";
 import { ErrorText, Field, FieldInput, GhostButton, PrimaryButton } from "@/components/CenterCard";
 import { TokenReveal } from "@/components/TokenReveal";
 
-type SettingsTab = "hosts" | "account" | "retention";
+type SettingsTab = "hosts" | "account" | "runtime" | "retention";
 
 const TABS: { id: SettingsTab; label: string }[] = [
   { id: "hosts",     label: "Hosts" },
   { id: "account",   label: "Account" },
+  { id: "runtime",   label: "Runtime" },
   { id: "retention", label: "Retention" },
 ];
 
@@ -38,6 +39,7 @@ export function Settings({ user }: { user: User }) {
       <div className="pt-2">
         {tab === "hosts"     && <HostsSettings />}
         {tab === "account"   && <AccountSettings user={user} />}
+        {tab === "runtime"   && <RuntimeSettings />}
         {tab === "retention" && <RetentionSettings />}
       </div>
     </div>
@@ -470,6 +472,80 @@ function DurationField({
         </select>
       </div>
     </Field>
+  );
+}
+
+function RuntimeSettings() {
+  const [settings, setSettings] = useState<SettingsResponse | null>(null);
+  const [agentInterval, setAgentInterval] = useState<DurationInput>({ value: "", unit: "s" });
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [savedAt, setSavedAt] = useState<number | null>(null);
+
+  useEffect(() => {
+    settingsApi.get().then((s) => {
+      setSettings(s);
+      setAgentInterval(parseDurationInput(s.agent_interval));
+    }).catch((err) => {
+      setError(err instanceof ApiError ? err.message : String(err));
+    });
+  }, []);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    const nextInterval = formatDurationInput(agentInterval);
+    if (!nextInterval) {
+      setError("Agent interval must be a positive whole number.");
+      return;
+    }
+    setBusy(true);
+    try {
+      const next = await settingsApi.put({ agent_interval: nextInterval });
+      setSettings(next);
+      setAgentInterval(parseDurationInput(next.agent_interval));
+      setSavedAt(Date.now());
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const agentDuration = formatDurationInput(agentInterval);
+  const dirty = !!settings && agentDuration !== settings.agent_interval;
+
+  return (
+    <div className="max-w-md space-y-4">
+      <section>
+        <h2 className="text-base font-semibold tracking-tight mb-3">Runtime</h2>
+        <p className="text-sm text-[color:var(--color-muted)]">
+          Agent collection interval controls how often agents sample host metrics.
+          Running agents apply changes after their next policy refresh.
+        </p>
+      </section>
+
+      {!settings ? (
+        <p className="text-sm text-[color:var(--color-muted)]">Loading…</p>
+      ) : (
+        <form onSubmit={submit} className="space-y-3">
+          <DurationField
+            label="Agent collection interval"
+            value={agentInterval}
+            onChange={setAgentInterval}
+          />
+          {error && <ErrorText message={error} />}
+          {savedAt && !dirty && (
+            <p role="status" className="text-sm text-[color:var(--color-accent)]">
+              Saved {new Date(savedAt).toLocaleTimeString()}.
+            </p>
+          )}
+          <PrimaryButton disabled={busy || !dirty}>
+            {busy ? "Saving…" : "Save"}
+          </PrimaryButton>
+        </form>
+      )}
+    </div>
   );
 }
 

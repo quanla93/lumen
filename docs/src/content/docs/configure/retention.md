@@ -96,9 +96,9 @@ fsync per ingest. Two things you can do further:
 
 **Increase the agent tick interval.**
 
-Default `LUMEN_AGENT_INTERVAL=5s` → 12 writes/min/host. Bumping to
-`30s` cuts writes 6×; charts stay readable but the "now" cell on the
-dashboard lags up to 30s.
+Default agent interval `5s` → 12 writes/min/host. Change it in
+Settings → Runtime; bumping to `30s` cuts writes 6×. Charts stay
+readable but the "now" cell on the dashboard lags up to 30s.
 
 **Tighten the retention window if you don't need a full day.**
 

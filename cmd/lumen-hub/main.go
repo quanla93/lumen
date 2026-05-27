@@ -11,6 +11,7 @@
 //	LUMEN_HUB_INSTALL_DIR         (default "")             - directory holding install.sh + agent binaries; empty disables /install.sh
 //	LUMEN_HUB_RETENTION_WINDOW    (default "24h")          - prune snapshots older than this; "0" disables
 //	LUMEN_HUB_RETENTION_INTERVAL  (default "1h")           - retention sweep cadence; "0" disables
+//	LUMEN_HUB_AGENT_INTERVAL      (default "5s")           - runtime policy for agent collection cadence
 //	LUMEN_HUB_BATCH_FLUSH_EVERY   (default "60s")          - coalesced snapshot-INSERT cadence (HDD-friendly)
 //	LUMEN_HUB_BATCH_FLUSH_SIZE    (default "5000")         - flush early once pending rows hit this count
 //	LUMEN_HUB_ADMIN_USERNAME      (default "")             - seed admin username; both this and password required to enable
@@ -49,6 +50,7 @@ func main() {
 	secretHex := envcfg.String("LUMEN_HUB_SECRET", "")
 	retentionWindow := envcfg.Duration("LUMEN_HUB_RETENTION_WINDOW", 24*time.Hour)
 	retentionInterval := envcfg.Duration("LUMEN_HUB_RETENTION_INTERVAL", 1*time.Hour)
+	agentInterval := envcfg.Duration("LUMEN_HUB_AGENT_INTERVAL", 5*time.Second)
 	batchFlushEvery := envcfg.Duration("LUMEN_HUB_BATCH_FLUSH_EVERY", 60*time.Second)
 	batchFlushSize := envcfg.Int("LUMEN_HUB_BATCH_FLUSH_SIZE", 5000)
 	adminUsername := envcfg.String("LUMEN_HUB_ADMIN_USERNAME", "")
@@ -79,6 +81,7 @@ func main() {
 		Secret:            secret,
 		RetentionWindow:   retentionWindow,
 		RetentionInterval: retentionInterval,
+		AgentInterval:     agentInterval,
 		BatchFlushEvery:   batchFlushEvery,
 		BatchFlushSize:    batchFlushSize,
 		AdminUsername:     adminUsername,

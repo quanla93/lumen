@@ -11,14 +11,16 @@ import (
 )
 
 // Bounds keep operator-changed settings sane. Generous on purpose — the
-// homelab use case spans "5-second test runs" to "1-year retention" but
-// we still want guardrails against the obvious foot-guns (e.g. setting
-// the retention sweep to 1 nanosecond and pegging the disk).
+// homelab use case spans short test runs to year-scale retention, but we
+// still want guardrails against obvious foot-guns like pegging the disk
+// with sub-second policy or retention loops.
 const (
 	MinRetentionWindow   = 5 * time.Minute
 	MaxRetentionWindow   = 365 * 24 * time.Hour
 	MinRetentionInterval = 1 * time.Minute
 	MaxRetentionInterval = 24 * time.Hour
+	MinAgentInterval     = 2 * time.Second
+	MaxAgentInterval     = 1 * time.Hour
 )
 
 type Handlers struct {
@@ -36,6 +38,7 @@ func NewHandlers(db *sql.DB, logger *slog.Logger) *Handlers {
 type settingsView struct {
 	RetentionWindow   string `json:"retention_window"`
 	RetentionInterval string `json:"retention_interval"`
+	AgentInterval     string `json:"agent_interval"`
 }
 
 // GET /api/settings
@@ -50,9 +53,15 @@ func (h *Handlers) Get(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusInternalServerError, "read failed")
 		return
 	}
+	agentInterval, err := Get(r.Context(), h.DB, KeyAgentInterval)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		writeJSONError(w, http.StatusInternalServerError, "read failed")
+		return
+	}
 	writeJSON(w, http.StatusOK, settingsView{
 		RetentionWindow:   win,
 		RetentionInterval: itv,
+		AgentInterval:     agentInterval,
 	})
 }
 
@@ -86,6 +95,14 @@ func (h *Handlers) Put(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if req.AgentInterval != "" {
+		if err := validateDurationBounds(
+			req.AgentInterval, MinAgentInterval, MaxAgentInterval,
+		); err != nil {
+			writeJSONError(w, http.StatusBadRequest, "agent_interval: "+err.Error())
+			return
+		}
+	}
 
 	if req.RetentionWindow != "" {
 		if err := Set(r.Context(), h.DB, KeyRetentionWindow, req.RetentionWindow); err != nil {
@@ -97,6 +114,13 @@ func (h *Handlers) Put(w http.ResponseWriter, r *http.Request) {
 	if req.RetentionInterval != "" {
 		if err := Set(r.Context(), h.DB, KeyRetentionInterval, req.RetentionInterval); err != nil {
 			h.Logger.Error("settings set interval failed", "err", err)
+			writeJSONError(w, http.StatusInternalServerError, "write failed")
+			return
+		}
+	}
+	if req.AgentInterval != "" {
+		if err := Set(r.Context(), h.DB, KeyAgentInterval, req.AgentInterval); err != nil {
+			h.Logger.Error("settings set agent interval failed", "err", err)
 			writeJSONError(w, http.StatusInternalServerError, "write failed")
 			return
 		}

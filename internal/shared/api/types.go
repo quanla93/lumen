@@ -7,6 +7,12 @@ package api
 
 import "time"
 
+// AgentPolicyResponse is returned by the hub control-plane endpoint agents
+// poll to learn runtime operator policy without redeploying.
+type AgentPolicyResponse struct {
+	CollectionInterval string `json:"collection_interval"`
+}
+
 // ContainerInfo is one row of the running-container snapshot the agent
 // ships when the local Docker daemon is reachable. NOT persisted to
 // SQLite (variable cardinality per host, ephemeral by nature) — flows

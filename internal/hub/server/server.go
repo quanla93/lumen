@@ -15,6 +15,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
+	hubagent "github.com/quanla93/lumen/internal/hub/agent"
 	"github.com/quanla93/lumen/internal/hub/auth"
 	"github.com/quanla93/lumen/internal/hub/hosts"
 	"github.com/quanla93/lumen/internal/hub/ingest"
@@ -36,6 +37,7 @@ type Config struct {
 	Secret            []byte
 	RetentionWindow   time.Duration // snapshots older than now-Window are pruned; <=0 disables
 	RetentionInterval time.Duration // sweep cadence; <=0 disables
+	AgentInterval     time.Duration // operator policy for agent collection cadence
 	BatchFlushEvery   time.Duration // coalesced INSERT cadence; <=0 → 60s default
 	BatchFlushSize    int           // flush early once pending hits this; <=0 → 5000
 	AdminUsername     string        // env-seeded admin; empty disables seed
@@ -68,6 +70,7 @@ func Run(ctx context.Context, cfg Config) error {
 	if err := settings.EnsureDefaults(ctx, db, map[string]string{
 		settings.KeyRetentionWindow:   cfg.RetentionWindow.String(),
 		settings.KeyRetentionInterval: cfg.RetentionInterval.String(),
+		settings.KeyAgentInterval:     cfg.AgentInterval.String(),
 	}); err != nil {
 		return fmt.Errorf("seed settings: %w", err)
 	}
@@ -97,6 +100,7 @@ func Run(ctx context.Context, cfg Config) error {
 
 	st := store.New()
 	ingestHandler := ingest.New(st, db, batcher, logger)
+	agentPolicyHandler := hubagent.NewPolicyHandler(db, logger)
 	streamHandler := stream.New(st, logger, cfg.StreamInterval)
 	authHandlers := auth.NewHandlers(db, cfg.Secret, logger)
 	hostsHandlers := hosts.NewHandlers(db, st, logger)
@@ -113,6 +117,7 @@ func Run(ctx context.Context, cfg Config) error {
 
 	r.Get("/healthz", healthz)
 	r.Post("/api/ingest", ingestHandler.ServeHTTP)
+	r.Get("/api/agent/policy", agentPolicyHandler.ServeHTTP)
 	r.Get("/api/stream", streamHandler.ServeHTTP)
 
 	// Public install endpoints — script + agent binaries. Both 503 if the

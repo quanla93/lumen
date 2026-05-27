@@ -3,9 +3,9 @@
 // process. Env vars (LUMEN_HUB_*) act as defaults; once a row exists in
 // the settings table it wins.
 //
-// Today we expose retention window + interval. The same store can hold
-// future per-user-preference keys (e.g. default dashboard sort) without
-// schema changes.
+// Today we expose retention window/interval and agent collection cadence.
+// The same store can hold future per-user-preference keys (e.g. default
+// dashboard sort) without schema changes.
 package settings
 
 import (
@@ -22,6 +22,7 @@ import (
 const (
 	KeyRetentionWindow   = "retention.window"
 	KeyRetentionInterval = "retention.interval"
+	KeyAgentInterval     = "agent.interval"
 )
 
 // Get returns the string value for key, or sql.ErrNoRows if absent.
