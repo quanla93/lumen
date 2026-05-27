@@ -72,6 +72,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, err)
 		return
 	}
+	if err := hosts.UpdateSystemMetadata(r.Context(), h.DB, host.ID, req.System); err != nil {
+		h.Logger.Warn("system metadata update failed", "err", err, "host", host.Name)
+	}
 
 	snap := api.HostSnapshot{
 		Host:       req.Host,
@@ -90,6 +93,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		DiskWBps:   req.DiskWBps,
 		TempC:      req.TempC,
 		Containers: req.Containers,
+		System:     req.System,
 	}
 	// In-memory store extends the per-host CpuSeries ring on top of these fields.
 	h.Store.Put(snap)
@@ -185,6 +189,34 @@ func validate(req *api.IngestRequest) error {
 		if c.MemPct < 0 || c.MemPct > 100 {
 			return fmt.Errorf("containers[%d].mem_pct out of [0,100]", i)
 		}
+	}
+	if err := validateSystemMetadata(req.System); err != nil {
+		return err
+	}
+	return nil
+}
+
+func validateSystemMetadata(meta api.SystemMetadata) error {
+	for _, p := range []struct {
+		name  string
+		value string
+		max   int
+	}{
+		{"system.os", meta.OS, 128},
+		{"system.hostname", meta.Hostname, 128},
+		{"system.primary_ip", meta.PrimaryIP, 64},
+		{"system.kernel", meta.Kernel, 128},
+		{"system.arch", meta.Arch, 32},
+		{"system.cpu_model", meta.CPUModel, 256},
+		{"system.agent_version", meta.AgentVersion, 64},
+	} {
+		if len(p.value) > p.max {
+			return fmt.Errorf("%s too long (>%d)", p.name, p.max)
+		}
+	}
+	const maxUptimeSeconds = 100 * 365 * 24 * 60 * 60
+	if meta.UptimeSeconds > maxUptimeSeconds {
+		return errors.New("system.uptime_seconds too large")
 	}
 	return nil
 }

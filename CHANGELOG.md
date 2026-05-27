@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-05-27
+
+Initial public MVP release.
+
 ### Added
 
 - Phase 0 project bootstrap: README, MIT license, contribution guide, GitHub templates, CI, release workflow, CodeQL workflow, Makefile, docs scaffold, and ADR-0001.
@@ -20,7 +24,3 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Fixed
 
 - golangci-lint CI configuration updated for golangci-lint v2 and the current GitHub Action version.
-
-## [0.1.0] - TBD
-
-Initial public MVP release target.

@@ -43,6 +43,8 @@ import (
 // quiet no-op so env-only setups keep working.
 const defaultConfigPath = "/etc/lumen/agent.yaml"
 
+var version = "dev"
+
 func main() {
 	// Stage 1: load YAML config (if present) BEFORE envcfg so its
 	// fields are visible to envcfg.String/Duration/etc. The file
@@ -136,7 +138,7 @@ func main() {
 			logger.Info("agent stopped")
 			return
 		case <-t.C:
-			env := collect(ctx, logger, host, diskPath, dockerSocket, rates)
+			env := collect(ctx, logger, host, diskPath, dockerSocket, rates, version)
 			tickOnce(ctx, logger, snd, buf, drainPerTick, env)
 			if next := fetchPolicyInterval(ctx, logger, snd, currentInterval); next != currentInterval {
 				currentInterval = next
@@ -239,9 +241,15 @@ func runPrune(ctx context.Context, buf *buffer.Buffer, logger *slog.Logger) {
 // is logged at Warn and contributes a zero value so partial data still ships.
 func collect(
 	ctx context.Context, logger *slog.Logger,
-	host, diskPath, dockerSocket string, rates *collector.Rates,
+	host, diskPath, dockerSocket string, rates *collector.Rates, agentVersion string,
 ) api.IngestRequest {
 	env := api.IngestRequest{Host: host, Ts: time.Now().UTC()}
+	if meta, err := collector.SystemMetadata(ctx, agentVersion); err != nil {
+		logger.Debug("system metadata sample partial", "err", err)
+		env.System = meta
+	} else {
+		env.System = meta
+	}
 
 	if v, err := collector.CPU(ctx, 500*time.Millisecond); err != nil {
 		logger.Warn("cpu sample failed", "err", err)

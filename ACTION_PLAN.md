@@ -48,7 +48,7 @@ Phụ trợ: mobile PWA + Web Push, public status page, bilingual docs.
 - ❌ Không build dashboard builder (Grafana đã có)
 - ❌ Không log aggregation full-text (Loki đã có) — chỉ có tail viewer minimal
 - ❌ Không AI anomaly detection
-- ❌ Không enterprise RBAC phức tạp; SSO self-hosted được phép trong scope giới hạn: custom OIDC là MVP, SAML2 cân nhắc sau OIDC nếu complexity chấp nhận được
+- ❌ Không enterprise RBAC phức tạp; SSO self-hosted được phép trong scope giới hạn nhưng đang deferred: custom OIDC trước, SAML2 cân nhắc sau OIDC nếu complexity chấp nhận được
 - ❌ Không cluster mode cho hub
 - ❌ Không retention >365 ngày
 - ❌ Không telemetry phone-home
@@ -79,8 +79,8 @@ Mỗi quyết định ghi 1 dòng. Không xóa, không sửa — nếu đổi ý
 | 2026-05-25 | Config = env-vars only (LUMEN_*) + .env loader via godotenv | 12-factor: hub/agent are Dockerized services; flags become per-bespoke-binary noise. .env.example documents knobs. CLI flags removed. |
 | 2026-05-25 | WebSocket lib = github.com/gorilla/websocket | Most widely understood, large body of examples, stable v1.5+. coder/websocket is more modern but adds a learning surface for contributors with no spike-time benefit. Easy to swap behind the stream.Handler if needed. |
 | 2026-05-26 | Chart lib = uPlot (vanilla, ~40KB gzipped) | Smallest fast time-series lib for the host detail page. Drives canvas directly; matches the "modern, nhẹ" decision and avoids React-charts pulling in d3. Wrapped in a thin `<UPlotChart/>` so swapping later (recharts, echarts) only touches one file. |
-| 2026-05-26 | History downsampling = SQLite-side AVG by bucket | `strftime('%s', ts) / step * step AS bucket; AVG(...) GROUP BY bucket` runs on the existing `idx_snapshots_host_ts` index. Capped at 2000 points/response and 7-day window; auto-step picks ~120 buckets. Phase 4 swaps this for the Parquet cold tier without changing the wire contract. |
-| 2026-05-26 | Retention = simple time-based DELETE | One goroutine `retention.Run` sweeps every `LUMEN_HUB_RETENTION_INTERVAL` (default 1h) and DELETEs rows older than `LUMEN_HUB_RETENTION_WINDOW` (default 24h). Both env vars accept `0` to disable. Phase 4 replaces this with downsample-and-archive to Parquet. |
+| 2026-05-26 | History downsampling = SQLite-side AVG by bucket | `strftime('%s', ts) / step * step AS bucket; AVG(...) GROUP BY bucket` runs on the existing `idx_snapshots_host_ts` index. Capped at 2000 points/response and 7-day window; auto-step picks ~120 buckets. Phase 5 swaps this for the Parquet cold tier without changing the wire contract. |
+| 2026-05-26 | Retention = simple time-based DELETE | One goroutine `retention.Run` sweeps every `LUMEN_HUB_RETENTION_INTERVAL` (default 1h) and DELETEs rows older than `LUMEN_HUB_RETENTION_WINDOW` (default 24h). Both env vars accept `0` to disable. Phase 5 replaces this with downsample-and-archive to Parquet. |
 | 2026-05-26 | Seed admin = env-bootstrap, idempotent | `LUMEN_HUB_ADMIN_{USERNAME,PASSWORD}` create the admin on first boot (Argon2id). Existing user left alone — UI password changes survive restart. Both empty disables the seed (register-via-UI still works). |
 | 2026-05-26 | Strict bearer-token ingest | `/api/ingest` rejects 401 without `Authorization: Bearer <token>`. Closes the pre-v0.1 anonymous spike hole; token's host name (server-side lookup) overrides body.host so a leaked token can't spoof a different host. |
 | 2026-05-26 | Per-core CPU = live only, not persisted | Variable-cardinality per host. Stored only in the in-memory snapshot; flows through WS to the host detail page's per-core strip. Aggregate `cpu_pct` is what historical buckets average. Avoids a JSON column or a join table for modest pre-v1 value. |
@@ -95,9 +95,11 @@ Mỗi quyết định ghi 1 dòng. Không xóa, không sửa — nếu đổi ý
 | 2026-05-26 | Agent YAML config = sugar over env, not parallel system | YAML file (`/etc/lumen/agent.yaml`) is parsed once at boot and applied to the environment, only setting keys that aren't already in `os.LookupEnv`. The rest of the agent reads its config the same way it always has (envcfg). Reasoning: shipping one /etc/lumen/agent.yaml across a fleet via Ansible/Salt is operator-friendly, but maintaining two parallel config paths (env vs YAML structs) doubles the surface area for nil/zero-value bugs. Process env always wins; missing file is silent; malformed is fatal at boot. |
 | 2026-05-26 | CI/CD = GitHub Actions, no GoReleaser | The repo already produces hub tarballs via `make release-hub-tarballs` (binary + install.sh + unit + env example bundled). GoReleaser would duplicate that logic; replaced its workflow with three jobs that call the existing Make targets, push multi-arch images to ghcr.io via Buildx+QEMU, and use `softprops/action-gh-release` to upload binaries. CI got a Docker-build smoke job so every PR exercises both Dockerfiles; lint-web pinned to actual scripts (`tsc --noEmit` for web, biome for docs with `dist/` ignored). |
 | 2026-05-26 | PWA = minimal vanilla SW, no plugin | Goal is "installable to phone homescreen + paint instantly on cold start," not "full offline app" — live metrics fundamentally need network reachability to the hub. Skipped vite-plugin-pwa to avoid pulling Workbox + its build-time config surface; a 50-line `sw.js` covers cache-first for the shell + network-only for `/api/*` (caching metric snapshots would be misleading). Manifest + 192/512 SVG icons in `web/public/`, registered from `main.tsx` with `if ("serviceWorker" in navigator)` so non-supporting browsers no-op gracefully. |
-| 2026-05-27 | MVP scope += self-hosted SSO + operator customization knobs | User self-hosts SSO and wants Lumen to integrate like other self-hosted services. Custom OIDC is MVP; SAML2 is desired but may land after OIDC depending on complexity. Runtime-configurable retention, agent refresh/collection interval, and Parquet downsample policy are MVP requirements because homelab storage/performance constraints vary. Docker container monitoring remains roadmap/future unless pulled forward explicitly. |
+| 2026-05-27 | MVP scope += operator customization; SSO deferred from immediate queue | User wants Lumen to prioritize configurable agent refresh/collection interval, configurable Parquet downsample policy, product-grade UI polish, and lightweight log management first. Self-hosted SSO remains important (custom OIDC first; SAML2 later if feasible) but moves to a later phase after the current four priorities land. Docker container monitoring remains roadmap/future unless pulled forward explicitly. |
 | 2026-05-27 | DuckDB cold-query layer requires research before commitment | Querying old Parquet data through DuckDB sounds useful, but must be validated for practicality, operational footprint, packaging, memory usage, and whether it should be optional instead of default. Do not treat DuckDB as locked until a feasibility spike/ADR lands. |
 | 2026-05-27 | External data access/export is an official expansion path | Lumen should not assume users only consume data through the built-in web UI. Future API/export surfaces should allow external dashboards such as Grafana to query or ingest monitoring data while Lumen can remain the preferred dashboard for users who want it. |
+| 2026-05-27 | Log management = lightweight on-demand debugging, not Loki | Lumen should support quick incident debugging via hub/agent/systemd/journald/Docker log viewing, but must not become centralized log aggregation or full-text log analytics. Default behavior: admin-only, on-demand last-N/live-tail, no persistence/indexing unless a later RFC explicitly expands scope. |
+| 2026-05-27 | UI polish is a product requirement, not cosmetic cleanup | Lumen must feel like a polished self-hosted monitoring product, not just a technical MVP. Use Beszel as a benchmark for completeness and UX quality without copying its visual identity. Prioritize dashboard, host detail, settings, onboarding, and reusable design components. |
 
 ---
 
@@ -200,8 +202,9 @@ Mỗi quyết định ghi 1 dòng. Không xóa, không sửa — nếu đổi ý
 **Goal**: Đủ feature để 1 user homelab thật dùng được.
 
 #### MVP scope guardrails
-- [ ] Auth supports self-hosted SSO: custom OIDC provider config is required for MVP; SAML2 is desired but can follow OIDC if implementation complexity is too high for the first slice.
+- [ ] Current MVP priority: configurable agent refresh/collection interval, configurable Parquet downsample policy, product-grade UI polish, and lightweight log management scope.
 - [ ] Operator customization is first-class: log retention time, agent refresh/collection interval, and Parquet downsample policy must be configurable instead of hard-coded.
+- [ ] Self-hosted SSO (custom OIDC first, SAML2 later if feasible) is important but moved out of the immediate MVP priority queue until the current four items land.
 - [ ] Docker container monitoring is roadmap/future unless explicitly pulled into MVP; current live-only container visibility can remain as-is.
 
 #### Hub
@@ -214,10 +217,8 @@ Mỗi quyết định ghi 1 dòng. Không xóa, không sửa — nếu đổi ý
 - [x] WS subscribe/unsubscribe protocol — client → server `{"type":"subscribe","hosts":["a","b"]}`; `["*"]` reverts to firehose; empty/no-message keeps Phase 1 behavior. HostDetail subscribes to its single host on open.
 - [x] Retention task (default 1h sweep, delete snapshots older than 24h; `LUMEN_HUB_RETENTION_{WINDOW,INTERVAL}`)
 - [x] Settings page: retention (window/interval — UI changes apply within 30s via heartbeat), password change (current+new+confirm, Argon2id rehash)
-- [ ] Auth: custom OIDC SSO provider config (issuer/client ID/client secret/scopes/redirect URL), with local admin fallback preserved
-- [ ] Auth: evaluate SAML2 after OIDC; implement only if dependency and configuration complexity stay acceptable for homelab/self-hosted use
 - [ ] Settings API: agent refresh/collection interval as a runtime-configurable knob, surfaced to agents without rebuilding/redeploying
-- [ ] Settings API: Parquet downsample policy config (bucket size and hot/cold/archive windows) before Phase 4 cold-tier implementation locks format assumptions
+- [ ] Settings API: Parquet downsample policy config (bucket size and hot/cold/archive windows) before Phase 5 cold-tier implementation locks format assumptions
 
 #### Agent
 - [x] Host collector: CPU%, RAM%, Swap%, Disk%, load1/5/15 (gopsutil v4)
@@ -234,7 +235,7 @@ Mỗi quyết định ghi 1 dòng. Không xóa, không sửa — nếu đổi ý
 - [x] Dark/light mode toggle (class-based, persists in localStorage)
 - [x] Auth UI: Register / Login / Logout + AppShell with tab nav
 - [x] Settings UI: hosts table + create + rotate + delete + one-shot token reveal + .env snippet
-- [ ] Settings UI: configure custom OIDC SSO, retention, agent refresh interval, and Parquet downsample/cold-tier policy from the web app
+- [ ] Settings UI: configure retention, agent refresh interval, and Parquet downsample/cold-tier policy from the web app
 - [x] Host detail page: 6 uPlot charts (CPU%, RAM%, Disk%, load avg, Network rx/tx, Disk I/O r/w) + conditional Temperature chart + per-core CPU live strip (subscribed via WS) + range picker (1h/6h/24h) + auto-refresh every 30s + Containers table (name + state badge + image + CPU + mem usage/limit, sorted running-first, danger highlight at mem ≥ 90%).
 - [x] PWA manifest + service worker — installable to homescreen on mobile; SW caches the app shell (cache-first) but never `/api/*` (network-only). Falls back gracefully on browsers without SW support.
 
@@ -257,7 +258,33 @@ Mỗi quyết định ghi 1 dòng. Không xóa, không sửa — nếu đổi ý
 
 ---
 
-### Phase 3 — v0.2: Proxmox wedge (Week 5-8)
+### Phase 3 — v0.2: Finish MVP priorities (Week 5-8)
+
+**Goal**: Land the four current priorities before expanding the product surface: configurable agent refresh/collection interval, configurable Parquet downsample policy, product-grade UI polish, and lightweight log management scope.
+
+#### Runtime + storage customization
+- [ ] Agent refresh/collection interval: hub setting, API contract, agent polling/apply path, env/YAML bootstrap default, docs
+- [ ] Parquet downsample policy: settings model for bucket size + hot/cold/archive windows, validation rules, UI controls, docs
+
+#### Product-grade UI polish
+- [ ] Design system pass: tokens, typography, spacing, cards, buttons, forms, tables, tabs, badges, empty/loading/error states
+- [ ] App shell redesign: stronger navigation, account menu, responsive/mobile layout, clearer active states
+- [ ] Dashboard redesign: summary strip, better host cards, status grouping, search/filter/sort, improved empty state with add-host CTA
+- [ ] Host detail redesign: header/status block, metric overview cards, chart polish, range selector, loading states, container UX
+- [ ] Settings redesign: structured sections for Hosts, Account, Runtime, Retention, Downsample policy, and future Log management
+
+#### Lightweight log management
+- [ ] Log management RFC: on-demand admin debugging only; no default persistence/indexing/full-text search
+- [ ] Agent log source abstraction: journald/systemd unit logs, Docker container logs, and Lumen agent self logs
+- [ ] Hub API/WS for on-demand log retrieval by host + source + target + line limit/time range
+- [ ] Host detail Logs tab: source selector, target selector, limit presets, refresh, optional live tail, copy/download
+- [ ] Docs: position Lumen log management as quick incident debugging, not a Loki replacement
+
+**Definition of done**: Current four priorities are shipped or have accepted RFCs where implementation must follow a later phase.
+
+---
+
+### Phase 4 — v0.3: Proxmox wedge (Week 9-12)
 
 **Goal**: Ship signature feature — Proxmox-native.
 
@@ -278,14 +305,13 @@ Mỗi quyết định ghi 1 dòng. Không xóa, không sửa — nếu đổi ý
 
 ---
 
-### Phase 4 — v0.3: Cold tier + retention (Week 9-12)
+### Phase 5 — v0.4: Cold tier + retention
 
 - [ ] Parquet writer (parquet-go)
 - [ ] Compaction job: SQLite > configurable hot window → Parquet using configurable downsample bucket/policy
 - [ ] Query layer transparent over SQLite + Parquet
 - [ ] DuckDB feasibility spike + ADR before implementation: validate practicality, packaging, memory footprint, query latency, and whether DuckDB should be optional/default/off by default
 - [ ] Optional DuckDB cold-query layer only if spike confirms it is practical for homelab installs
-- [ ] Retention/downsample config UI: configurable hot/cold/archive windows and Parquet bucket policy
 - [ ] Multi-user (admin + read-only viewer)
 - [ ] TOTP 2FA
 - [ ] Docs: `how-to/reduce-disk-writes-further.md`
@@ -295,17 +321,22 @@ Mỗi quyết định ghi 1 dòng. Không xóa, không sửa — nếu đổi ý
 
 ---
 
-### Phase 5 — v0.4+: Polish & community features
+### Phase 6 — v0.5+: Polish & deferred product features
 
+- [ ] Self-hosted SSO: custom OIDC provider config (issuer/client ID/client secret/scopes/redirect URL), with local admin fallback preserved
+- [ ] SAML2 evaluation after OIDC; implement only if dependency and configuration complexity stay acceptable for homelab/self-hosted use
+- [ ] Backup RFC/UX: local/S3-compatible backup, restore flow, encryption, retention, and whether backup belongs in core or optional module
+- [ ] External data API/export RFC follow-up: Grafana first, auth model, query shape, rate limits, and Prometheus-compatible endpoint vs Grafana datasource plugin vs plain REST
+- [ ] Grafana integration spike follow-up: prove a user can build Grafana dashboards from Lumen monitoring data without using Lumen's web UI
+- [ ] First-run onboarding flow: create admin → add first host → copy agent command → wait for first metrics
 - [ ] Public status page (read-only share)
-- [ ] Log tail viewer (journald + Docker logs, last 500 lines, no search)
 - [ ] Web Push notifications (VAPID)
 - [ ] i18n UI: Vietnamese + English
 - [ ] Translation docs
 
 ---
 
-### Phase 6 — v1.0: Stable
+### Phase 7 — v1.0: Stable
 
 - [ ] API freeze + version (`/api/v1/...`)
 - [ ] Plugin SDK (Go plugin or external binary + JSON protocol)
@@ -341,7 +372,7 @@ Nếu bạn (hoặc Claude) mở session mới:
 > Cập nhật mục này mỗi session.
 
 **Session**: 2026-05-27
-**Đang làm**: Phase 2 closeout ✅. Next: start Phase 3 — Proxmox wedge.
+**Đang làm**: Phase 2 closeout ✅. Next: Phase 3 — finish current MVP priorities (agent refresh interval, Parquet downsample policy, UI polish, lightweight log management).
 **Vừa hoàn thành**:
 - OSS readiness docs: CODE_OF_CONDUCT.md, GOVERNANCE.md, SECURITY.md, SUPPORT.md.
 - CHANGELOG.md initialized with Keep-a-Changelog structure and Unreleased Phase 0-2 summary.
@@ -361,9 +392,10 @@ Nếu bạn (hoặc Claude) mở session mới:
 **Blockers / open questions before public release**:
 - Domain `quanla.org` / GitHub org `lumenhq` chưa register — không block Phase 3 code nhưng nên xử lý trước public release.
 - Discord/community URL chưa có — placeholder trong README.
-- MVP scope just expanded: custom OIDC SSO + configurable retention/agent refresh/Parquet downsample must be scheduled before declaring v0.1.0/public MVP complete.
-- DuckDB cold-query layer is not locked: needs feasibility research/ADR before implementation, including whether it should be optional.
-- External data API/export for Grafana or other dashboards is now a planned expansion path and needs an RFC/spike.
+- Current MVP priority queue is now limited to four items: configurable agent refresh/collection interval, configurable Parquet downsample policy, product-grade UI polish, and lightweight log management scope.
+- Self-hosted SSO, DuckDB, external Grafana/API export, and backup are deferred to later phases/RFCs until the current four priorities land.
+- Log management scope is intentionally lightweight: on-demand admin debugging via hub/agent/systemd/Docker logs, not Loki-style aggregation/search.
+- UI polish is now tracked as a product requirement: benchmark Beszel for UX/completeness, redesign dashboard/host detail/settings without copying Beszel identity.
 
 **Đã verify trên máy dev**:
 - ✅ Node v22.22.0

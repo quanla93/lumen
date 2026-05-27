@@ -23,14 +23,27 @@ type AgentPolicyResponse struct {
 // (used / limit * 100) so the UI doesn't have to guard against
 // limit==0 in every cell.
 type ContainerInfo struct {
-	ID            string  `json:"id"`             // short, 12-char
-	Name          string  `json:"name"`           // leading "/" stripped
+	ID            string  `json:"id"`   // short, 12-char
+	Name          string  `json:"name"` // leading "/" stripped
 	Image         string  `json:"image"`
-	State         string  `json:"state"`          // running, paused, exited, restarting, ...
+	State         string  `json:"state"` // running, paused, exited, restarting, ...
 	CpuPct        float64 `json:"cpu_pct"`
 	MemUsedBytes  uint64  `json:"mem_used_bytes"`
 	MemLimitBytes uint64  `json:"mem_limit_bytes"`
 	MemPct        float64 `json:"mem_pct"`
+}
+
+// SystemMetadata is the latest host/agent identity context. The hub stores
+// only the newest value per host; it is not historical time-series data.
+type SystemMetadata struct {
+	OS            string `json:"os,omitempty"`
+	Hostname      string `json:"hostname,omitempty"`
+	PrimaryIP     string `json:"primary_ip,omitempty"`
+	Kernel        string `json:"kernel,omitempty"`
+	Arch          string `json:"arch,omitempty"`
+	CPUModel      string `json:"cpu_model,omitempty"`
+	UptimeSeconds uint64 `json:"uptime_seconds,omitempty"`
+	AgentVersion  string `json:"agent_version,omitempty"`
 }
 
 // IngestRequest is the body of POST /api/ingest sent by the agent every tick.
@@ -63,6 +76,7 @@ type IngestRequest struct {
 	DiskWBps   float64         `json:"disk_w_bps"`
 	TempC      float64         `json:"temp_c"`
 	Containers []ContainerInfo `json:"containers,omitempty"`
+	System     SystemMetadata  `json:"system,omitempty"`
 }
 
 // StreamControl is a client → server message on /api/stream. Today only
@@ -101,5 +115,6 @@ type HostSnapshot struct {
 	DiskWBps   float64         `json:"disk_w_bps"`
 	TempC      float64         `json:"temp_c"`
 	Containers []ContainerInfo `json:"containers,omitempty"`
+	System     SystemMetadata  `json:"system,omitempty"`
 	CpuSeries  []float64       `json:"cpu_series,omitempty"`
 }

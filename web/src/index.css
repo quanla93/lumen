@@ -76,4 +76,30 @@
   .lumen-w-90  { width: 90%;  }
   .lumen-w-95  { width: 95%;  }
   .lumen-w-100 { width: 100%; }
+
+  .lumen-uplot {
+    position: relative;
+  }
+
+  .lumen-uplot .u-legend {
+    position: absolute;
+    left: 50%;
+    top: 0.25rem;
+    z-index: 2;
+    transform: translateX(-50%);
+    border: 1px solid var(--color-border);
+    border-radius: 0.375rem;
+    background: color-mix(in oklch, var(--color-card) 88%, transparent);
+    color: var(--color-fg);
+    font-size: 0.6875rem;
+    line-height: 1rem;
+    pointer-events: none;
+    white-space: nowrap;
+  }
+
+  .lumen-uplot .u-legend th,
+  .lumen-uplot .u-legend td {
+    padding: 0.125rem 0.375rem;
+  }
 }
+

@@ -3,11 +3,14 @@ import type { AlignedData, Options } from "uplot";
 import {
   hostsApi,
   ApiError,
+  type Host,
   type MetricsResponse,
   type MetricPoint,
 } from "@/lib/api";
 import { UPlotChart } from "@/components/UPlotChart";
 import type { Snapshot, ContainerInfo } from "@/components/HostCard";
+import { type StatusTone } from "@/lib/status";
+import { isStale, relativeTime } from "@/lib/time";
 
 type Range = "1h" | "6h" | "24h";
 
@@ -53,17 +56,24 @@ export function HostDetail({
   onBack: () => void;
 }) {
   const [range, setRange] = useState<Range>("1h");
-  const [hostId, setHostId] = useState<number | null>(null);
+  const [host, setHost] = useState<Host | null>(null);
   const [resp, setResp] = useState<MetricsResponse | null>(null);
   const [live, setLive] = useState<Snapshot | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [now, setNow] = useState(Date.now());
   const reqIdRef = useRef(0);
+  const hostId = host?.id ?? null;
 
   // themeKey changes when the user toggles dark/light. uPlot charts mount
   // their canvas paints with the colors that were active at construction;
   // forcing a key change remounts them with the new palette.
   const themeKey = useThemeKey();
+
+  useEffect(() => {
+    const t = window.setInterval(() => setNow(Date.now()), 1_000);
+    return () => window.clearInterval(t);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -75,7 +85,7 @@ export function HostDetail({
         setLoading(false);
         return;
       }
-      setHostId(match.id);
+      setHost(match);
     }).catch((e) => {
       if (!cancelled) {
         setErr(e instanceof ApiError ? e.message : String(e));
@@ -150,27 +160,14 @@ export function HostDetail({
 
   return (
     <>
-      <div className="mb-6 flex items-center justify-between gap-3 flex-wrap">
-        <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={onBack}
-            className="text-sm rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-card)] px-2.5 py-1.5 hover:bg-[color:var(--color-border)] transition-colors"
-          >
-            ← Dashboard
-          </button>
-          <h2 className="font-mono text-base font-medium tracking-tight">
-            {hostName}
-          </h2>
-        </div>
-        <div className="flex items-center gap-1">
-          {(Object.keys(RANGE_SECONDS) as Range[]).map((r) => (
-            <RangeButton key={r} active={r === range} onClick={() => setRange(r)}>
-              {r}
-            </RangeButton>
-          ))}
-        </div>
-      </div>
+      <HostSummaryHeader
+        host={host}
+        live={live}
+        now={now}
+        range={range}
+        onRangeChange={setRange}
+        onBack={onBack}
+      />
 
       {live?.cpu_per_core && live.cpu_per_core.length > 0 && (
         <PerCoreStrip cores={live.cpu_per_core} />
@@ -202,7 +199,7 @@ export function HostDetail({
             <UPlotChart
               key={`cpu-${themeKey}`}
               data={data.cpu}
-              options={percentOpts(COLOR.cpu)}
+              options={percentOpts(COLOR.cpu, "cpu")}
               className="h-[220px] w-full"
             />
           </ChartCard>
@@ -213,7 +210,7 @@ export function HostDetail({
             <UPlotChart
               key={`ram-${themeKey}`}
               data={data.ram}
-              options={percentOpts(COLOR.ram)}
+              options={percentOpts(COLOR.ram, "ram")}
               className="h-[220px] w-full"
             />
           </ChartCard>
@@ -224,7 +221,7 @@ export function HostDetail({
             <UPlotChart
               key={`disk-${themeKey}`}
               data={data.disk}
-              options={percentOpts(COLOR.disk)}
+              options={percentOpts(COLOR.disk, "disk")}
               className="h-[220px] w-full"
             />
           </ChartCard>
@@ -253,7 +250,7 @@ export function HostDetail({
             <UPlotChart
               key={`net-${themeKey}`}
               data={data.net}
-              options={bpsOpts([COLOR.netRx, COLOR.netTx])}
+              options={bpsOpts(["download", "upload"], [COLOR.netRx, COLOR.netTx])}
               className="h-[220px] w-full"
             />
           </ChartCard>
@@ -267,7 +264,7 @@ export function HostDetail({
             <UPlotChart
               key={`dio-${themeKey}`}
               data={data.diskIO}
-              options={bpsOpts([COLOR.diskR, COLOR.diskW])}
+              options={bpsOpts(["read", "write"], [COLOR.diskR, COLOR.diskW])}
               className="h-[220px] w-full"
             />
           </ChartCard>
@@ -299,6 +296,218 @@ export function HostDetail({
       )}
     </>
   );
+}
+
+function HostSummaryHeader({
+  host,
+  live,
+  now,
+  range,
+  onRangeChange,
+  onBack,
+}: {
+  host: Host | null;
+  live: Snapshot | null;
+  now: number;
+  range: Range;
+  onRangeChange: (range: Range) => void;
+  onBack: () => void;
+}) {
+  const lastSeen = live?.ts ?? host?.last_seen_at ?? null;
+  const stale = live ? isStale(live.ts, undefined, now) : true;
+  const status: { label: string; tone: StatusTone } = live && !stale
+    ? { label: "Up", tone: "ok" }
+    : lastSeen
+    ? { label: "Stale", tone: "warn" }
+    : { label: "Waiting", tone: "muted" };
+  const system = live?.system ?? host?.system;
+  const [rangeOpen, setRangeOpen] = useState(false);
+  const rangeMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!rangeOpen) return;
+    const onPointerDown = (e: PointerEvent) => {
+      if (!rangeMenuRef.current?.contains(e.target as Node)) {
+        setRangeOpen(false);
+      }
+    };
+    window.addEventListener("pointerdown", onPointerDown);
+    return () => window.removeEventListener("pointerdown", onPointerDown);
+  }, [rangeOpen]);
+
+  return (
+    <section className="mb-4 rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-card)] px-6 py-5 shadow-sm">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <button
+          type="button"
+          onClick={onBack}
+          className="min-w-0 text-left"
+          title="Back to dashboard"
+        >
+          <h2 className="truncate text-2xl font-bold tracking-tight">
+            {host?.name ?? live?.host ?? "Resolving host…"}
+          </h2>
+          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-[color:var(--color-muted)]">
+            <MetaItem icon={<StatusIcon tone={status.tone} />} text={status.label} strong />
+            <SystemMetaLine system={system} lastSeen={lastSeen} now={now} />
+          </div>
+        </button>
+        <div className="flex shrink-0 items-center gap-2">
+          <div ref={rangeMenuRef} className="relative">
+            <button
+              type="button"
+              onClick={() => setRangeOpen((open) => !open)}
+              className="inline-flex items-center rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-3 py-2 text-sm hover:bg-[color:var(--color-border)] transition-colors"
+              title="Time range"
+            >
+              <ClockIcon />
+              <span className="ml-2 min-w-[58px] text-left">{rangeLabel(range)}</span>
+              <ChevronDownIcon />
+            </button>
+            {rangeOpen && (
+              <div className="absolute right-0 z-20 mt-2 min-w-[132px] overflow-hidden rounded-lg border border-[color:var(--color-border)] bg-[color:var(--color-card)] shadow-lg">
+                {(Object.keys(RANGE_SECONDS) as Range[]).map((r) => (
+                  <button
+                    key={r}
+                    type="button"
+                    onClick={() => {
+                      onRangeChange(r);
+                      setRangeOpen(false);
+                    }}
+                    className={`block w-full px-3 py-2 text-left text-sm transition-colors ${r === range ? "bg-[color:var(--color-border)] text-[color:var(--color-fg)]" : "text-[color:var(--color-muted)] hover:bg-[color:var(--color-border)] hover:text-[color:var(--color-fg)]"}`}
+                  >
+                    {rangeLabel(r)}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          <button
+            type="button"
+            className="rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-3 py-2 text-lg leading-none hover:bg-[color:var(--color-border)] transition-colors"
+            title="Layout"
+          >
+            ⊞
+          </button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function SystemMetaLine({
+  system,
+  lastSeen,
+  now,
+}: {
+  system?: Host["system"] | Snapshot["system"];
+  lastSeen: string | null;
+  now: number;
+}) {
+  const uptime = formatUptime(system?.uptime_seconds);
+  const endpoint = system?.primary_ip ?? system?.hostname ?? null;
+  const items: Array<{ icon: React.ReactNode; text: string }> = [];
+  if (endpoint) items.push({ icon: <GlobeIcon />, text: endpoint });
+  if (system?.os) items.push({ icon: <MonitorIcon />, text: system.os });
+  if (uptime) items.push({ icon: <UptimeIcon />, text: uptime });
+  if (!system && lastSeen) {
+    items.push({ icon: <ClockIcon />, text: `last seen ${relativeTime(lastSeen, now)}` });
+  }
+
+  if (items.length === 0) return null;
+
+  return (
+    <>
+      {items.map((item) => (
+        <MetaItem key={item.text} icon={item.icon} text={item.text} />
+      ))}
+    </>
+  );
+}
+
+function MetaItem({
+  icon,
+  text,
+  strong,
+}: {
+  icon: React.ReactNode;
+  text: string;
+  strong?: boolean;
+}) {
+  return (
+    <span className={`inline-flex min-w-0 items-center gap-1.5 ${strong ? "text-[color:var(--color-fg)]" : ""}`}>
+      {icon}
+      <span className="max-w-[320px] truncate" title={text}>{text}</span>
+    </span>
+  );
+}
+
+function StatusIcon({ tone }: { tone: StatusTone }) {
+  const color = tone === "ok" ? "text-[color:var(--color-accent)]" : tone === "warn" ? "text-[color:var(--color-warn)]" : "text-[color:var(--color-muted)]";
+  return (
+    <svg aria-hidden className={`h-4 w-4 ${color}`} viewBox="0 0 16 16" fill="currentColor">
+      <circle cx="8" cy="8" r="5" />
+    </svg>
+  );
+}
+
+function ClockIcon() {
+  return (
+    <svg aria-hidden className="h-4 w-4 text-[color:var(--color-muted)]" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <circle cx="8" cy="8" r="5.5" />
+      <path d="M8 4.5V8l2.25 1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function ChevronDownIcon() {
+  return (
+    <svg aria-hidden className="pointer-events-none absolute right-3 h-4 w-4 text-[color:var(--color-muted)]" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <path d="m4.5 6.25 3.5 3.5 3.5-3.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function GlobeIcon() {
+  return (
+    <svg aria-hidden className="h-4 w-4 text-[color:var(--color-muted)]" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <circle cx="8" cy="8" r="5.5" />
+      <path d="M2.5 8h11M8 2.5c1.4 1.5 2.1 3.3 2.1 5.5S9.4 12 8 13.5M8 2.5C6.6 4 5.9 5.8 5.9 8s.7 4 2.1 5.5" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function MonitorIcon() {
+  return (
+    <svg aria-hidden className="h-4 w-4 text-[color:var(--color-muted)]" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <rect x="2.5" y="3" width="11" height="7.5" rx="1.5" />
+      <path d="M6.25 13h3.5M8 10.5V13" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function UptimeIcon() {
+  return (
+    <svg aria-hidden className="h-4 w-4 text-[color:var(--color-muted)]" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <path d="M8 2.5v3M5.5 3.25a5.5 5.5 0 1 0 5 0" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function rangeLabel(range: Range): string {
+  if (range === "1h") return "1 hour";
+  if (range === "6h") return "6 hours";
+  return "24 hours";
+}
+
+function formatUptime(seconds?: number): string | null {
+  if (!seconds || seconds < 0) return null;
+  const days = Math.floor(seconds / 86_400);
+  const hours = Math.floor((seconds % 86_400) / 3_600);
+  const minutes = Math.floor((seconds % 3_600) / 60);
+  if (days > 0) return `${days}d ${hours}h`;
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  return `${minutes}m`;
 }
 
 // ContainersTable lists every Docker container the agent reported in the
@@ -555,31 +764,6 @@ function swatch(color: string, text: string) {
   );
 }
 
-function RangeButton({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  const base = "px-2.5 py-1 text-xs rounded-md transition-colors";
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={
-        active
-          ? `${base} bg-[color:var(--color-border)] text-[color:var(--color-fg)]`
-          : `${base} text-[color:var(--color-muted)] hover:text-[color:var(--color-fg)] hover:bg-[color:var(--color-border)]`
-      }
-    >
-      {children}
-    </button>
-  );
-}
-
 function buildSeries(r: MetricsResponse | null) {
   if (!r || r.points.length === 0) {
     const empty: AlignedData = [[]];
@@ -628,14 +812,24 @@ function baseAxes(yValues?: (u: uPlot, vals: number[]) => string[], leftSize = 5
   ];
 }
 
-function percentOpts(color: string): Omit<Options, "width" | "height"> {
+function legend() {
+  return {
+    show: true,
+    live: true,
+    markers: { show: true },
+  };
+}
+
+function percentOpts(color: string, label: string): Omit<Options, "width" | "height"> {
   return {
     scales: { y: { range: [0, 100] } },
     axes: baseAxes((_u, vals) => vals.map((v) => `${v}%`), 44),
-    legend: { show: false },
+    legend: legend(),
     series: [
       {},
       {
+        label,
+        value: (_u, v) => v == null ? "—" : `${v.toFixed(1)}%`,
         stroke: color,
         width: 1.75,
         fill: color.replace(/^oklch\((\d+)%/, "oklch($1% / 0.14)"),
@@ -648,24 +842,24 @@ function percentOpts(color: string): Omit<Options, "width" | "height"> {
 function loadOpts(): Omit<Options, "width" | "height"> {
   return {
     axes: baseAxes(undefined, 44),
-    legend: { show: false },
+    legend: legend(),
     series: [
       {},
-      { stroke: COLOR.load1,  width: 1.75, points: { show: false } },
-      { stroke: COLOR.load5,  width: 1.5,  points: { show: false } },
-      { stroke: COLOR.load15, width: 1.5,  points: { show: false } },
+      { label: "1m",  value: (_u, v) => v == null ? "—" : v.toFixed(2), stroke: COLOR.load1,  width: 1.75, points: { show: false } },
+      { label: "5m",  value: (_u, v) => v == null ? "—" : v.toFixed(2), stroke: COLOR.load5,  width: 1.5,  points: { show: false } },
+      { label: "15m", value: (_u, v) => v == null ? "—" : v.toFixed(2), stroke: COLOR.load15, width: 1.5,  points: { show: false } },
     ],
   };
 }
 
-function bpsOpts(colors: [string, string]): Omit<Options, "width" | "height"> {
+function bpsOpts(labels: [string, string], colors: [string, string]): Omit<Options, "width" | "height"> {
   return {
     axes: baseAxes((_u, vals) => vals.map((v) => formatBps(v)), 80),
-    legend: { show: false },
+    legend: legend(),
     series: [
       {},
-      { stroke: colors[0], width: 1.75, points: { show: false } },
-      { stroke: colors[1], width: 1.75, points: { show: false } },
+      { label: labels[0], value: (_u, v) => v == null ? "—" : formatBps(v), stroke: colors[0], width: 1.75, points: { show: false } },
+      { label: labels[1], value: (_u, v) => v == null ? "—" : formatBps(v), stroke: colors[1], width: 1.75, points: { show: false } },
     ],
   };
 }
@@ -673,10 +867,10 @@ function bpsOpts(colors: [string, string]): Omit<Options, "width" | "height"> {
 function tempOpts(): Omit<Options, "width" | "height"> {
   return {
     axes: baseAxes((_u, vals) => vals.map((v) => `${v}°`), 44),
-    legend: { show: false },
+    legend: legend(),
     series: [
       {},
-      { stroke: COLOR.temp, width: 1.75, points: { show: false } },
+      { label: "temp", value: (_u, v) => v == null ? "—" : `${v.toFixed(1)}°C`, stroke: COLOR.temp, width: 1.75, points: { show: false } },
     ],
   };
 }

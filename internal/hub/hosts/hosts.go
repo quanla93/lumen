@@ -19,6 +19,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/quanla93/lumen/internal/shared/api"
 )
 
 const (
@@ -27,17 +29,26 @@ const (
 )
 
 var (
-	ErrNotFound      = errors.New("host not found")
-	ErrNameRequired  = errors.New("name required")
-	ErrInvalidToken  = errors.New("invalid token")
-	ErrNameTaken     = errors.New("host name already taken")
+	ErrNotFound     = errors.New("host not found")
+	ErrNameRequired = errors.New("name required")
+	ErrInvalidToken = errors.New("invalid token")
+	ErrNameTaken    = errors.New("host name already taken")
 )
 
 type Host struct {
-	ID         int64
-	Name       string
-	CreatedAt  time.Time
-	LastSeenAt sql.NullTime
+	ID                  int64
+	Name                string
+	CreatedAt           time.Time
+	LastSeenAt          sql.NullTime
+	SystemOS            sql.NullString
+	SystemHostname      sql.NullString
+	SystemPrimaryIP     sql.NullString
+	SystemKernel        sql.NullString
+	SystemArch          sql.NullString
+	SystemCPUModel      sql.NullString
+	SystemUptimeSeconds sql.NullInt64
+	AgentVersion        sql.NullString
+	MetadataUpdatedAt   sql.NullTime
 }
 
 // newToken produces a fresh plaintext token + its SHA-256 hex hash.
@@ -74,18 +85,33 @@ func validateName(name string) error {
 	return nil
 }
 
+const hostColumns = `id, name, created_at, last_seen_at,
+	system_os, system_hostname, system_primary_ip, system_kernel,
+	system_arch, system_cpu_model, system_uptime_seconds,
+	agent_version, metadata_updated_at`
+
+func scanHost(scanner interface{ Scan(dest ...any) error }) (Host, error) {
+	var h Host
+	err := scanner.Scan(
+		&h.ID, &h.Name, &h.CreatedAt, &h.LastSeenAt,
+		&h.SystemOS, &h.SystemHostname, &h.SystemPrimaryIP, &h.SystemKernel,
+		&h.SystemArch, &h.SystemCPUModel, &h.SystemUptimeSeconds,
+		&h.AgentVersion, &h.MetadataUpdatedAt,
+	)
+	return h, err
+}
+
 // List returns every host, ordered by name.
 func List(ctx context.Context, db *sql.DB) ([]Host, error) {
-	rows, err := db.QueryContext(ctx,
-		`SELECT id, name, created_at, last_seen_at FROM hosts ORDER BY name`)
+	rows, err := db.QueryContext(ctx, `SELECT `+hostColumns+` FROM hosts ORDER BY name`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	var out []Host
 	for rows.Next() {
-		var h Host
-		if err := rows.Scan(&h.ID, &h.Name, &h.CreatedAt, &h.LastSeenAt); err != nil {
+		h, err := scanHost(rows)
+		if err != nil {
 			return nil, err
 		}
 		out = append(out, h)
@@ -172,11 +198,10 @@ func VerifyToken(ctx context.Context, db *sql.DB, plain string) (Host, error) {
 		return Host{}, ErrInvalidToken
 	}
 	hashHex := hashToken(plain)
-	var h Host
-	err := db.QueryRowContext(ctx,
-		`SELECT id, name, created_at, last_seen_at FROM hosts WHERE token_hash = ?`,
+	h, err := scanHost(db.QueryRowContext(ctx,
+		`SELECT `+hostColumns+` FROM hosts WHERE token_hash = ?`,
 		hashHex,
-	).Scan(&h.ID, &h.Name, &h.CreatedAt, &h.LastSeenAt)
+	))
 	if errors.Is(err, sql.ErrNoRows) {
 		return Host{}, ErrInvalidToken
 	}
@@ -196,11 +221,34 @@ func TouchLastSeen(ctx context.Context, db *sql.DB, id int64) error {
 	return err
 }
 
+func UpdateSystemMetadata(ctx context.Context, db *sql.DB, id int64, meta api.SystemMetadata) error {
+	_, err := db.ExecContext(ctx, `
+		UPDATE hosts SET
+			system_os = ?,
+			system_hostname = ?,
+			system_primary_ip = ?,
+			system_kernel = ?,
+			system_arch = ?,
+			system_cpu_model = ?,
+			system_uptime_seconds = ?,
+			agent_version = ?,
+			metadata_updated_at = CURRENT_TIMESTAMP
+		WHERE id = ?`,
+		nullString(meta.OS),
+		nullString(meta.Hostname),
+		nullString(meta.PrimaryIP),
+		nullString(meta.Kernel),
+		nullString(meta.Arch),
+		nullString(meta.CPUModel),
+		nullInt64(meta.UptimeSeconds),
+		nullString(meta.AgentVersion),
+		id,
+	)
+	return err
+}
+
 func getByID(ctx context.Context, db *sql.DB, id int64) (Host, error) {
-	var h Host
-	err := db.QueryRowContext(ctx,
-		`SELECT id, name, created_at, last_seen_at FROM hosts WHERE id = ?`, id,
-	).Scan(&h.ID, &h.Name, &h.CreatedAt, &h.LastSeenAt)
+	h, err := scanHost(db.QueryRowContext(ctx, `SELECT `+hostColumns+` FROM hosts WHERE id = ?`, id))
 	if errors.Is(err, sql.ErrNoRows) {
 		return Host{}, ErrNotFound
 	}
@@ -209,6 +257,18 @@ func getByID(ctx context.Context, db *sql.DB, id int64) (Host, error) {
 
 // isUniqueViolation matches modernc.org/sqlite's UNIQUE constraint error.
 // Kept as a string check to avoid importing the driver package here.
+func nullString(s string) sql.NullString {
+	s = strings.TrimSpace(s)
+	return sql.NullString{String: s, Valid: s != ""}
+}
+
+func nullInt64(v uint64) sql.NullInt64 {
+	if v == 0 || v > uint64(^uint64(0)>>1) {
+		return sql.NullInt64{}
+	}
+	return sql.NullInt64{Int64: int64(v), Valid: true}
+}
+
 func isUniqueViolation(err error) bool {
 	return err != nil && strings.Contains(err.Error(), "UNIQUE constraint failed")
 }

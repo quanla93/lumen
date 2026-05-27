@@ -11,6 +11,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/quanla93/lumen/internal/hub/store"
+	"github.com/quanla93/lumen/internal/shared/api"
 )
 
 type Handlers struct {
@@ -24,10 +25,12 @@ func NewHandlers(db *sql.DB, st *store.Store, logger *slog.Logger) *Handlers {
 }
 
 type hostView struct {
-	ID         int64   `json:"id"`
-	Name       string  `json:"name"`
-	CreatedAt  string  `json:"created_at"`
-	LastSeenAt *string `json:"last_seen_at"`
+	ID                int64               `json:"id"`
+	Name              string              `json:"name"`
+	CreatedAt         string              `json:"created_at"`
+	LastSeenAt        *string             `json:"last_seen_at"`
+	System            *api.SystemMetadata `json:"system,omitempty"`
+	MetadataUpdatedAt *string             `json:"metadata_updated_at,omitempty"`
 }
 
 func toView(h Host) hostView {
@@ -36,7 +39,43 @@ func toView(h Host) hostView {
 		s := h.LastSeenAt.Time.UTC().Format("2006-01-02T15:04:05Z")
 		v.LastSeenAt = &s
 	}
+	if meta, ok := systemMetadata(h); ok {
+		v.System = &meta
+	}
+	if h.MetadataUpdatedAt.Valid {
+		s := h.MetadataUpdatedAt.Time.UTC().Format("2006-01-02T15:04:05Z")
+		v.MetadataUpdatedAt = &s
+	}
 	return v
+}
+
+func systemMetadata(h Host) (api.SystemMetadata, bool) {
+	meta := api.SystemMetadata{}
+	if h.SystemOS.Valid {
+		meta.OS = h.SystemOS.String
+	}
+	if h.SystemHostname.Valid {
+		meta.Hostname = h.SystemHostname.String
+	}
+	if h.SystemPrimaryIP.Valid {
+		meta.PrimaryIP = h.SystemPrimaryIP.String
+	}
+	if h.SystemKernel.Valid {
+		meta.Kernel = h.SystemKernel.String
+	}
+	if h.SystemArch.Valid {
+		meta.Arch = h.SystemArch.String
+	}
+	if h.SystemCPUModel.Valid {
+		meta.CPUModel = h.SystemCPUModel.String
+	}
+	if h.SystemUptimeSeconds.Valid && h.SystemUptimeSeconds.Int64 > 0 {
+		meta.UptimeSeconds = uint64(h.SystemUptimeSeconds.Int64)
+	}
+	if h.AgentVersion.Valid {
+		meta.AgentVersion = h.AgentVersion.String
+	}
+	return meta, meta != (api.SystemMetadata{})
 }
 
 // GET /api/hosts

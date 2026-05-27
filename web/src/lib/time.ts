@@ -14,6 +14,26 @@ export function relativeTime(iso: string, now = Date.now()): string {
 }
 
 /** True when the snapshot timestamp is more than `staleAfterMs` old. */
-export function isStale(iso: string, staleAfterMs = 15_000, now = Date.now()): boolean {
+export function isStale(iso: string, staleAfterMs = staleAfterForIntervalMs(), now = Date.now()): boolean {
   return now - new Date(iso).getTime() > staleAfterMs;
+}
+
+export function parseDurationMs(duration: string): number | null {
+  const match = duration.match(/^(\d+)(s|m|h)$/);
+  if (!match) return null;
+
+  const amount = Number(match[1]);
+  if (!Number.isSafeInteger(amount) || amount <= 0) return null;
+
+  const unitMs: Record<string, number> = {
+    s: 1_000,
+    m: 60_000,
+    h: 60 * 60_000,
+  };
+  return amount * unitMs[match[2]];
+}
+
+export function staleAfterForIntervalMs(agentInterval = "5s"): number {
+  const intervalMs = parseDurationMs(agentInterval) ?? 5_000;
+  return Math.max(intervalMs * 2, 30_000);
 }

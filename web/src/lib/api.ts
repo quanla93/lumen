@@ -8,11 +8,24 @@ export type User = {
   created_at: string;
 };
 
+export type SystemMetadata = {
+  os?: string;
+  hostname?: string;
+  primary_ip?: string;
+  kernel?: string;
+  arch?: string;
+  cpu_model?: string;
+  uptime_seconds?: number;
+  agent_version?: string;
+};
+
 export type Host = {
   id: number;
   name: string;
   created_at: string;
   last_seen_at: string | null;
+  system?: SystemMetadata;
+  metadata_updated_at?: string;
 };
 
 export type CreateHostResponse = {

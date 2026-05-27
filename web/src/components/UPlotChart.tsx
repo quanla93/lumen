@@ -57,5 +57,5 @@ export function UPlotChart({
     }
   }, [data]);
 
-  return <div ref={wrapRef} className={className} />;
+  return <div ref={wrapRef} className={`lumen-uplot ${className ?? ""}`} />;
 }

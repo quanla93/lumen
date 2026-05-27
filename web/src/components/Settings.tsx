@@ -12,13 +12,14 @@ import { relativeTime } from "@/lib/time";
 import { ErrorText, Field, FieldInput, GhostButton, PrimaryButton } from "@/components/CenterCard";
 import { TokenReveal } from "@/components/TokenReveal";
 
-type SettingsTab = "hosts" | "account" | "runtime" | "retention";
+type SettingsTab = "hosts" | "account" | "runtime" | "retention" | "logs";
 
 const TABS: { id: SettingsTab; label: string }[] = [
   { id: "hosts",     label: "Hosts" },
   { id: "account",   label: "Account" },
   { id: "runtime",   label: "Runtime" },
   { id: "retention", label: "Retention" },
+  { id: "logs",      label: "Logs" },
 ];
 
 export function Settings({ user }: { user: User }) {
@@ -41,6 +42,7 @@ export function Settings({ user }: { user: User }) {
         {tab === "account"   && <AccountSettings user={user} />}
         {tab === "runtime"   && <RuntimeSettings />}
         {tab === "retention" && <RetentionSettings />}
+        {tab === "logs"      && <LogManagementSettings />}
       </div>
     </div>
   );
@@ -549,6 +551,49 @@ function RuntimeSettings() {
   );
 }
 
+function SettingsPanel({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description: string;
+  children?: React.ReactNode;
+}) {
+  return (
+    <section className="rounded-2xl border border-[color:var(--color-border)] bg-[color:var(--color-card)] p-5 shadow-sm">
+      <h2 className="text-base font-semibold tracking-tight">{title}</h2>
+      <p className="mt-2 text-sm text-[color:var(--color-muted)]">{description}</p>
+      {children && <div className="mt-4">{children}</div>}
+    </section>
+  );
+}
+
+function LogManagementSettings() {
+  return (
+    <div className="grid gap-4 lg:grid-cols-2">
+      <SettingsPanel
+        title="On-demand log viewer"
+        description="Phase 3 will add bounded, admin-only log retrieval for incident debugging. Lumen will show recent lines on request instead of indexing every log line."
+      >
+        <ul className="space-y-2 text-sm text-[color:var(--color-muted)]">
+          <li><strong className="text-[color:var(--color-fg)]">Sources:</strong> Lumen agent, systemd/journald units, and Docker containers.</li>
+          <li><strong className="text-[color:var(--color-fg)]">Limits:</strong> last N lines, short time ranges, optional live tail.</li>
+          <li><strong className="text-[color:var(--color-fg)]">Storage:</strong> no default persistence, indexing, or global search.</li>
+        </ul>
+      </SettingsPanel>
+      <SettingsPanel
+        title="Not a Loki replacement"
+        description="Log management stays lightweight so the hub remains HDD-friendly and predictable for homelab installs. Export/integration can be researched later."
+      >
+        <div className="rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-bg)] p-4 font-mono text-xs text-[color:var(--color-muted)]">
+          host=pve-01 source=docker target=nginx tail=500
+        </div>
+      </SettingsPanel>
+    </div>
+  );
+}
+
 function RetentionSettings() {
   const [settings, setSettings]       = useState<SettingsResponse | null>(null);
   const [window, setWindow]           = useState<DurationInput>({ value: "", unit: "h" });
@@ -609,7 +654,7 @@ function RetentionSettings() {
           no hub restart required.
         </p>
         <p className="mt-2 text-sm text-[color:var(--color-muted)]">
-          Cold-tier (Parquet) archival lands in Phase 4 — for now this is
+          Cold-tier (Parquet) archival lands in Phase 5 — for now this is
           a hard delete.
         </p>
       </section>

@@ -1,5 +1,5 @@
 import { cpuTone, TONE_CLASS, widthClass, type StatusTone } from "@/lib/status";
-import { isStale, relativeTime } from "@/lib/time";
+import { isStale, relativeTime, staleAfterForIntervalMs } from "@/lib/time";
 import { Sparkline } from "@/components/Sparkline";
 
 export type ContainerInfo = {
@@ -11,6 +11,17 @@ export type ContainerInfo = {
   mem_used_bytes: number;
   mem_limit_bytes: number;
   mem_pct: number;
+};
+
+export type SystemMetadata = {
+  os?: string;
+  hostname?: string;
+  primary_ip?: string;
+  kernel?: string;
+  arch?: string;
+  cpu_model?: string;
+  uptime_seconds?: number;
+  agent_version?: string;
 };
 
 export type Snapshot = {
@@ -30,6 +41,7 @@ export type Snapshot = {
   disk_w_bps: number;
   temp_c: number;
   containers?: ContainerInfo[];
+  system?: SystemMetadata;
   cpu_series?: number[];
 };
 
@@ -53,13 +65,15 @@ function metricRow(label: string, value: number, stale: boolean): MetricRow {
 export function HostCard({
   snapshot,
   now,
+  agentInterval,
   onSelect,
 }: {
   snapshot: Snapshot;
   now: number;
+  agentInterval?: string;
   onSelect?: (hostName: string) => void;
 }) {
-  const stale = isStale(snapshot.ts, 15_000, now);
+  const stale = isStale(snapshot.ts, staleAfterForIntervalMs(agentInterval), now);
   const headerTone = cpuTone(snapshot.cpu_pct, stale);
 
   const rows: MetricRow[] = [
@@ -88,31 +102,36 @@ export function HostCard({
       onClick={interactive ? handleClick : undefined}
       onKeyDown={interactive ? handleKey : undefined}
       className={
-        "rounded-lg border border-[color:var(--color-border)] bg-[color:var(--color-card)] p-4 shadow-sm " +
+        "rounded-2xl border border-[color:var(--color-border)] bg-[color:var(--color-card)] p-4 shadow-sm " +
         (interactive
-          ? "cursor-pointer transition-shadow hover:shadow-md focus:outline-none focus:ring-2 focus:ring-[color:var(--color-accent)]"
+          ? "cursor-pointer transition-all hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-[color:var(--color-accent)]"
           : "")
       }
     >
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-2">
-          <span
-            aria-hidden
-            className={`inline-block h-2.5 w-2.5 rounded-full ${TONE_CLASS[headerTone]}`}
-          />
-          <span className="font-mono text-sm font-medium tracking-tight">
-            {snapshot.host}
+      <div className="flex items-start justify-between gap-3 mb-4">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <span
+              aria-hidden
+              className={`inline-block h-2.5 w-2.5 rounded-full ${TONE_CLASS[headerTone]}`}
+            />
+            <span className="truncate font-mono text-base font-semibold tracking-tight">
+              {snapshot.host}
+            </span>
+          </div>
+          <span className="mt-1 block text-xs text-[color:var(--color-muted)]">
+            {stale ? "stale · " : "last seen "}
+            {relativeTime(snapshot.ts, now)}
           </span>
         </div>
-        <span className="text-xs text-[color:var(--color-muted)]">
-          {stale ? "stale · " : ""}
-          {relativeTime(snapshot.ts, now)}
+        <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${stale ? "bg-[color:var(--color-border)] text-[color:var(--color-muted)]" : "bg-[color:var(--color-accent)] text-[color:var(--color-bg)]"}`}>
+          {stale ? "Stale" : "Online"}
         </span>
       </div>
 
       {series.length >= 2 && (
-        <div className={`mb-3 h-[18px] ${TONE_TEXT[headerTone]}`}>
-          <Sparkline values={series} width={100} height={18} className="w-full h-full" />
+        <div className={`mb-4 h-[28px] rounded-lg bg-[color:var(--color-bg)] p-1 ${TONE_TEXT[headerTone]}`}>
+          <Sparkline values={series} width={100} height={24} className="w-full h-full" />
         </div>
       )}
 
