@@ -1,0 +1,455 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#0f172a" />
+  <meta
+    name="description"
+    content="Lumen đang được xây dựng — một nền tảng observability nhẹ, rõ ràng và hiện đại cho hạ tầng của bạn."
+  />
+
+  <title>Lumen | Sắp ra mắt</title>
+
+  <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+  <link rel="preload" href="logo.svg" as="image" type="image/svg+xml" />
+
+  <meta property="og:title" content="Lumen | Sắp ra mắt" />
+  <meta
+    property="og:description"
+    content="Lumen đang được xây dựng — theo dõi hệ thống, máy chủ và môi trường chạy trong một giao diện gọn gàng."
+  />
+  <meta property="og:type" content="website" />
+  <meta property="og:image" content="logo.svg" />
+
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #020617;
+      --bg-soft: #0f172a;
+      --card: rgba(15, 23, 42, 0.72);
+      --card-border: rgba(148, 163, 184, 0.18);
+      --text: #f8fafc;
+      --muted: #94a3b8;
+      --muted-strong: #cbd5e1;
+      --teal: #14b8a6;
+      --teal-light: #5eead4;
+      --blue: #38bdf8;
+      --shadow: 0 28px 90px rgba(2, 6, 23, 0.58);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      min-height: 100%;
+      background: var(--bg);
+    }
+
+    body {
+      min-height: 100vh;
+      margin: 0;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at 15% 15%, rgba(20, 184, 166, 0.24), transparent 32rem),
+        radial-gradient(circle at 82% 18%, rgba(56, 189, 248, 0.18), transparent 30rem),
+        radial-gradient(circle at 55% 95%, rgba(20, 184, 166, 0.12), transparent 28rem),
+        linear-gradient(145deg, #020617 0%, #08111f 46%, #0f172a 100%);
+      overflow-x: hidden;
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background-image:
+        linear-gradient(rgba(148, 163, 184, 0.07) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(148, 163, 184, 0.07) 1px, transparent 1px);
+      background-size: 56px 56px;
+      mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.9), transparent 78%);
+    }
+
+    .page {
+      position: relative;
+      display: grid;
+      min-height: 100vh;
+      padding: 28px;
+    }
+
+    .shell {
+      width: min(1120px, 100%);
+      margin: auto;
+    }
+
+    .nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 24px;
+      margin-bottom: 48px;
+    }
+
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 14px;
+      text-decoration: none;
+      color: var(--text);
+    }
+
+    .brand img {
+      width: 164px;
+      height: auto;
+      color: var(--text);
+    }
+
+    .domain {
+      display: inline-flex;
+      align-items: center;
+      min-height: 36px;
+      padding: 0 14px;
+      border: 1px solid rgba(94, 234, 212, 0.24);
+      border-radius: 999px;
+      color: var(--teal-light);
+      background: rgba(20, 184, 166, 0.08);
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: 0.01em;
+      white-space: nowrap;
+    }
+
+    .hero {
+      display: grid;
+      grid-template-columns: minmax(0, 1.05fr) minmax(320px, 0.95fr);
+      gap: 40px;
+      align-items: center;
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      margin: 0 0 22px;
+      color: var(--teal-light);
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+
+    .eyebrow::before {
+      content: "";
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+      background: var(--teal-light);
+      box-shadow: 0 0 28px rgba(94, 234, 212, 0.9);
+    }
+
+    h1 {
+      max-width: 760px;
+      margin: 0;
+      font-size: clamp(48px, 8vw, 92px);
+      line-height: 0.92;
+      letter-spacing: -0.075em;
+    }
+
+    .gradient-text {
+      display: inline-block;
+      background: linear-gradient(90deg, #f8fafc 0%, #99f6e4 52%, #7dd3fc 100%);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+
+    .lead {
+      max-width: 650px;
+      margin: 26px 0 0;
+      color: var(--muted-strong);
+      font-size: clamp(18px, 2.2vw, 22px);
+      line-height: 1.65;
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 14px;
+      margin-top: 34px;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 46px;
+      padding: 0 18px;
+      border: 1px solid var(--card-border);
+      border-radius: 999px;
+      color: var(--muted-strong);
+      background: rgba(15, 23, 42, 0.52);
+      font-size: 15px;
+      font-weight: 650;
+      backdrop-filter: blur(14px);
+    }
+
+    .pill.primary {
+      border-color: rgba(94, 234, 212, 0.34);
+      color: #042f2e;
+      background: linear-gradient(135deg, var(--teal-light), var(--blue));
+      box-shadow: 0 18px 48px rgba(20, 184, 166, 0.24);
+    }
+
+    .preview-card {
+      position: relative;
+      min-height: 520px;
+      border: 1px solid var(--card-border);
+      border-radius: 32px;
+      background:
+        linear-gradient(180deg, rgba(15, 23, 42, 0.88), rgba(15, 23, 42, 0.52)),
+        radial-gradient(circle at 50% 18%, rgba(20, 184, 166, 0.22), transparent 18rem);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+      backdrop-filter: blur(22px);
+    }
+
+    .preview-card::before {
+      content: "";
+      position: absolute;
+      inset: 1px;
+      border-radius: 31px;
+      background: linear-gradient(135deg, rgba(255,255,255,0.13), transparent 38%);
+      pointer-events: none;
+    }
+
+    .card-topbar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      height: 54px;
+      padding: 0 22px;
+      border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+    }
+
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: rgba(148, 163, 184, 0.45);
+    }
+
+    .dot:first-child {
+      background: #5eead4;
+    }
+
+    .dashboard {
+      position: relative;
+      padding: 28px;
+    }
+
+    .status-row {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
+      margin-bottom: 18px;
+    }
+
+    .metric {
+      min-height: 108px;
+      padding: 18px;
+      border: 1px solid rgba(148, 163, 184, 0.13);
+      border-radius: 22px;
+      background: rgba(2, 6, 23, 0.32);
+    }
+
+    .metric span {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .metric strong {
+      display: block;
+      margin-top: 18px;
+      font-size: 26px;
+      letter-spacing: -0.04em;
+    }
+
+    .pulse {
+      position: relative;
+      display: grid;
+      place-items: center;
+      height: 260px;
+      margin-top: 18px;
+      border: 1px solid rgba(148, 163, 184, 0.13);
+      border-radius: 26px;
+      background:
+        radial-gradient(circle, rgba(20, 184, 166, 0.17), transparent 38%),
+        rgba(2, 6, 23, 0.28);
+      overflow: hidden;
+    }
+
+    .pulse img {
+      width: 142px;
+      height: 142px;
+      filter: drop-shadow(0 0 42px rgba(94, 234, 212, 0.38));
+      animation: float 5s ease-in-out infinite;
+    }
+
+    .rings,
+    .rings::before,
+    .rings::after {
+      position: absolute;
+      width: 170px;
+      height: 170px;
+      border: 1px solid rgba(94, 234, 212, 0.18);
+      border-radius: 50%;
+    }
+
+    .rings {
+      animation: ping 3.4s ease-out infinite;
+    }
+
+    .rings::before,
+    .rings::after {
+      content: "";
+      inset: -30px;
+    }
+
+    .rings::after {
+      inset: -62px;
+      opacity: 0.55;
+    }
+
+    .footer-note {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      margin-top: 24px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    @keyframes float {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-10px); }
+    }
+
+    @keyframes ping {
+      0% { transform: scale(0.86); opacity: 0.85; }
+      100% { transform: scale(1.16); opacity: 0; }
+    }
+
+    @media (max-width: 900px) {
+      .page {
+        padding: 22px;
+      }
+
+      .nav {
+        margin-bottom: 36px;
+      }
+
+      .hero {
+        grid-template-columns: 1fr;
+      }
+
+      .preview-card {
+        min-height: auto;
+      }
+    }
+
+    @media (max-width: 560px) {
+      .nav,
+      .footer-note {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+
+      .brand img {
+        width: 142px;
+      }
+
+      .status-row {
+        grid-template-columns: 1fr;
+      }
+
+      .dashboard {
+        padding: 18px;
+      }
+
+      .pulse {
+        height: 220px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <section class="shell" aria-label="Lumen sắp ra mắt">
+      <nav class="nav" aria-label="Điều hướng chính">
+        <a class="brand" href="/" aria-label="Trang chủ Lumen">
+          <img src="logo.svg" alt="Lumen" />
+        </a>
+        <span class="domain">lumen.quanla.org</span>
+      </nav>
+
+      <div class="hero">
+        <section>
+          <p class="eyebrow">Sắp ra mắt</p>
+          <h1>
+            Ánh sáng mới cho việc quan sát
+            <span class="gradient-text">hạ tầng.</span>
+          </h1>
+          <p class="lead">
+            Lumen đang được xây dựng để giúp bạn theo dõi máy chủ, môi trường chạy, chính sách thu thập dữ liệu
+            và tín hiệu hệ thống trong một giao diện nhanh, rõ ràng và dễ vận hành.
+          </p>
+          <div class="actions" aria-label="Điểm nổi bật">
+            <span class="pill primary">Đang hoàn thiện</span>
+            <span class="pill">Quan sát hệ thống</span>
+            <span class="pill">Thông tin hạ tầng</span>
+          </div>
+        </section>
+
+        <aside class="preview-card" aria-label="Minh họa giao diện Lumen">
+          <div class="card-topbar" aria-hidden="true">
+            <span class="dot"></span>
+            <span class="dot"></span>
+            <span class="dot"></span>
+          </div>
+          <div class="dashboard">
+            <div class="status-row">
+              <div class="metric">
+                <span>Máy chủ</span>
+                <strong>Ổn định</strong>
+              </div>
+              <div class="metric">
+                <span>Môi trường</span>
+                <strong>Đang chạy</strong>
+              </div>
+              <div class="metric">
+                <span>Tín hiệu</span>
+                <strong>Rõ ràng</strong>
+              </div>
+            </div>
+
+            <div class="pulse">
+              <span class="rings" aria-hidden="true"></span>
+              <img src="logo-mark.svg" alt="Biểu tượng tín hiệu Lumen" />
+            </div>
+
+            <div class="footer-note">
+              <span>Xây dựng cho việc giám sát hạ tầng tập trung.</span>
+              <span>quanla.org</span>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </section>
+  </main>
+</body>
+</html>
