@@ -397,19 +397,95 @@ function ChangePasswordForm() {
 
 // ─── Retention sub-tab ───────────────────────────────────────────────────────
 
+type DurationUnit = "s" | "m" | "h" | "d";
+
+type DurationInput = {
+  value: string;
+  unit: DurationUnit;
+};
+
+const DURATION_UNITS: { value: DurationUnit; label: string; seconds: number }[] = [
+  { value: "s", label: "seconds", seconds: 1 },
+  { value: "m", label: "minutes", seconds: 60 },
+  { value: "h", label: "hours",   seconds: 60 * 60 },
+  { value: "d", label: "days",    seconds: 24 * 60 * 60 },
+];
+
+function parseDurationInput(duration: string): DurationInput {
+  const match = duration.match(/^(\d+)(s|m|h)$/);
+  if (!match) {
+    return { value: duration, unit: "h" };
+  }
+  const amount = Number(match[1]);
+  if (match[2] === "h" && amount % 24 === 0) {
+    return { value: String(amount / 24), unit: "d" };
+  }
+  return { value: match[1], unit: match[2] as DurationUnit };
+}
+
+function formatDurationInput(input: DurationInput): string | null {
+  if (!/^\d+$/.test(input.value)) {
+    return null;
+  }
+  const amount = Number(input.value);
+  if (!Number.isSafeInteger(amount) || amount <= 0) {
+    return null;
+  }
+  if (input.unit === "d") {
+    return `${amount * 24}h`;
+  }
+  return `${amount}${input.unit}`;
+}
+
+function DurationField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: DurationInput;
+  onChange: (value: DurationInput) => void;
+}) {
+  return (
+    <Field label={label}>
+      <div className="flex gap-2">
+        <FieldInput
+          type="number"
+          min={1}
+          step={1}
+          inputMode="numeric"
+          value={value.value}
+          onChange={(e) => onChange({ ...value, value: e.target.value })}
+          required
+        />
+        <select
+          aria-label={`${label} unit`}
+          className="rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--color-accent)]"
+          value={value.unit}
+          onChange={(e) => onChange({ ...value, unit: e.target.value as DurationUnit })}
+        >
+          {DURATION_UNITS.map((unit) => (
+            <option key={unit.value} value={unit.value}>{unit.label}</option>
+          ))}
+        </select>
+      </div>
+    </Field>
+  );
+}
+
 function RetentionSettings() {
-  const [settings, setSettings] = useState<SettingsResponse | null>(null);
-  const [window, setWindow]     = useState("");
-  const [interval, setInterval] = useState("");
-  const [busy, setBusy]         = useState(false);
-  const [error, setError]       = useState<string | null>(null);
-  const [savedAt, setSavedAt]   = useState<number | null>(null);
+  const [settings, setSettings]       = useState<SettingsResponse | null>(null);
+  const [window, setWindow]           = useState<DurationInput>({ value: "", unit: "h" });
+  const [interval, setInterval]       = useState<DurationInput>({ value: "", unit: "h" });
+  const [busy, setBusy]               = useState(false);
+  const [error, setError]             = useState<string | null>(null);
+  const [savedAt, setSavedAt]         = useState<number | null>(null);
 
   useEffect(() => {
     settingsApi.get().then((s) => {
       setSettings(s);
-      setWindow(s.retention_window);
-      setInterval(s.retention_interval);
+      setWindow(parseDurationInput(s.retention_window));
+      setInterval(parseDurationInput(s.retention_interval));
     }).catch((err) => {
       setError(err instanceof ApiError ? err.message : String(err));
     });
@@ -418,15 +494,21 @@ function RetentionSettings() {
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    const retentionWindow = formatDurationInput(window);
+    const retentionInterval = formatDurationInput(interval);
+    if (!retentionWindow || !retentionInterval) {
+      setError("Window and interval must be positive whole numbers.");
+      return;
+    }
     setBusy(true);
     try {
       const next = await settingsApi.put({
-        retention_window:   window,
-        retention_interval: interval,
+        retention_window:   retentionWindow,
+        retention_interval: retentionInterval,
       });
       setSettings(next);
-      setWindow(next.retention_window);
-      setInterval(next.retention_interval);
+      setWindow(parseDurationInput(next.retention_window));
+      setInterval(parseDurationInput(next.retention_interval));
       setSavedAt(Date.now());
     } catch (err) {
       setError(err instanceof ApiError ? err.message : String(err));
@@ -435,9 +517,11 @@ function RetentionSettings() {
     }
   }
 
+  const windowDuration = formatDurationInput(window);
+  const intervalDuration = formatDurationInput(interval);
   const dirty =
     !!settings &&
-    (window !== settings.retention_window || interval !== settings.retention_interval);
+    (windowDuration !== settings.retention_window || intervalDuration !== settings.retention_interval);
 
   return (
     <div className="max-w-md space-y-4">
@@ -458,24 +542,16 @@ function RetentionSettings() {
         <p className="text-sm text-[color:var(--color-muted)]">Loading…</p>
       ) : (
         <form onSubmit={submit} className="space-y-3">
-          <Field label="Window (Go duration: 24h, 7d-ish via 168h, …)">
-            <FieldInput
-              type="text"
-              value={window}
-              onChange={(e) => setWindow(e.target.value)}
-              pattern="[0-9]+(ns|us|µs|ms|s|m|h)([0-9]+(ns|us|µs|ms|s|m|h))*"
-              required
-            />
-          </Field>
-          <Field label="Interval (e.g. 1h, 30m)">
-            <FieldInput
-              type="text"
-              value={interval}
-              onChange={(e) => setInterval(e.target.value)}
-              pattern="[0-9]+(ns|us|µs|ms|s|m|h)([0-9]+(ns|us|µs|ms|s|m|h))*"
-              required
-            />
-          </Field>
+          <DurationField
+            label="Window"
+            value={window}
+            onChange={setWindow}
+          />
+          <DurationField
+            label="Interval"
+            value={interval}
+            onChange={setInterval}
+          />
           {error && <ErrorText message={error} />}
           {savedAt && !dirty && (
             <p role="status" className="text-sm text-[color:var(--color-accent)]">

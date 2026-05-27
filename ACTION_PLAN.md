@@ -48,7 +48,7 @@ Phụ trợ: mobile PWA + Web Push, public status page, bilingual docs.
 - ❌ Không build dashboard builder (Grafana đã có)
 - ❌ Không log aggregation full-text (Loki đã có) — chỉ có tail viewer minimal
 - ❌ Không AI anomaly detection
-- ❌ Không SAML/SSO/RBAC phức tạp
+- ❌ Không enterprise RBAC phức tạp; SSO self-hosted được phép trong scope giới hạn: custom OIDC là MVP, SAML2 cân nhắc sau OIDC nếu complexity chấp nhận được
 - ❌ Không cluster mode cho hub
 - ❌ Không retention >365 ngày
 - ❌ Không telemetry phone-home
@@ -95,6 +95,9 @@ Mỗi quyết định ghi 1 dòng. Không xóa, không sửa — nếu đổi ý
 | 2026-05-26 | Agent YAML config = sugar over env, not parallel system | YAML file (`/etc/lumen/agent.yaml`) is parsed once at boot and applied to the environment, only setting keys that aren't already in `os.LookupEnv`. The rest of the agent reads its config the same way it always has (envcfg). Reasoning: shipping one /etc/lumen/agent.yaml across a fleet via Ansible/Salt is operator-friendly, but maintaining two parallel config paths (env vs YAML structs) doubles the surface area for nil/zero-value bugs. Process env always wins; missing file is silent; malformed is fatal at boot. |
 | 2026-05-26 | CI/CD = GitHub Actions, no GoReleaser | The repo already produces hub tarballs via `make release-hub-tarballs` (binary + install.sh + unit + env example bundled). GoReleaser would duplicate that logic; replaced its workflow with three jobs that call the existing Make targets, push multi-arch images to ghcr.io via Buildx+QEMU, and use `softprops/action-gh-release` to upload binaries. CI got a Docker-build smoke job so every PR exercises both Dockerfiles; lint-web pinned to actual scripts (`tsc --noEmit` for web, biome for docs with `dist/` ignored). |
 | 2026-05-26 | PWA = minimal vanilla SW, no plugin | Goal is "installable to phone homescreen + paint instantly on cold start," not "full offline app" — live metrics fundamentally need network reachability to the hub. Skipped vite-plugin-pwa to avoid pulling Workbox + its build-time config surface; a 50-line `sw.js` covers cache-first for the shell + network-only for `/api/*` (caching metric snapshots would be misleading). Manifest + 192/512 SVG icons in `web/public/`, registered from `main.tsx` with `if ("serviceWorker" in navigator)` so non-supporting browsers no-op gracefully. |
+| 2026-05-27 | MVP scope += self-hosted SSO + operator customization knobs | User self-hosts SSO and wants Lumen to integrate like other self-hosted services. Custom OIDC is MVP; SAML2 is desired but may land after OIDC depending on complexity. Runtime-configurable retention, agent refresh/collection interval, and Parquet downsample policy are MVP requirements because homelab storage/performance constraints vary. Docker container monitoring remains roadmap/future unless pulled forward explicitly. |
+| 2026-05-27 | DuckDB cold-query layer requires research before commitment | Querying old Parquet data through DuckDB sounds useful, but must be validated for practicality, operational footprint, packaging, memory usage, and whether it should be optional instead of default. Do not treat DuckDB as locked until a feasibility spike/ADR lands. |
+| 2026-05-27 | External data access/export is an official expansion path | Lumen should not assume users only consume data through the built-in web UI. Future API/export surfaces should allow external dashboards such as Grafana to query or ingest monitoring data while Lumen can remain the preferred dashboard for users who want it. |
 
 ---
 
@@ -196,6 +199,11 @@ Mỗi quyết định ghi 1 dòng. Không xóa, không sửa — nếu đổi ý
 
 **Goal**: Đủ feature để 1 user homelab thật dùng được.
 
+#### MVP scope guardrails
+- [ ] Auth supports self-hosted SSO: custom OIDC provider config is required for MVP; SAML2 is desired but can follow OIDC if implementation complexity is too high for the first slice.
+- [ ] Operator customization is first-class: log retention time, agent refresh/collection interval, and Parquet downsample policy must be configurable instead of hard-coded.
+- [ ] Docker container monitoring is roadmap/future unless explicitly pulled into MVP; current live-only container visibility can remain as-is.
+
 #### Hub
 - [x] Auth: register first-admin flow, JWT (HS256, 30d), password Argon2id (RFC 9106 second-class)
 - [x] Hosts CRUD + token generation (lum_… one-shot; SHA-256 hash stored; rotate; delete; ingest validates and overwrites body.host)
@@ -206,6 +214,10 @@ Mỗi quyết định ghi 1 dòng. Không xóa, không sửa — nếu đổi ý
 - [x] WS subscribe/unsubscribe protocol — client → server `{"type":"subscribe","hosts":["a","b"]}`; `["*"]` reverts to firehose; empty/no-message keeps Phase 1 behavior. HostDetail subscribes to its single host on open.
 - [x] Retention task (default 1h sweep, delete snapshots older than 24h; `LUMEN_HUB_RETENTION_{WINDOW,INTERVAL}`)
 - [x] Settings page: retention (window/interval — UI changes apply within 30s via heartbeat), password change (current+new+confirm, Argon2id rehash)
+- [ ] Auth: custom OIDC SSO provider config (issuer/client ID/client secret/scopes/redirect URL), with local admin fallback preserved
+- [ ] Auth: evaluate SAML2 after OIDC; implement only if dependency and configuration complexity stay acceptable for homelab/self-hosted use
+- [ ] Settings API: agent refresh/collection interval as a runtime-configurable knob, surfaced to agents without rebuilding/redeploying
+- [ ] Settings API: Parquet downsample policy config (bucket size and hot/cold/archive windows) before Phase 4 cold-tier implementation locks format assumptions
 
 #### Agent
 - [x] Host collector: CPU%, RAM%, Swap%, Disk%, load1/5/15 (gopsutil v4)
@@ -213,6 +225,7 @@ Mỗi quyết định ghi 1 dòng. Không xóa, không sửa — nếu đổi ý
 - [x] Docker collector (Engine API, minimal stdlib unix-socket client — no docker/docker SDK). Lists running + stopped containers, computes per-container CPU% (delta) + memory used/limit. Live-only, not persisted. Warns once on macOS Docker Desktop when socket sharing is disabled.
 - [x] Local bbolt buffer cho offline — `internal/agent/buffer`; default cap 24h × 5s ticks (~17k rows); replays gradually (10 frames per successful tick) so a backlog drains without thundering herd. Corruption-tolerant: bad file renamed `.corrupt-<unix>` and a fresh DB is opened.
 - [x] Config file YAML + env override — `internal/agent/config`; YAML is a syntax convenience that folds into the env. Precedence: process env > YAML > .env > defaults. Default path `/etc/lumen/agent.yaml`; missing file is silent no-op, malformed is fatal at boot.
+- [ ] Agent refresh/collection interval must be configurable by operator policy from hub/settings, while preserving env/YAML as bootstrap defaults.
 - [x] Systemd service file (`deploy/systemd/lumen-agent.service` — hardened nonroot-ish, runs as root for /proc + /sys + docker.sock)
 - [x] Install script `<hub>/install.sh` (already shipped earlier — hub serves it w/ baked-in URL + binaries)
 
@@ -221,6 +234,7 @@ Mỗi quyết định ghi 1 dòng. Không xóa, không sửa — nếu đổi ý
 - [x] Dark/light mode toggle (class-based, persists in localStorage)
 - [x] Auth UI: Register / Login / Logout + AppShell with tab nav
 - [x] Settings UI: hosts table + create + rotate + delete + one-shot token reveal + .env snippet
+- [ ] Settings UI: configure custom OIDC SSO, retention, agent refresh interval, and Parquet downsample/cold-tier policy from the web app
 - [x] Host detail page: 6 uPlot charts (CPU%, RAM%, Disk%, load avg, Network rx/tx, Disk I/O r/w) + conditional Temperature chart + per-core CPU live strip (subscribed via WS) + range picker (1h/6h/24h) + auto-refresh every 30s + Containers table (name + state badge + image + CPU + mem usage/limit, sorted running-first, danger highlight at mem ≥ 90%).
 - [x] PWA manifest + service worker — installable to homescreen on mobile; SW caches the app shell (cache-first) but never `/api/*` (network-only). Falls back gracefully on browsers without SW support.
 
@@ -267,14 +281,17 @@ Mỗi quyết định ghi 1 dòng. Không xóa, không sửa — nếu đổi ý
 ### Phase 4 — v0.3: Cold tier + retention (Week 9-12)
 
 - [ ] Parquet writer (parquet-go)
-- [ ] Compaction job: SQLite >24h → Parquet 5-min downsample
+- [ ] Compaction job: SQLite > configurable hot window → Parquet using configurable downsample bucket/policy
 - [ ] Query layer transparent over SQLite + Parquet
-- [ ] DuckDB optional embed for cold queries
-- [ ] Retention config UI: 24h hot / 30d cold / 365d archive
+- [ ] DuckDB feasibility spike + ADR before implementation: validate practicality, packaging, memory footprint, query latency, and whether DuckDB should be optional/default/off by default
+- [ ] Optional DuckDB cold-query layer only if spike confirms it is practical for homelab installs
+- [ ] Retention/downsample config UI: configurable hot/cold/archive windows and Parquet bucket policy
 - [ ] Multi-user (admin + read-only viewer)
 - [ ] TOTP 2FA
 - [ ] Docs: `how-to/reduce-disk-writes-further.md`
 - [ ] Benchmark: ghi IOPS/ngày so với Beszel + Prometheus, post lên docs
+- [ ] External data API/export RFC: define supported consumers (Grafana first), auth model, query shape, rate limits, and whether to expose Prometheus-compatible endpoints, Grafana datasource plugin, or plain REST/SQL-over-HTTP style API
+- [ ] Grafana integration spike: prove a user can build Grafana dashboards from Lumen monitoring data without using Lumen's web UI
 
 ---
 
@@ -344,6 +361,9 @@ Nếu bạn (hoặc Claude) mở session mới:
 **Blockers / open questions before public release**:
 - Domain `quanla.org` / GitHub org `lumenhq` chưa register — không block Phase 3 code nhưng nên xử lý trước public release.
 - Discord/community URL chưa có — placeholder trong README.
+- MVP scope just expanded: custom OIDC SSO + configurable retention/agent refresh/Parquet downsample must be scheduled before declaring v0.1.0/public MVP complete.
+- DuckDB cold-query layer is not locked: needs feasibility research/ADR before implementation, including whether it should be optional.
+- External data API/export for Grafana or other dashboards is now a planned expansion path and needs an RFC/spike.
 
 **Đã verify trên máy dev**:
 - ✅ Node v22.22.0
