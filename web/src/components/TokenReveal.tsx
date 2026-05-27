@@ -1,6 +1,18 @@
 import { useState } from "react";
 import { GhostButton } from "@/components/CenterCard";
 
+function dockerReachableHubUrl(hubUrl: string): string {
+  try {
+    const u = new URL(hubUrl);
+    if (u.hostname === "localhost" || u.hostname === "127.0.0.1") {
+      u.hostname = "host.docker.internal";
+    }
+    return u.toString().replace(/\/$/, "");
+  } catch {
+    return hubUrl;
+  }
+}
+
 /** One-shot token display — shows the plaintext + copy button + the
  * preferred one-liner install command + a fallback manual snippet.
  * Sticks around in the parent's state until the parent removes it
@@ -20,8 +32,11 @@ export function TokenReveal({
       ? `${window.location.protocol}//${window.location.host}`
       : "https://your-hub.example.com";
 
+  const dockerHubUrl = dockerReachableHubUrl(hubUrl);
+  const safeHostName = hostName.replace(/[^A-Za-z0-9_.-]/g, "-");
+
   const oneLiner = `curl -fsSL ${hubUrl}/install.sh | sudo bash -s -- --token ${token} --host ${hostName}`;
-  const dockerRun = `docker run -d --name lumen-agent-${hostName} --restart unless-stopped -e LUMEN_HUB_URL=${hubUrl} -e LUMEN_AGENT_TOKEN=${token} -e LUMEN_AGENT_HOST=${hostName} -e LUMEN_AGENT_INTERVAL=5s -e LUMEN_AGENT_BUFFER_PATH=/data/buffer.db -v lumen-agent-${hostName}-data:/data -v /var/run/docker.sock:/var/run/docker.sock:ro --user 0:0 lumen-agent:dev`;
+  const dockerRun = `docker run -d --name lumen-agent-${safeHostName} --restart unless-stopped -e LUMEN_HUB_URL=${dockerHubUrl} -e LUMEN_AGENT_TOKEN=${token} -e LUMEN_AGENT_HOST=${hostName} -e LUMEN_AGENT_INTERVAL=5s -e LUMEN_AGENT_BUFFER_PATH=/data/buffer.db -v lumen-agent-${safeHostName}-data:/data -v /var/run/docker.sock:/var/run/docker.sock:ro --user 0:0 lumen-agent:dev`;
   const envSnippet = `LUMEN_HUB_URL=${hubUrl}\nLUMEN_AGENT_TOKEN=${token}\nLUMEN_AGENT_HOST=${hostName}`;
 
   async function copy(text: string, which: "token" | "oneliner" | "docker" | "env") {

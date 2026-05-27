@@ -1,9 +1,10 @@
-# Lumen dev compose — 1-command end-to-end stack.
+# Lumen dev compose — hub-first local stack.
 #
 # From repo root:
 #   docker compose -f deploy/docker/docker-compose.yml up --build
 #
-# Then open http://localhost:8090 to see the embedded web UI.
+# Then open http://localhost:8090, create a host token in Settings, and run
+# the generated agent command. The bundled agent service is opt-in via profile.
 
 name: lumen
 
@@ -31,16 +32,14 @@ services:
       - lumen-data:/data
     restart: unless-stopped
 
-  # NOTE: Strict bearer-token auth. Without a valid LUMEN_AGENT_TOKEN
-  # the hub returns 401 to every ingest until you:
-  #   1. Sign in at http://localhost:8090 (seeded admin if
-  #      LUMEN_HUB_ADMIN_* are set in .env; otherwise the UI will offer
-  #      a register form).
-  #   2. Settings → Hosts → Create → copy the one-shot `lum_...` token.
-  #   3. Put LUMEN_AGENT_TOKEN=lum_... in .env, then:
-  #        docker compose -f deploy/docker/docker-compose.yml up -d agent
-  # The 401s are loud but harmless — the agent retries every interval.
+  # Optional same-machine demo agent. The normal operator flow is:
+  #   1. Start the hub only with `docker compose ... up --build`.
+  #   2. Settings → Hosts → Create → copy the generated Docker command.
+  #   3. Run that command on the target host.
+  # Use this profile only when you deliberately want compose to run a local
+  # demo agent from LUMEN_AGENT_TOKEN in .env.
   agent:
+    profiles: ["agent"]
     build:
       context: ../..
       dockerfile: deploy/docker/Dockerfile.agent
@@ -87,10 +86,8 @@ services:
       - lumen-agent-data:/data
     restart: unless-stopped
 
-  # Second agent — opt-in via `--profile extra`. Workflow:
-  #   1. Hub UI → Settings → Add host "compose-agent-2" → copy token.
-  #   2. Append to .env:  LUMEN_AGENT_TOKEN_2=lum_xxx...
-  #   3. docker compose -f deploy/docker/docker-compose.yml --profile extra up -d agent2
+  # Second demo agent — opt-in via `--profile extra`. Prefer the generated
+  # Docker command in the UI for real hosts.
   agent2:
     profiles: ["extra"]
     image: lumen-agent:dev
