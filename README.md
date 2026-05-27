@@ -12,7 +12,7 @@ and alerts — designed to run comfortably on a Raspberry Pi.
 
 > ⚠️ **Pre-1.0 / pre-launch.** The project is being staged at
 > [`quanla93/lumen`](https://github.com/quanla93/lumen) (private) until
-> v0.1.0; the `lumenhq.dev` site, Discord, and installer URLs below are
+> v0.1.0; the `quanla.org` site, Discord, and installer URLs below are
 > placeholders and don't exist yet.
 
 </div>
@@ -69,7 +69,7 @@ If those are dealbreakers, look at [Grafana + Prometheus](https://grafana.com) o
 
 ## Quickstart
 
-The Docker Compose and `get.lumenhq.dev` installer flow shown below is the
+The Docker Compose and `quanla.org/lumen/install` installer flow shown below is the
 target UX for v0.1.0. Today (pre-v0.1) you build from source:
 
 ```bash
@@ -83,7 +83,7 @@ make dev-agent    # terminal 2
 Future v0.1+ flow (not live yet):
 
 ```bash
-curl -fsSL https://get.lumenhq.dev/compose > docker-compose.yml
+curl -fsSL https://quanla.org/lumen/install/compose > docker-compose.yml
 docker compose up -d
 # then add a host in the UI to copy the agent install command.
 ```

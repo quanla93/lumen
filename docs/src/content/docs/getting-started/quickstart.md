@@ -6,7 +6,7 @@ sidebar:
 ---
 
 > ℹ️ This is the **pre-v0.1 dev quickstart** — you build the binaries from
-> source. The polished `curl get.lumenhq.dev | bash` flow lands with v0.1.0
+> source. The polished `curl quanla.org/lumen/install | bash` flow lands with v0.1.0
 > (see the [roadmap](https://github.com/quanla93/lumen/blob/main/ACTION_PLAN.md)).
 
 ## Prerequisites

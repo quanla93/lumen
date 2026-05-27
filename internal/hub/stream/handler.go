@@ -28,8 +28,8 @@ import (
 
 	"github.com/gorilla/websocket"
 
-	"github.com/lumenhq/lumen/internal/hub/store"
-	"github.com/lumenhq/lumen/internal/shared/api"
+	"github.com/quanla93/lumen/internal/hub/store"
+	"github.com/quanla93/lumen/internal/shared/api"
 )
 
 // CheckOrigin is permissive in dev: any origin may connect. Phase 2 will

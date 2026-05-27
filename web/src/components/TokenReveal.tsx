@@ -14,16 +14,17 @@ export function TokenReveal({
   token: string;
   onDismiss: () => void;
 }) {
-  const [copied, setCopied] = useState<"token" | "oneliner" | "env" | null>(null);
+  const [copied, setCopied] = useState<"token" | "oneliner" | "docker" | "env" | null>(null);
   const hubUrl =
     typeof window !== "undefined"
       ? `${window.location.protocol}//${window.location.host}`
       : "https://your-hub.example.com";
 
   const oneLiner = `curl -fsSL ${hubUrl}/install.sh | sudo bash -s -- --token ${token} --host ${hostName}`;
+  const dockerRun = `docker run -d --name lumen-agent-${hostName} --restart unless-stopped -e LUMEN_HUB_URL=${hubUrl} -e LUMEN_AGENT_TOKEN=${token} -e LUMEN_AGENT_HOST=${hostName} -e LUMEN_AGENT_INTERVAL=5s -e LUMEN_AGENT_BUFFER_PATH=/data/buffer.db -v lumen-agent-${hostName}-data:/data -v /var/run/docker.sock:/var/run/docker.sock:ro --user 0:0 lumen-agent:dev`;
   const envSnippet = `LUMEN_HUB_URL=${hubUrl}\nLUMEN_AGENT_TOKEN=${token}\nLUMEN_AGENT_HOST=${hostName}`;
 
-  async function copy(text: string, which: "token" | "oneliner" | "env") {
+  async function copy(text: string, which: "token" | "oneliner" | "docker" | "env") {
     try {
       await navigator.clipboard.writeText(text);
       setCopied(which);
@@ -68,6 +69,21 @@ export function TokenReveal({
           Detects arch, downloads the binary from this hub, registers a systemd unit,
           and starts the agent. Re-running upgrades in place. Uninstall: same command
           with <code>--uninstall</code>.
+        </p>
+      </div>
+
+      <div className="mb-4">
+        <div className="flex items-center justify-between mb-1">
+          <p className="text-xs font-semibold">Run with Docker</p>
+          <GhostButton onClick={() => copy(dockerRun, "docker")}>
+            {copied === "docker" ? "Copied!" : "Copy"}
+          </GhostButton>
+        </div>
+        <pre className="text-xs font-mono bg-[color:var(--color-card)] border border-[color:var(--color-border)] rounded p-3 overflow-x-auto whitespace-pre-wrap">{dockerRun}</pre>
+        <p className="text-xs text-[color:var(--color-muted)] mt-2">
+          Use this when the target host already runs Docker. If the hub is on the
+          host machine but the agent runs in Docker Desktop, use <code>host.docker.internal</code>
+          as the hub hostname.
         </p>
       </div>
 

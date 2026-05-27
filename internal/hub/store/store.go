@@ -11,7 +11,7 @@ package store
 import (
 	"sync"
 
-	"github.com/lumenhq/lumen/internal/shared/api"
+	"github.com/quanla93/lumen/internal/shared/api"
 )
 
 // SeriesCap is the per-host CPU sample ring length. 120 samples @ 5s tick

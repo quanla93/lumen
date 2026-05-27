@@ -35,8 +35,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/lumenhq/lumen/internal/hub/server"
-	"github.com/lumenhq/lumen/internal/shared/envcfg"
+	"github.com/quanla93/lumen/internal/hub/server"
+	"github.com/quanla93/lumen/internal/shared/envcfg"
 )
 
 func main() {

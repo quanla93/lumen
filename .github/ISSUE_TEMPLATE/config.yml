@@ -1,11 +1,11 @@
 blank_issues_enabled: false
 contact_links:
   - name: 💬 Ask a question / Get help
-    url: https://github.com/lumenhq/lumen/discussions/categories/q-a
+    url: https://github.com/quanla93/lumen/discussions/categories/q-a
     about: For usage questions, please use Discussions Q&A instead of issues.
   - name: 💡 Discuss an idea
-    url: https://github.com/lumenhq/lumen/discussions/categories/ideas
+    url: https://github.com/quanla93/lumen/discussions/categories/ideas
     about: For early-stage ideas before a formal feature request.
   - name: 🔒 Report a security vulnerability
-    url: https://github.com/lumenhq/lumen/security/advisories/new
+    url: https://github.com/quanla93/lumen/security/advisories/new
     about: Please do NOT open a public issue for security vulnerabilities.

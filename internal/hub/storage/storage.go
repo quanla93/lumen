@@ -19,7 +19,7 @@ import (
 	"github.com/pressly/goose/v3"
 	_ "modernc.org/sqlite" // registers "sqlite" driver (pure Go, no CGO)
 
-	"github.com/lumenhq/lumen/internal/shared/api"
+	"github.com/quanla93/lumen/internal/shared/api"
 )
 
 //go:embed migrations/*.sql

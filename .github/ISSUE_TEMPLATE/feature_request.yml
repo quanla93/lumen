@@ -6,8 +6,8 @@ body:
     attributes:
       value: |
         Thanks for the suggestion! Before submitting, please check:
-        - [ ] This is **not** in our [anti-features list](https://github.com/lumenhq/lumen/blob/main/ACTION_PLAN.md#anti-features-locked--không-bàn-lại)
-        - [ ] [Existing issues / discussions](https://github.com/lumenhq/lumen/discussions) don't already cover this
+        - [ ] This is **not** in our [anti-features list](https://github.com/quanla93/lumen/blob/main/ACTION_PLAN.md#anti-features-locked--không-bàn-lại)
+        - [ ] [Existing issues / discussions](https://github.com/quanla93/lumen/discussions) don't already cover this
 
         For large changes (new module, architecture impact), consider an RFC in Discussions first.
 

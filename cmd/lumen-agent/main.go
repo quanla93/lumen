@@ -30,12 +30,12 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/lumenhq/lumen/internal/agent/buffer"
-	"github.com/lumenhq/lumen/internal/agent/collector"
-	"github.com/lumenhq/lumen/internal/agent/config"
-	"github.com/lumenhq/lumen/internal/agent/sender"
-	"github.com/lumenhq/lumen/internal/shared/api"
-	"github.com/lumenhq/lumen/internal/shared/envcfg"
+	"github.com/quanla93/lumen/internal/agent/buffer"
+	"github.com/quanla93/lumen/internal/agent/collector"
+	"github.com/quanla93/lumen/internal/agent/config"
+	"github.com/quanla93/lumen/internal/agent/sender"
+	"github.com/quanla93/lumen/internal/shared/api"
+	"github.com/quanla93/lumen/internal/shared/envcfg"
 )
 
 // defaultConfigPath is the well-known location an Ansible/Salt-style

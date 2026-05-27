@@ -6,7 +6,7 @@ body:
       value: |
         Early-stage ideas welcome here. For mature feature requests, open an issue instead.
 
-        Please check our [anti-features list](https://github.com/lumenhq/lumen/blob/main/ACTION_PLAN.md#anti-features-locked--không-bàn-lại) first.
+        Please check our [anti-features list](https://github.com/quanla93/lumen/blob/main/ACTION_PLAN.md#anti-features-locked--không-bàn-lại) first.
 
   - type: textarea
     id: idea

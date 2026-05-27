@@ -6,7 +6,7 @@ body:
     attributes:
       value: |
         Thanks for taking the time to report a bug! Please fill out the form below.
-        Before submitting, please [search existing issues](https://github.com/lumenhq/lumen/issues?q=is%3Aissue) to avoid duplicates.
+        Before submitting, please [search existing issues](https://github.com/quanla93/lumen/issues?q=is%3Aissue) to avoid duplicates.
 
   - type: input
     id: version

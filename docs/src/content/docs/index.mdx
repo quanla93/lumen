@@ -10,7 +10,7 @@ hero:
       icon: right-arrow
       variant: primary
     - text: View on GitHub
-      link: https://github.com/lumenhq/lumen
+      link: https://github.com/quanla93/lumen
       icon: external
       variant: minimal
 ---
@@ -41,11 +41,11 @@ import { Card, CardGrid } from "@astrojs/starlight/components";
 
 ```bash
 # Hub
-curl -fsSL https://get.lumenhq.dev/compose > docker-compose.yml
+curl -fsSL https://quanla.org/lumen/install/compose > docker-compose.yml
 docker compose up -d
 
 # Agent (after creating a host in the UI)
-curl -fsSL https://get.lumenhq.dev/agent | sudo bash -s -- \
+curl -fsSL https://quanla.org/lumen/install/agent | sudo bash -s -- \
   --hub https://lumen.example.com \
   --token lum_xxxxxxxxxx
 ```

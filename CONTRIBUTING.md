@@ -24,8 +24,8 @@ You don't need to write code to help:
 
 | Type | How |
 |---|---|
-| 🐛 Bug reports | Open an [issue](https://github.com/lumenhq/lumen/issues/new/choose) — use the template |
-| 💡 Feature ideas | Start a [Discussion](https://github.com/lumenhq/lumen/discussions/categories/ideas) |
+| 🐛 Bug reports | Open an [issue](https://github.com/quanla93/lumen/issues/new/choose) — use the template |
+| 💡 Feature ideas | Start a [Discussion](https://github.com/quanla93/lumen/discussions/categories/ideas) |
 | 📖 Docs | PR directly into `docs/` — small fixes don't need an issue first |
 | 🌍 Translations | See [translating.md](docs/src/content/docs/contributing/translating.md) |
 | 💬 Help others | Answer Discussions / Discord questions |
@@ -52,7 +52,7 @@ You don't need to write code to help:
 - AI/ML anomaly detection.
 - Cloud-only features that require external services to function.
 
-If unsure, **ask first** in [Discussions](https://github.com/lumenhq/lumen/discussions).
+If unsure, **ask first** in [Discussions](https://github.com/quanla93/lumen/discussions).
 
 ---
 
@@ -199,7 +199,7 @@ We use a gradual-trust model. Nobody is gatekept by a test or interview — trus
 | **Maintainer** | Merge PRs, cut releases, set roadmap | Nominated by Core after ~6 months of steady, high-judgment contribution; consensus of Core team |
 | **Core Team** | Architecture decisions, project direction | Promoted from Maintainer by consensus |
 
-**First-time contributor?** Look for issues labeled [`good first issue`](https://github.com/lumenhq/lumen/labels/good%20first%20issue). A maintainer will mentor your first PR.
+**First-time contributor?** Look for issues labeled [`good first issue`](https://github.com/quanla93/lumen/labels/good%20first%20issue). A maintainer will mentor your first PR.
 
 **What gets you noticed for higher tiers** (not a checklist — guidance):
 - Consistently high-quality PRs (not just quantity)

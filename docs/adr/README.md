@@ -18,8 +18,8 @@ ADRs are **append-only**. If a decision is later overturned, write a new ADR tha
 | # | Title | Status |
 |---|---|---|
 | [0001](0001-storage-architecture.md) | Storage architecture — SQLite (hot) + Parquet (cold) | Accepted |
-| 0002 | Transport choice (HTTPS/WS over SSH) | Planned |
-| 0003 | Language choice (Go for hub + agent) | Planned |
+| [0002](0002-transport-choice.md) | Transport choice — HTTPS/WebSocket push over SSH | Accepted |
+| [0003](0003-language-choice.md) | Language choice — Go for hub and agent | Accepted |
 
 ## When to write a new ADR
 

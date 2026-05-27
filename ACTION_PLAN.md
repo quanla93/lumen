@@ -21,8 +21,8 @@
 |---|---|
 | **Name** | Lumen |
 | **Tagline** | Proxmox-native monitoring for homelabs. HTTPS-only, HDD-friendly, mobile-ready. |
-| **Repo (proposed)** | github.com/lumenhq/lumen (eventual); currently staged at github.com/quanla93/lumen (private) |
-| **Domain (proposed)** | lumenhq.dev (alt: getlumen.io) |
+| **Repo** | github.com/quanla93/lumen |
+| **Domain** | quanla.org (temporary) |
 | **License** | MIT |
 | **Language** | Go (hub + agent), TypeScript (web + docs) |
 | **Audience** | Homelab users, small infra teams, Proxmox/Docker/LXC operators |
@@ -139,11 +139,11 @@ Mỗi quyết định ghi 1 dòng. Không xóa, không sửa — nếu đổi ý
 - [x] README.md (root)
 - [x] LICENSE (MIT)
 - [x] CONTRIBUTING.md
-- [ ] ⏸️ CODE_OF_CONDUCT.md (deferred per user)
-- [ ] ⏸️ GOVERNANCE.md (deferred per user)
-- [ ] ⏸️ SECURITY.md (deferred per user)
-- [ ] ⏸️ SUPPORT.md (deferred per user)
-- [ ] CHANGELOG.md (Keep-a-Changelog format) — deferred until first `v0.0.x` tag
+- [x] CODE_OF_CONDUCT.md
+- [x] GOVERNANCE.md
+- [x] SECURITY.md
+- [x] SUPPORT.md
+- [x] CHANGELOG.md (Keep-a-Changelog format)
 - [x] `.github/ISSUE_TEMPLATE/bug_report.yml`
 - [x] `.github/ISSUE_TEMPLATE/feature_request.yml`
 - [x] `.github/ISSUE_TEMPLATE/collector_proposal.yml`
@@ -163,10 +163,10 @@ Mỗi quyết định ghi 1 dòng. Không xóa, không sửa — nếu đổi ý
 - [x] `getting-started/concepts.md`
 - [x] `docs/src/content/docs/index.mdx` landing
 - [x] ADR-0001: storage architecture (SQLite + Parquet)
-- [ ] ADR-0002: transport choice (HTTPS/WS over SSH)
-- [ ] ADR-0003: language choice (Go for both hub + agent)
+- [x] ADR-0002: transport choice (HTTPS/WS over SSH)
+- [x] ADR-0003: language choice (Go for both hub + agent)
 - [x] Memory saved (`~/.claude/.../memory/`) for cross-session continuity
-- [ ] Logo + brand assets (in progress)
+- [x] Logo + brand assets
 
 **Definition of done**: Có thể `git init && git add . && git commit` ra 1 repo trông "professional OSS-ready" mà chưa cần dòng code thật.
 
@@ -323,39 +323,27 @@ Nếu bạn (hoặc Claude) mở session mới:
 
 > Cập nhật mục này mỗi session.
 
-**Session**: 2026-05-26
-**Đang làm**: Phase 2 — "History & detail view" slice ✅. Next: agent breadth (net/IO/temp + Docker) or WS subscribe protocol.
+**Session**: 2026-05-27
+**Đang làm**: Phase 2 closeout ✅. Next: start Phase 3 — Proxmox wedge.
 **Vừa hoàn thành**:
-- README, LICENSE, CONTRIBUTING, ACTION_PLAN
-- Toàn bộ `.github/` (issue/PR/discussion templates + CI/release/CodeQL workflows + CODEOWNERS)
-- `.gitignore`, `.editorconfig`, `Makefile`
-- Starlight docs scaffold + landing + getting-started (overview, quickstart, concepts)
-- ADR-0001 storage architecture
-- Memory files cho cross-session continuity
-- Logo + brand assets (SVG)
-- Toolchain dev unblocked: Go 1.26.3 + pnpm cài qua winget/npm
-- `git init -b main` + initial commit Phase 0 baseline (`919e0a7 chore: initial Phase 0 baseline`)
+- OSS readiness docs: CODE_OF_CONDUCT.md, GOVERNANCE.md, SECURITY.md, SUPPORT.md.
+- CHANGELOG.md initialized with Keep-a-Changelog structure and Unreleased Phase 0-2 summary.
+- ADR-0002 transport choice and ADR-0003 language choice accepted and linked from ADR index.
+- ACTION_PLAN Phase 0 checklist synced with shipped brand assets and docs.
+- Phase 2 checklist is fully green: hub, agent, web, docs, reliability, PWA, CI/CD.
 
-**Phase 1 complete (10 micro-steps + 1 bonus, 8 commits on main):**
-- ✅ 1.1–1.9 per Phase plan above + OpenAPI/`.http` spec for tooling.
+**Phase 1 complete:**
+- ✅ End-to-end skinny slice: hub, agent, ingest, live WS stream, embedded web, Docker Compose, source-run docs, OpenAPI/`.http` tooling.
 
-**Phase 2 first slice (✅ all shipped):**
-1. ✅ UI polish foundation — Tailwind v4 + shadcn-style cards, theme toggle.
-2. ✅ Agent collector breadth — RAM%, swap, disk usage%, load avg (Net/IO/temp still pending; tracked under "Agent" above).
-3. ✅ Web Overview page — host cards, status dots, CPU sparkline, RAM/Disk bars, load avg footer.
-4. ✅ Hub auth + Hosts CRUD — register-first-admin, Argon2id, JWT cookie, rotatable bearer tokens, ingest validation.
-5. ✅ Hub storage layer — modernc.org/sqlite + goose migrations, per-host CPU ring, sync INSERT per ingest.
+**Phase 2 complete:**
+1. ✅ Hub core: auth, hosts CRUD, strict bearer ingest, SQLite/goose, batched persistence, history query API, retention/settings, WS subscribe filters.
+2. ✅ Agent core: host metrics, per-core CPU, net/disk rates, temperature, Docker collector, bbolt offline buffer, YAML config, systemd/install path.
+3. ✅ Web core: overview, auth, settings, host detail charts, live per-core strip, containers table, dark/light mode, PWA shell.
+4. ✅ Docs breadth: install, configure, reliability, CI/CD, architecture, API, metrics catalog, FAQ.
 
-**Phase 2 second slice — "History & detail view" (2026-05-26):**
-6. ✅ Query API `GET /api/hosts/{id}/metrics?from&to&step` — server-side AVG bucketing, auto-step, 2000-point cap, 7-day window cap.
-7. ✅ Retention loop — `LUMEN_HUB_RETENTION_WINDOW`/`_INTERVAL` (defaults 24h / 1h); `0` disables.
-8. ✅ Host detail page — uPlot charts for CPU/RAM/Disk + load (1/5/15), 1h/6h/24h range picker, 30s auto-refresh, click-through from dashboard cards.
-
-**Blockers / open questions**:
-- Domain `lumenhq.dev` / GitHub org `lumenhq` chưa register — không block code nhưng nên xử lý trước public release.
+**Blockers / open questions before public release**:
+- Domain `quanla.org` / GitHub org `lumenhq` chưa register — không block Phase 3 code nhưng nên xử lý trước public release.
 - Discord/community URL chưa có — placeholder trong README.
-- ADR-0002 (transport) + ADR-0003 (language) còn nợ — viết trước cuối Phase 1 để khớp với code thực tế.
-- CHANGELOG.md (Keep-a-Changelog) chưa khởi tạo — thêm khi cắt tag `v0.0.1` đầu tiên.
 
 **Đã verify trên máy dev**:
 - ✅ Node v22.22.0

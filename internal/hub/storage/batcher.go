@@ -27,7 +27,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/lumenhq/lumen/internal/shared/api"
+	"github.com/quanla93/lumen/internal/shared/api"
 )
 
 // BatcherConfig holds the knobs. Defaults are tuned for HDD-backed

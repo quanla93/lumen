@@ -18,8 +18,8 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/lumenhq/lumen/internal/hub/settings"
-	"github.com/lumenhq/lumen/internal/hub/storage"
+	"github.com/quanla93/lumen/internal/hub/settings"
+	"github.com/quanla93/lumen/internal/hub/storage"
 )
 
 // HeartbeatInterval bounds how quickly a UI setting change takes effect.

@@ -42,18 +42,29 @@ func QueryMetrics(
 		return nil, fmt.Errorf("from must be < to")
 	}
 	rows, err := db.QueryContext(ctx, `
-		SELECT
-			CAST(strftime('%s', ts) AS INTEGER) / ? * ? AS bucket,
-			AVG(cpu_pct), AVG(ram_pct), AVG(swap_pct), AVG(disk_pct),
-			AVG(load1), AVG(load5), AVG(load15),
-			AVG(net_rx_bps), AVG(net_tx_bps),
-			AVG(disk_r_bps), AVG(disk_w_bps),
-			AVG(temp_c)
-		FROM snapshots
-		WHERE host = ? AND ts >= ? AND ts < ?
-		GROUP BY bucket
-		ORDER BY bucket ASC
-	`, stepSeconds, stepSeconds, host, formatTS(from), formatTS(to))
+			WITH parsed AS (
+				SELECT
+					CAST(strftime('%s', ts) AS INTEGER) AS unix_ts,
+					cpu_pct, ram_pct, swap_pct, disk_pct,
+					load1, load5, load15,
+					net_rx_bps, net_tx_bps,
+					disk_r_bps, disk_w_bps,
+					temp_c
+				FROM snapshots
+				WHERE host = ? AND ts >= ? AND ts < ?
+			)
+			SELECT
+				unix_ts / ? * ? AS bucket,
+				AVG(cpu_pct), AVG(ram_pct), AVG(swap_pct), AVG(disk_pct),
+				AVG(load1), AVG(load5), AVG(load15),
+				AVG(net_rx_bps), AVG(net_tx_bps),
+				AVG(disk_r_bps), AVG(disk_w_bps),
+				AVG(temp_c)
+			FROM parsed
+			WHERE unix_ts IS NOT NULL
+			GROUP BY bucket
+			ORDER BY bucket ASC
+		`, host, formatTS(from), formatTS(to), stepSeconds, stepSeconds)
 	if err != nil {
 		return nil, fmt.Errorf("query snapshots: %w", err)
 	}

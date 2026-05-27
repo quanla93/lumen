@@ -15,16 +15,16 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
-	"github.com/lumenhq/lumen/internal/hub/auth"
-	"github.com/lumenhq/lumen/internal/hub/hosts"
-	"github.com/lumenhq/lumen/internal/hub/ingest"
-	"github.com/lumenhq/lumen/internal/hub/install"
-	"github.com/lumenhq/lumen/internal/hub/retention"
-	"github.com/lumenhq/lumen/internal/hub/settings"
-	"github.com/lumenhq/lumen/internal/hub/storage"
-	"github.com/lumenhq/lumen/internal/hub/store"
-	"github.com/lumenhq/lumen/internal/hub/stream"
-	"github.com/lumenhq/lumen/internal/hub/web"
+	"github.com/quanla93/lumen/internal/hub/auth"
+	"github.com/quanla93/lumen/internal/hub/hosts"
+	"github.com/quanla93/lumen/internal/hub/ingest"
+	"github.com/quanla93/lumen/internal/hub/install"
+	"github.com/quanla93/lumen/internal/hub/retention"
+	"github.com/quanla93/lumen/internal/hub/settings"
+	"github.com/quanla93/lumen/internal/hub/storage"
+	"github.com/quanla93/lumen/internal/hub/store"
+	"github.com/quanla93/lumen/internal/hub/stream"
+	"github.com/quanla93/lumen/internal/hub/web"
 )
 
 type Config struct {

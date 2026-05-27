@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lumenhq/lumen/internal/shared/api"
+	"github.com/quanla93/lumen/internal/shared/api"
 )
 
 type Sender struct {

@@ -10,7 +10,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/lumenhq/lumen/internal/hub/store"
+	"github.com/quanla93/lumen/internal/hub/store"
 )
 
 type Handlers struct {

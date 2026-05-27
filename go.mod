@@ -1,4 +1,4 @@
-module github.com/lumenhq/lumen
+module github.com/quanla93/lumen
 
 go 1.25.7
 
