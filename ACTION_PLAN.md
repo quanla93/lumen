@@ -273,6 +273,11 @@ Mỗi quyết định ghi 1 dòng. Không xóa, không sửa — nếu đổi ý
 - [x] Host detail redesign: header/back behavior, chart cards, loading/empty states, per-core strip, and container table use consistent surfaces
 - [x] Settings redesign: structured sections for Hosts, Account, Runtime, Retention, Downsample policy, and future Log management
 
+#### i18n foundation
+- [ ] Add lightweight UI i18n infrastructure before more copy lands: locale state, persistence, translation lookup, and language toggle
+- [ ] Ship English + Vietnamese strings for AppShell, Dashboard, Host detail, Settings, auth, empty/loading/error states
+- [ ] Keep docs i18n separate from app i18n; Starlight handles docs, the web app owns runtime UI translations
+
 #### Lightweight log management
 - [ ] Log management RFC: on-demand admin debugging only; no default persistence/indexing/full-text search
 - [ ] Agent log source abstraction: journald/systemd unit logs, Docker container logs, and Lumen agent self logs
@@ -331,8 +336,13 @@ Mỗi quyết định ghi 1 dòng. Không xóa, không sửa — nếu đổi ý
 - [ ] First-run onboarding flow: create admin → add first host → copy agent command → wait for first metrics
 - [ ] Public status page (read-only share)
 - [ ] Web Push notifications (VAPID)
-- [ ] i18n UI: Vietnamese + English
-- [ ] Translation docs
+- [ ] i18n polish follow-up: expand translations to new modules after the Phase 3 foundation lands
+- [ ] Translation docs and contribution guide for adding/changing UI copy
+
+#### Public landing / marketing site
+- [ ] Keep `brand/index.html` as a standalone coming-soon/landing page, separate from the authenticated hub dashboard
+- [ ] Evolve landing page into Lumen's public home: product positioning, screenshots, install CTA, docs link, GitHub link, and roadmap highlights
+- [ ] Decide deployment target for the static landing page (GitHub Pages / Cloudflare Pages / other) without coupling it to hub runtime
 
 ---
 
