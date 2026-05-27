@@ -1,7 +1,6 @@
 -- +goose Up
-ALTER TABLE hosts ADD COLUMN system_hostname TEXT;
-ALTER TABLE hosts ADD COLUMN system_primary_ip TEXT;
+-- No-op: 0006_host_system_metadata.sql already added system_hostname and system_primary_ip.
+SELECT 1;
 
 -- +goose Down
-ALTER TABLE hosts DROP COLUMN system_primary_ip;
-ALTER TABLE hosts DROP COLUMN system_hostname;
+SELECT 1;

@@ -12,14 +12,15 @@ import { relativeTime } from "@/lib/time";
 import { ErrorText, Field, FieldInput, GhostButton, PrimaryButton } from "@/components/CenterCard";
 import { TokenReveal } from "@/components/TokenReveal";
 
-type SettingsTab = "hosts" | "account" | "runtime" | "retention" | "logs";
+type SettingsTab = "hosts" | "account" | "runtime" | "retention" | "downsample" | "logs";
 
 const TABS: { id: SettingsTab; label: string }[] = [
   { id: "hosts",     label: "Hosts" },
   { id: "account",   label: "Account" },
-  { id: "runtime",   label: "Runtime" },
-  { id: "retention", label: "Retention" },
-  { id: "logs",      label: "Logs" },
+  { id: "runtime",    label: "Runtime" },
+  { id: "retention",  label: "Retention" },
+  { id: "downsample", label: "Downsample" },
+  { id: "logs",       label: "Logs" },
 ];
 
 export function Settings({ user }: { user: User }) {
@@ -40,9 +41,10 @@ export function Settings({ user }: { user: User }) {
       <div className="pt-2">
         {tab === "hosts"     && <HostsSettings />}
         {tab === "account"   && <AccountSettings user={user} />}
-        {tab === "runtime"   && <RuntimeSettings />}
-        {tab === "retention" && <RetentionSettings />}
-        {tab === "logs"      && <LogManagementSettings />}
+        {tab === "runtime"    && <RuntimeSettings />}
+        {tab === "retention"  && <RetentionSettings />}
+        {tab === "downsample" && <DownsampleSettings />}
+        {tab === "logs"       && <LogManagementSettings />}
       </div>
     </div>
   );
@@ -535,6 +537,113 @@ function RuntimeSettings() {
             label="Agent collection interval"
             value={agentInterval}
             onChange={setAgentInterval}
+          />
+          {error && <ErrorText message={error} />}
+          {savedAt && !dirty && (
+            <p role="status" className="text-sm text-[color:var(--color-accent)]">
+              Saved {new Date(savedAt).toLocaleTimeString()}.
+            </p>
+          )}
+          <PrimaryButton disabled={busy || !dirty}>
+            {busy ? "Saving…" : "Save"}
+          </PrimaryButton>
+        </form>
+      )}
+    </div>
+  );
+}
+
+function DownsampleSettings() {
+  const [settings, setSettings] = useState<SettingsResponse | null>(null);
+  const [bucketSize, setBucketSize] = useState<DurationInput>({ value: "", unit: "m" });
+  const [hotWindow, setHotWindow] = useState<DurationInput>({ value: "", unit: "h" });
+  const [archiveWindow, setArchiveWindow] = useState<DurationInput>({ value: "", unit: "d" });
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [savedAt, setSavedAt] = useState<number | null>(null);
+
+  useEffect(() => {
+    settingsApi.get().then((s) => {
+      setSettings(s);
+      setBucketSize(parseDurationInput(s.downsample_bucket_size));
+      setHotWindow(parseDurationInput(s.downsample_hot_window));
+      setArchiveWindow(parseDurationInput(s.downsample_archive_window));
+    }).catch((err) => {
+      setError(err instanceof ApiError ? err.message : String(err));
+    });
+  }, []);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    const nextBucketSize = formatDurationInput(bucketSize);
+    const nextHotWindow = formatDurationInput(hotWindow);
+    const nextArchiveWindow = formatDurationInput(archiveWindow);
+    if (!nextBucketSize || !nextHotWindow || !nextArchiveWindow) {
+      setError("Downsample policy values must be positive whole numbers.");
+      return;
+    }
+    setBusy(true);
+    try {
+      const next = await settingsApi.put({
+        downsample_bucket_size: nextBucketSize,
+        downsample_hot_window: nextHotWindow,
+        downsample_archive_window: nextArchiveWindow,
+      });
+      setSettings(next);
+      setBucketSize(parseDurationInput(next.downsample_bucket_size));
+      setHotWindow(parseDurationInput(next.downsample_hot_window));
+      setArchiveWindow(parseDurationInput(next.downsample_archive_window));
+      setSavedAt(Date.now());
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const bucketDuration = formatDurationInput(bucketSize);
+  const hotDuration = formatDurationInput(hotWindow);
+  const archiveDuration = formatDurationInput(archiveWindow);
+  const dirty =
+    !!settings &&
+    (bucketDuration !== settings.downsample_bucket_size ||
+      hotDuration !== settings.downsample_hot_window ||
+      archiveDuration !== settings.downsample_archive_window);
+
+  return (
+    <div className="max-w-md space-y-4">
+      <section>
+        <h2 className="text-base font-semibold tracking-tight mb-3">Downsample policy</h2>
+        <p className="text-sm text-[color:var(--color-muted)]">
+          These settings control how long Lumen keeps detailed raw metrics, and
+          how older metrics will be compressed into long-term history.
+        </p>
+        <ul className="mt-3 space-y-1.5 text-sm text-[color:var(--color-muted)]">
+          <li><strong className="text-[color:var(--color-fg)]">Bucket size</strong> is the time span for one archived point. Example: 5m means old data is averaged into one point every 5 minutes.</li>
+          <li><strong className="text-[color:var(--color-fg)]">Hot window</strong> is how long full-detail raw data stays in SQLite. Example: 24h means the last day keeps every agent sample.</li>
+          <li><strong className="text-[color:var(--color-fg)]">Archive window</strong> is how long compressed history is kept. Example: 365d means archived data is kept for one year.</li>
+        </ul>
+      </section>
+
+      {!settings ? (
+        <p className="text-sm text-[color:var(--color-muted)]">Loading…</p>
+      ) : (
+        <form onSubmit={submit} className="space-y-3">
+          <DurationField
+            label="Bucket size"
+            value={bucketSize}
+            onChange={setBucketSize}
+          />
+          <DurationField
+            label="Hot window"
+            value={hotWindow}
+            onChange={setHotWindow}
+          />
+          <DurationField
+            label="Archive window"
+            value={archiveWindow}
+            onChange={setArchiveWindow}
           />
           {error && <ErrorText message={error} />}
           {savedAt && !dirty && (

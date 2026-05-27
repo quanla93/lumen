@@ -15,12 +15,18 @@ import (
 // still want guardrails against obvious foot-guns like pegging the disk
 // with sub-second policy or retention loops.
 const (
-	MinRetentionWindow   = 5 * time.Minute
-	MaxRetentionWindow   = 365 * 24 * time.Hour
-	MinRetentionInterval = 1 * time.Minute
-	MaxRetentionInterval = 24 * time.Hour
-	MinAgentInterval     = 2 * time.Second
-	MaxAgentInterval     = 1 * time.Hour
+	MinRetentionWindow         = 5 * time.Minute
+	MaxRetentionWindow         = 365 * 24 * time.Hour
+	MinRetentionInterval       = 1 * time.Minute
+	MaxRetentionInterval       = 24 * time.Hour
+	MinAgentInterval           = 2 * time.Second
+	MaxAgentInterval           = 1 * time.Hour
+	MinDownsampleBucketSize    = 1 * time.Minute
+	MaxDownsampleBucketSize    = 24 * time.Hour
+	MinDownsampleHotWindow     = 1 * time.Hour
+	MaxDownsampleHotWindow     = 30 * 24 * time.Hour
+	MinDownsampleArchiveWindow = 24 * time.Hour
+	MaxDownsampleArchiveWindow = 365 * 24 * time.Hour
 )
 
 type Handlers struct {
@@ -36,9 +42,12 @@ func NewHandlers(db *sql.DB, logger *slog.Logger) *Handlers {
 // Durations go over the wire as Go strings ("24h", "1h", "30m") so they
 // round-trip without ambiguity.
 type settingsView struct {
-	RetentionWindow   string `json:"retention_window"`
-	RetentionInterval string `json:"retention_interval"`
-	AgentInterval     string `json:"agent_interval"`
+	RetentionWindow         string `json:"retention_window"`
+	RetentionInterval       string `json:"retention_interval"`
+	AgentInterval           string `json:"agent_interval"`
+	DownsampleBucketSize    string `json:"downsample_bucket_size"`
+	DownsampleHotWindow     string `json:"downsample_hot_window"`
+	DownsampleArchiveWindow string `json:"downsample_archive_window"`
 }
 
 // GET /api/settings
@@ -58,10 +67,28 @@ func (h *Handlers) Get(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusInternalServerError, "read failed")
 		return
 	}
+	bucketSize, err := Get(r.Context(), h.DB, KeyDownsampleBucketSize)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		writeJSONError(w, http.StatusInternalServerError, "read failed")
+		return
+	}
+	hotWindow, err := Get(r.Context(), h.DB, KeyDownsampleHotWindow)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		writeJSONError(w, http.StatusInternalServerError, "read failed")
+		return
+	}
+	archiveWindow, err := Get(r.Context(), h.DB, KeyDownsampleArchiveWindow)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		writeJSONError(w, http.StatusInternalServerError, "read failed")
+		return
+	}
 	writeJSON(w, http.StatusOK, settingsView{
-		RetentionWindow:   win,
-		RetentionInterval: itv,
-		AgentInterval:     agentInterval,
+		RetentionWindow:         win,
+		RetentionInterval:       itv,
+		AgentInterval:           agentInterval,
+		DownsampleBucketSize:    bucketSize,
+		DownsampleHotWindow:     hotWindow,
+		DownsampleArchiveWindow: archiveWindow,
 	})
 }
 
@@ -103,6 +130,30 @@ func (h *Handlers) Put(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if req.DownsampleBucketSize != "" {
+		if err := validateDurationBounds(
+			req.DownsampleBucketSize, MinDownsampleBucketSize, MaxDownsampleBucketSize,
+		); err != nil {
+			writeJSONError(w, http.StatusBadRequest, "downsample_bucket_size: "+err.Error())
+			return
+		}
+	}
+	if req.DownsampleHotWindow != "" {
+		if err := validateDurationBounds(
+			req.DownsampleHotWindow, MinDownsampleHotWindow, MaxDownsampleHotWindow,
+		); err != nil {
+			writeJSONError(w, http.StatusBadRequest, "downsample_hot_window: "+err.Error())
+			return
+		}
+	}
+	if req.DownsampleArchiveWindow != "" {
+		if err := validateDurationBounds(
+			req.DownsampleArchiveWindow, MinDownsampleArchiveWindow, MaxDownsampleArchiveWindow,
+		); err != nil {
+			writeJSONError(w, http.StatusBadRequest, "downsample_archive_window: "+err.Error())
+			return
+		}
+	}
 
 	if req.RetentionWindow != "" {
 		if err := Set(r.Context(), h.DB, KeyRetentionWindow, req.RetentionWindow); err != nil {
@@ -121,6 +172,27 @@ func (h *Handlers) Put(w http.ResponseWriter, r *http.Request) {
 	if req.AgentInterval != "" {
 		if err := Set(r.Context(), h.DB, KeyAgentInterval, req.AgentInterval); err != nil {
 			h.Logger.Error("settings set agent interval failed", "err", err)
+			writeJSONError(w, http.StatusInternalServerError, "write failed")
+			return
+		}
+	}
+	if req.DownsampleBucketSize != "" {
+		if err := Set(r.Context(), h.DB, KeyDownsampleBucketSize, req.DownsampleBucketSize); err != nil {
+			h.Logger.Error("settings set downsample bucket size failed", "err", err)
+			writeJSONError(w, http.StatusInternalServerError, "write failed")
+			return
+		}
+	}
+	if req.DownsampleHotWindow != "" {
+		if err := Set(r.Context(), h.DB, KeyDownsampleHotWindow, req.DownsampleHotWindow); err != nil {
+			h.Logger.Error("settings set downsample hot window failed", "err", err)
+			writeJSONError(w, http.StatusInternalServerError, "write failed")
+			return
+		}
+	}
+	if req.DownsampleArchiveWindow != "" {
+		if err := Set(r.Context(), h.DB, KeyDownsampleArchiveWindow, req.DownsampleArchiveWindow); err != nil {
+			h.Logger.Error("settings set downsample archive window failed", "err", err)
 			writeJSONError(w, http.StatusInternalServerError, "write failed")
 			return
 		}

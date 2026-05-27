@@ -120,6 +120,9 @@ export type SettingsResponse = {
   retention_window: string;
   retention_interval: string;
   agent_interval: string;
+  downsample_bucket_size: string;
+  downsample_hot_window: string;
+  downsample_archive_window: string;
 };
 
 export const settingsApi = {

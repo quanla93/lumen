@@ -76,17 +76,22 @@ sudo systemctl start lumen-hub
 Run `VACUUM` infrequently (monthly) — it rewrites the whole file, which
 is the opposite of HDD-friendly.
 
-## Phase 4: cold tier
+## Cold-tier policy
 
-Today retention is a hard delete. In Phase 4 the loop becomes
-downsample-and-archive: rows older than the **hot** window are
-aggregated to 5-minute buckets and written to Parquet files in
-`/var/lib/lumen/cold/`. The query API transparently spans hot
-(SQLite) + cold (Parquet) so the UI keeps working without changes.
+Today retention is a hard delete. The **Settings → Downsample** tab
+already stores the policy the future Parquet cold tier will use:
 
-When that ships, the retention tab will gain a third knob: **archive
-horizon** — how long Parquet files stick around before being deleted
-outright.
+| Setting | Default | Bounds | What it will do |
+|---|---|---|---|
+| `downsample_bucket_size` | `5m` | 1m – 24h | Time span represented by one archived point. `5m` means old samples are averaged into one point every 5 minutes. |
+| `downsample_hot_window` | `24h` | 1h – 30d | How long full-detail raw samples stay in SQLite. `24h` means the last day keeps every agent sample. |
+| `downsample_archive_window` | `8760h` | 1d – 365d | How long compressed history is kept before deletion. `8760h` means about one year. |
+
+When cold-tier compaction ships, rows older than the **hot** window
+will be aggregated to the configured bucket size and written to
+Parquet files under `/var/lib/lumen/cold/`. The query API will
+transparently span hot (SQLite) + cold (Parquet) so charts keep
+working without a wire-format change.
 
 ## Tuning for HDD-friendliness
 

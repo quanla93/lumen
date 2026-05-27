@@ -133,8 +133,8 @@ hub crash, which the agent buffer replays on reconnect.
 **One binary per role.** No sidecar, no separate metrics service, no
 external time-series DB. The hub is the time-series DB; SQLite + a
 60 s flush ring is enough for homelab cardinality. Phase 4 adds a
-cold-tier Parquet writer for >24 h queries, but the hot path stays
-the same.
+cold-tier Parquet writer for queries beyond the configured hot window,
+but the hot path stays the same.
 
 **Push, not pull.** Agents POST to the hub. The hub never connects
 out. Reasons:

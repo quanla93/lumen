@@ -29,20 +29,23 @@ import (
 )
 
 type Config struct {
-	Addr              string
-	Dev               bool
-	StreamInterval    time.Duration
-	DBPath            string
-	InstallDir        string
-	Secret            []byte
-	RetentionWindow   time.Duration // snapshots older than now-Window are pruned; <=0 disables
-	RetentionInterval time.Duration // sweep cadence; <=0 disables
-	AgentInterval     time.Duration // operator policy for agent collection cadence
-	BatchFlushEvery   time.Duration // coalesced INSERT cadence; <=0 → 60s default
-	BatchFlushSize    int           // flush early once pending hits this; <=0 → 5000
-	AdminUsername     string        // env-seeded admin; empty disables seed
-	AdminPassword     string        // plaintext at boot, hashed via Argon2id before insert
-	Logger            *slog.Logger
+	Addr                    string
+	Dev                     bool
+	StreamInterval          time.Duration
+	DBPath                  string
+	InstallDir              string
+	Secret                  []byte
+	RetentionWindow         time.Duration // snapshots older than now-Window are pruned; <=0 disables
+	RetentionInterval       time.Duration // sweep cadence; <=0 disables
+	AgentInterval           time.Duration // operator policy for agent collection cadence
+	DownsampleBucketSize    time.Duration // future cold-tier aggregate width
+	DownsampleHotWindow     time.Duration // how long raw SQLite snapshots stay hot before archive
+	DownsampleArchiveWindow time.Duration // how long archived Parquet data is retained
+	BatchFlushEvery         time.Duration // coalesced INSERT cadence; <=0 → 60s default
+	BatchFlushSize          int           // flush early once pending hits this; <=0 → 5000
+	AdminUsername           string        // env-seeded admin; empty disables seed
+	AdminPassword           string        // plaintext at boot, hashed via Argon2id before insert
+	Logger                  *slog.Logger
 }
 
 // Run starts the hub HTTP server and blocks until ctx is cancelled.
@@ -68,9 +71,12 @@ func Run(ctx context.Context, cfg Config) error {
 	// exists the UI value wins — env vars become inert (until DB row
 	// is deleted manually).
 	if err := settings.EnsureDefaults(ctx, db, map[string]string{
-		settings.KeyRetentionWindow:   cfg.RetentionWindow.String(),
-		settings.KeyRetentionInterval: cfg.RetentionInterval.String(),
-		settings.KeyAgentInterval:     cfg.AgentInterval.String(),
+		settings.KeyRetentionWindow:         cfg.RetentionWindow.String(),
+		settings.KeyRetentionInterval:       cfg.RetentionInterval.String(),
+		settings.KeyAgentInterval:           cfg.AgentInterval.String(),
+		settings.KeyDownsampleBucketSize:    cfg.DownsampleBucketSize.String(),
+		settings.KeyDownsampleHotWindow:     cfg.DownsampleHotWindow.String(),
+		settings.KeyDownsampleArchiveWindow: cfg.DownsampleArchiveWindow.String(),
 	}); err != nil {
 		return fmt.Errorf("seed settings: %w", err)
 	}

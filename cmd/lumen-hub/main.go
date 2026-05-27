@@ -51,6 +51,9 @@ func main() {
 	retentionWindow := envcfg.Duration("LUMEN_HUB_RETENTION_WINDOW", 24*time.Hour)
 	retentionInterval := envcfg.Duration("LUMEN_HUB_RETENTION_INTERVAL", 1*time.Hour)
 	agentInterval := envcfg.Duration("LUMEN_HUB_AGENT_INTERVAL", 5*time.Second)
+	downsampleBucketSize := envcfg.Duration("LUMEN_HUB_DOWNSAMPLE_BUCKET_SIZE", 5*time.Minute)
+	downsampleHotWindow := envcfg.Duration("LUMEN_HUB_DOWNSAMPLE_HOT_WINDOW", 24*time.Hour)
+	downsampleArchiveWindow := envcfg.Duration("LUMEN_HUB_DOWNSAMPLE_ARCHIVE_WINDOW", 365*24*time.Hour)
 	batchFlushEvery := envcfg.Duration("LUMEN_HUB_BATCH_FLUSH_EVERY", 60*time.Second)
 	batchFlushSize := envcfg.Int("LUMEN_HUB_BATCH_FLUSH_SIZE", 5000)
 	adminUsername := envcfg.String("LUMEN_HUB_ADMIN_USERNAME", "")
@@ -73,20 +76,23 @@ func main() {
 	defer stop()
 
 	if err := server.Run(ctx, server.Config{
-		Addr:              addr,
-		Dev:               dev,
-		StreamInterval:    streamInterval,
-		DBPath:            dbPath,
-		InstallDir:        installDir,
-		Secret:            secret,
-		RetentionWindow:   retentionWindow,
-		RetentionInterval: retentionInterval,
-		AgentInterval:     agentInterval,
-		BatchFlushEvery:   batchFlushEvery,
-		BatchFlushSize:    batchFlushSize,
-		AdminUsername:     adminUsername,
-		AdminPassword:     adminPassword,
-		Logger:            logger,
+		Addr:                    addr,
+		Dev:                     dev,
+		StreamInterval:          streamInterval,
+		DBPath:                  dbPath,
+		InstallDir:              installDir,
+		Secret:                  secret,
+		RetentionWindow:         retentionWindow,
+		RetentionInterval:       retentionInterval,
+		AgentInterval:           agentInterval,
+		DownsampleBucketSize:    downsampleBucketSize,
+		DownsampleHotWindow:     downsampleHotWindow,
+		DownsampleArchiveWindow: downsampleArchiveWindow,
+		BatchFlushEvery:         batchFlushEvery,
+		BatchFlushSize:          batchFlushSize,
+		AdminUsername:           adminUsername,
+		AdminPassword:           adminPassword,
+		Logger:                  logger,
 	}); err != nil {
 		logger.Error("hub exited with error", "err", err)
 		os.Exit(1)

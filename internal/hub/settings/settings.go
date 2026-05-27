@@ -20,9 +20,12 @@ import (
 // same string. Prefer namespacing ("retention.window") so a future
 // `lumen-hub settings dump` CLI groups them sensibly.
 const (
-	KeyRetentionWindow   = "retention.window"
-	KeyRetentionInterval = "retention.interval"
-	KeyAgentInterval     = "agent.interval"
+	KeyRetentionWindow         = "retention.window"
+	KeyRetentionInterval       = "retention.interval"
+	KeyAgentInterval           = "agent.interval"
+	KeyDownsampleBucketSize    = "downsample.bucket_size"
+	KeyDownsampleHotWindow     = "downsample.hot_window"
+	KeyDownsampleArchiveWindow = "downsample.archive_window"
 )
 
 // Get returns the string value for key, or sql.ErrNoRows if absent.

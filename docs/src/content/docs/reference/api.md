@@ -224,11 +224,25 @@ Fields returned match the persisted scalars (no `cpu_per_core`,
 
 ```http
 GET /api/settings
-→ 200 {"retention_window":"24h","retention_interval":"1h"}
+→ 200 {
+  "retention_window":"24h",
+  "retention_interval":"1h",
+  "agent_interval":"5s",
+  "downsample_bucket_size":"5m",
+  "downsample_hot_window":"24h",
+  "downsample_archive_window":"8760h"
+}
 
 PUT /api/settings
-{"retention_window":"6h"}
-→ 200 {"retention_window":"6h","retention_interval":"1h"}
+{"retention_window":"6h","downsample_bucket_size":"10m"}
+→ 200 {
+  "retention_window":"6h",
+  "retention_interval":"1h",
+  "agent_interval":"5s",
+  "downsample_bucket_size":"10m",
+  "downsample_hot_window":"24h",
+  "downsample_archive_window":"8760h"
+}
 ```
 
 Bounds:
@@ -237,9 +251,12 @@ Bounds:
 |---|---|
 | `retention_window` | 5 m – 365 d (or `0` to disable) |
 | `retention_interval` | 1 m – 24 h (or `0` to disable) |
+| `agent_interval` | 2 s – 1 h |
+| `downsample_bucket_size` | 1 m – 24 h |
+| `downsample_hot_window` | 1 h – 30 d |
+| `downsample_archive_window` | 1 d – 365 d |
 
-Out-of-range or unparseable durations return 400. UI edits propagate
-to the retention loop within 30 s (heartbeat re-reads the table).
+The downsample values configure the future Parquet cold tier: bucket size is the time span represented by one archived point (`5m` averages old samples into one point every 5 minutes), hot window is how long full-detail raw SQLite rows are kept (`24h` keeps every sample for the last day), and archive window is how long compressed history is kept (`8760h` is about one year). Out-of-range or unparseable durations return 400. UI edits propagate to the retention loop within 30 s for retention fields; downsample fields are stored now and consumed once cold-tier compaction lands.
 
 ## WebSocket — `/api/stream`
 

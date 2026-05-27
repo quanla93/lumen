@@ -217,8 +217,8 @@ Mỗi quyết định ghi 1 dòng. Không xóa, không sửa — nếu đổi ý
 - [x] WS subscribe/unsubscribe protocol — client → server `{"type":"subscribe","hosts":["a","b"]}`; `["*"]` reverts to firehose; empty/no-message keeps Phase 1 behavior. HostDetail subscribes to its single host on open.
 - [x] Retention task (default 1h sweep, delete snapshots older than 24h; `LUMEN_HUB_RETENTION_{WINDOW,INTERVAL}`)
 - [x] Settings page: retention (window/interval — UI changes apply within 30s via heartbeat), password change (current+new+confirm, Argon2id rehash)
-- [ ] Settings API: agent refresh/collection interval as a runtime-configurable knob, surfaced to agents without rebuilding/redeploying
-- [ ] Settings API: Parquet downsample policy config (bucket size and hot/cold/archive windows) before Phase 5 cold-tier implementation locks format assumptions
+- [x] Settings API: agent refresh/collection interval as a runtime-configurable knob, surfaced to agents without rebuilding/redeploying
+- [x] Settings API: Parquet downsample policy config (bucket size and hot/cold/archive windows) before Phase 5 cold-tier implementation locks format assumptions
 
 #### Agent
 - [x] Host collector: CPU%, RAM%, Swap%, Disk%, load1/5/15 (gopsutil v4)
@@ -226,7 +226,7 @@ Mỗi quyết định ghi 1 dòng. Không xóa, không sửa — nếu đổi ý
 - [x] Docker collector (Engine API, minimal stdlib unix-socket client — no docker/docker SDK). Lists running + stopped containers, computes per-container CPU% (delta) + memory used/limit. Live-only, not persisted. Warns once on macOS Docker Desktop when socket sharing is disabled.
 - [x] Local bbolt buffer cho offline — `internal/agent/buffer`; default cap 24h × 5s ticks (~17k rows); replays gradually (10 frames per successful tick) so a backlog drains without thundering herd. Corruption-tolerant: bad file renamed `.corrupt-<unix>` and a fresh DB is opened.
 - [x] Config file YAML + env override — `internal/agent/config`; YAML is a syntax convenience that folds into the env. Precedence: process env > YAML > .env > defaults. Default path `/etc/lumen/agent.yaml`; missing file is silent no-op, malformed is fatal at boot.
-- [ ] Agent refresh/collection interval must be configurable by operator policy from hub/settings, while preserving env/YAML as bootstrap defaults.
+- [x] Agent refresh/collection interval must be configurable by operator policy from hub/settings, while preserving env/YAML as bootstrap defaults.
 - [x] Systemd service file (`deploy/systemd/lumen-agent.service` — hardened nonroot-ish, runs as root for /proc + /sys + docker.sock)
 - [x] Install script `<hub>/install.sh` (already shipped earlier — hub serves it w/ baked-in URL + binaries)
 
@@ -235,7 +235,7 @@ Mỗi quyết định ghi 1 dòng. Không xóa, không sửa — nếu đổi ý
 - [x] Dark/light mode toggle (class-based, persists in localStorage)
 - [x] Auth UI: Register / Login / Logout + AppShell with tab nav
 - [x] Settings UI: hosts table + create + rotate + delete + one-shot token reveal + .env snippet
-- [ ] Settings UI: configure retention, agent refresh interval, and Parquet downsample/cold-tier policy from the web app
+- [x] Settings UI: configure retention, agent refresh interval, and Parquet downsample/cold-tier policy from the web app
 - [x] Host detail page: 6 uPlot charts (CPU%, RAM%, Disk%, load avg, Network rx/tx, Disk I/O r/w) + conditional Temperature chart + per-core CPU live strip (subscribed via WS) + range picker (1h/6h/24h) + auto-refresh every 30s + Containers table (name + state badge + image + CPU + mem usage/limit, sorted running-first, danger highlight at mem ≥ 90%).
 - [x] PWA manifest + service worker — installable to homescreen on mobile; SW caches the app shell (cache-first) but never `/api/*` (network-only). Falls back gracefully on browsers without SW support.
 
@@ -263,8 +263,8 @@ Mỗi quyết định ghi 1 dòng. Không xóa, không sửa — nếu đổi ý
 **Goal**: Land the four current priorities before expanding the product surface: configurable agent refresh/collection interval, configurable Parquet downsample policy, product-grade UI polish, and lightweight log management scope.
 
 #### Runtime + storage customization
-- [ ] Agent refresh/collection interval: hub setting, API contract, agent polling/apply path, env/YAML bootstrap default, docs
-- [ ] Parquet downsample policy: settings model for bucket size + hot/cold/archive windows, validation rules, UI controls, docs
+- [x] Agent refresh/collection interval: hub setting, API contract, agent polling/apply path, env/YAML bootstrap default, docs
+- [x] Parquet downsample policy: settings model for bucket size + hot/cold/archive windows, validation rules, UI controls, docs
 
 #### Product-grade UI polish
 - [ ] Design system pass: tokens, typography, spacing, cards, buttons, forms, tables, tabs, badges, empty/loading/error states
