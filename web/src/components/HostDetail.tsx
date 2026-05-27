@@ -8,6 +8,7 @@ import {
   type MetricPoint,
 } from "@/lib/api";
 import { UPlotChart } from "@/components/UPlotChart";
+import { EmptyState, Surface } from "@/components/ui";
 import type { Snapshot, ContainerInfo } from "@/components/HostCard";
 import { type StatusTone } from "@/lib/status";
 import { isStale, relativeTime } from "@/lib/time";
@@ -182,14 +183,10 @@ export function HostDetail({
       {loading && !resp ? (
         <p className="text-sm text-[color:var(--color-muted)]">Loading…</p>
       ) : !resp || resp.points.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-[color:var(--color-border)] p-10 text-center">
-          <p className="text-[color:var(--color-muted)]">
-            No history yet for this host.
-          </p>
-          <p className="mt-2 text-sm text-[color:var(--color-muted)]">
-            Once the agent sends a few samples, charts will fill in.
-          </p>
-        </div>
+        <EmptyState
+          title="No history yet for this host"
+          detail="Once the agent sends a few samples, charts will fill in."
+        />
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <ChartCard
@@ -336,14 +333,16 @@ function HostSummaryHeader({
   }, [rangeOpen]);
 
   return (
-    <section className="mb-4 rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-card)] px-6 py-5 shadow-sm">
+    <Surface as="section" padded={false} className="mb-4 px-6 py-5">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-        <button
-          type="button"
-          onClick={onBack}
-          className="min-w-0 text-left"
-          title="Back to dashboard"
-        >
+        <div className="min-w-0">
+          <button
+            type="button"
+            onClick={onBack}
+            className="mb-3 inline-flex items-center gap-1.5 rounded-full border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-3 py-1.5 text-xs text-[color:var(--color-muted)] transition-colors hover:bg-[color:var(--color-border)] hover:text-[color:var(--color-fg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-accent)]"
+          >
+            ← Dashboard
+          </button>
           <h2 className="truncate text-2xl font-bold tracking-tight">
             {host?.name ?? live?.host ?? "Resolving host…"}
           </h2>
@@ -351,7 +350,7 @@ function HostSummaryHeader({
             <MetaItem icon={<StatusIcon tone={status.tone} />} text={status.label} strong />
             <SystemMetaLine system={system} lastSeen={lastSeen} now={now} />
           </div>
-        </button>
+        </div>
         <div className="flex shrink-0 items-center gap-2">
           <div ref={rangeMenuRef} className="relative">
             <button
@@ -391,7 +390,7 @@ function HostSummaryHeader({
           </button>
         </div>
       </div>
-    </section>
+    </Surface>
   );
 }
 
@@ -524,7 +523,7 @@ function ContainersTable({ containers }: { containers: ContainerInfo[] }) {
   }, [containers]);
   const running = sorted.filter((c) => c.state === "running").length;
   return (
-    <section className="mt-6 rounded-lg border border-[color:var(--color-border)] bg-[color:var(--color-card)] shadow-sm">
+    <Surface as="section" padded={false} className="mt-6 rounded-lg overflow-hidden">
       <header className="flex items-center justify-between px-4 py-3 border-b border-[color:var(--color-border)]">
         <span className="text-xs uppercase tracking-wide text-[color:var(--color-muted)]">
           Containers · {containers.length} total
@@ -552,7 +551,7 @@ function ContainersTable({ containers }: { containers: ContainerInfo[] }) {
           </tbody>
         </table>
       </div>
-    </section>
+    </Surface>
   );
 }
 
@@ -647,7 +646,7 @@ function PerCoreStrip({ cores }: { cores: number[] }) {
     : { tile: 18, height: 32, labels: "none" as const };
 
   return (
-    <div className="mb-4 rounded-lg border border-[color:var(--color-border)] bg-[color:var(--color-card)] px-4 py-3 shadow-sm">
+    <Surface padded={false} className="mb-4 rounded-lg px-4 py-3">
       <div className="mb-3 flex items-center justify-between">
         <span className="text-xs uppercase tracking-wide text-[color:var(--color-muted)]">
           per-core CPU · {n} core{n === 1 ? "" : "s"}
@@ -671,7 +670,7 @@ function PerCoreStrip({ cores }: { cores: number[] }) {
           />
         ))}
       </div>
-    </div>
+    </Surface>
   );
 }
 
@@ -735,7 +734,7 @@ function ChartCard({
   children: React.ReactNode;
 }) {
   return (
-    <div className="rounded-lg border border-[color:var(--color-border)] bg-[color:var(--color-card)] p-3 shadow-sm">
+    <Surface padded={false} className="rounded-lg p-3">
       <div className="mb-2 flex items-center justify-between gap-2 flex-wrap">
         <span className="text-xs uppercase tracking-wide text-[color:var(--color-muted)]">
           {title}
@@ -747,7 +746,7 @@ function ChartCard({
         )}
       </div>
       {children}
-    </div>
+    </Surface>
   );
 }
 

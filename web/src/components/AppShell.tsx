@@ -9,12 +9,14 @@ export function AppShell({
   user,
   tab,
   onTabChange,
+  onHome,
   onLogout,
   children,
 }: {
   user: User;
   tab: Tab;
   onTabChange: (tab: Tab) => void;
+  onHome: () => void;
   onLogout: () => void;
   children: ReactNode;
 }) {
@@ -31,11 +33,23 @@ export function AppShell({
       <header className="sticky top-0 z-10 border-b border-[color:var(--color-border)] bg-[color:var(--color-card)]/90 backdrop-blur">
         <div className="mx-auto max-w-6xl px-4 py-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center justify-between gap-4">
-            <h1 className="text-base">
+            <button
+              type="button"
+              onClick={onHome}
+              className="rounded-lg text-base outline-none transition-transform hover:-translate-y-0.5 focus-visible:ring-2 focus-visible:ring-[color:var(--color-accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--color-card)]"
+              aria-label="Back to dashboard"
+            >
               <LumenWordmark size={24} />
-            </h1>
+            </button>
             <div className="flex items-center gap-2 sm:hidden">
               <ThemeToggle />
+              <button
+                type="button"
+                onClick={logout}
+                className="rounded-full border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-3 py-1.5 text-xs transition-colors hover:bg-[color:var(--color-border)]"
+              >
+                Sign out
+              </button>
             </div>
           </div>
           <nav className="flex items-center gap-1 rounded-full border border-[color:var(--color-border)] bg-[color:var(--color-bg)] p-1 shadow-sm">

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { HostCard, type Snapshot } from "@/components/HostCard";
+import { EmptyState, StatusPill, Surface } from "@/components/ui";
 import { settingsApi } from "@/lib/api";
 import { cpuTone, TONE_CLASS, type StatusTone } from "@/lib/status";
 import { isStale, staleAfterForIntervalMs } from "@/lib/time";
@@ -73,15 +74,11 @@ export function Dashboard({
 
   return (
     <div className="space-y-6">
-      <section className="rounded-2xl border border-[color:var(--color-border)] bg-[color:var(--color-card)] p-5 shadow-sm">
+      <Surface as="section">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-3 py-1 text-xs text-[color:var(--color-muted)]">
-              <span
-                aria-hidden
-                className={`inline-block h-2 w-2 rounded-full ${TONE_CLASS[meta.tone]}`}
-              />
-              WebSocket {meta.label}
+            <div className="mb-2">
+              <StatusPill tone={meta.tone}>WebSocket {meta.label}</StatusPill>
             </div>
             <h2 className="text-2xl font-semibold tracking-tight">Homelab overview</h2>
             <p className="mt-1 text-sm text-[color:var(--color-muted)]">
@@ -95,15 +92,13 @@ export function Dashboard({
             <SummaryCard label="Avg RAM" value={`${summary.avgRam.toFixed(0)}%`} detail="fleet average" tone={cpuTone(summary.avgRam, summary.total === 0)} />
           </div>
         </div>
-      </section>
+      </Surface>
 
       {sorted.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-[color:var(--color-border)] bg-[color:var(--color-card)] p-10 text-center shadow-sm">
-          <p className="text-lg font-medium">No host data yet</p>
-          <p className="mx-auto mt-2 max-w-md text-sm text-[color:var(--color-muted)]">
-            Add a host in <strong>Settings</strong>, copy its token, then start the agent to stream the first metrics.
-          </p>
-        </div>
+        <EmptyState
+          title="No host data yet"
+          detail={<>Add a host in <strong>Settings</strong>, copy its token, then start the agent to stream the first metrics.</>}
+        />
       ) : (
         <section>
           <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -121,9 +116,11 @@ export function Dashboard({
             </label>
           </div>
           {filtered.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-[color:var(--color-border)] bg-[color:var(--color-card)] p-8 text-center shadow-sm">
-              <p className="text-sm text-[color:var(--color-muted)]">No hosts match “{query}”.</p>
-            </div>
+            <EmptyState
+              title="No matching hosts"
+              detail={<>No hosts match “{query}”.</>}
+              className="p-8"
+            />
           ) : (
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
               {filtered.map((s) => (

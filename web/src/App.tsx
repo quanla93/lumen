@@ -48,6 +48,8 @@ export default function App() {
         />
       );
     case "app": {
+      const onHome = () =>
+        setView({ ...view, tab: "dashboard", detailHost: null });
       const onTabChange = (tab: Tab) =>
         setView({ ...view, tab, detailHost: null });
       const onSelectHost = (name: string) =>
@@ -69,6 +71,7 @@ export default function App() {
           user={view.user}
           tab={view.tab}
           onTabChange={onTabChange}
+          onHome={onHome}
           onLogout={() => setView({ kind: "login" })}
         >
           {body}

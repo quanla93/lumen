@@ -267,11 +267,11 @@ Mỗi quyết định ghi 1 dòng. Không xóa, không sửa — nếu đổi ý
 - [x] Parquet downsample policy: settings model for bucket size + hot/cold/archive windows, validation rules, UI controls, docs
 
 #### Product-grade UI polish
-- [ ] Design system pass: tokens, typography, spacing, cards, buttons, forms, tables, tabs, badges, empty/loading/error states
-- [ ] App shell redesign: stronger navigation, account menu, responsive/mobile layout, clearer active states
-- [ ] Dashboard redesign: summary strip, better host cards, status grouping, search/filter/sort, improved empty state with add-host CTA
-- [ ] Host detail redesign: header/status block, metric overview cards, chart polish, range selector, loading states, container UX
-- [ ] Settings redesign: structured sections for Hosts, Account, Runtime, Retention, Downsample policy, and future Log management
+- [x] Design system pass: shared surface, button, status pill, and empty-state primitives applied to dashboard/detail/settings hotspots
+- [x] App shell redesign: logo is the explicit dashboard/home action; host detail title/meta no longer navigates accidentally
+- [x] Dashboard redesign: summary strip, host cards, search/filter, and empty states use consistent product surfaces
+- [x] Host detail redesign: header/back behavior, chart cards, loading/empty states, per-core strip, and container table use consistent surfaces
+- [x] Settings redesign: structured sections for Hosts, Account, Runtime, Retention, Downsample policy, and future Log management
 
 #### Lightweight log management
 - [ ] Log management RFC: on-demand admin debugging only; no default persistence/indexing/full-text search

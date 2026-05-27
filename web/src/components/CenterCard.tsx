@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { LogoMark } from "@/components/Logo";
+import { AppButton } from "@/components/ui";
 
 /** Centered single-column container used by Login + Register pages. */
 export function CenterCard({
@@ -56,24 +57,12 @@ export function Field({
 
 /** Primary action button. */
 export function PrimaryButton(props: React.ButtonHTMLAttributes<HTMLButtonElement>) {
-  return (
-    <button
-      type="submit"
-      {...props}
-      className={`inline-flex items-center justify-center rounded-md bg-[color:var(--color-fg)] px-3 py-2 text-sm font-medium text-[color:var(--color-bg)] hover:opacity-90 disabled:opacity-50 transition-opacity ${props.className ?? ""}`}
-    />
-  );
+  return <AppButton variant="primary" type="submit" {...props} />;
 }
 
 /** Secondary / ghost button. */
 export function GhostButton(props: React.ButtonHTMLAttributes<HTMLButtonElement>) {
-  return (
-    <button
-      type="button"
-      {...props}
-      className={`inline-flex items-center justify-center rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-card)] px-3 py-1.5 text-sm hover:bg-[color:var(--color-border)] disabled:opacity-50 transition-colors ${props.className ?? ""}`}
-    />
-  );
+  return <AppButton variant="secondary" {...props} className={`py-1.5 ${props.className ?? ""}`} />;
 }
 
 /** Inline error banner. */

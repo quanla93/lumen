@@ -10,6 +10,7 @@ import {
 } from "@/lib/api";
 import { relativeTime } from "@/lib/time";
 import { ErrorText, Field, FieldInput, GhostButton, PrimaryButton } from "@/components/CenterCard";
+import { Surface } from "@/components/ui";
 import { TokenReveal } from "@/components/TokenReveal";
 
 type SettingsTab = "hosts" | "account" | "runtime" | "retention" | "downsample" | "logs";
@@ -670,11 +671,11 @@ function SettingsPanel({
   children?: React.ReactNode;
 }) {
   return (
-    <section className="rounded-2xl border border-[color:var(--color-border)] bg-[color:var(--color-card)] p-5 shadow-sm">
+    <Surface as="section">
       <h2 className="text-base font-semibold tracking-tight">{title}</h2>
       <p className="mt-2 text-sm text-[color:var(--color-muted)]">{description}</p>
       {children && <div className="mt-4">{children}</div>}
-    </section>
+    </Surface>
   );
 }
 

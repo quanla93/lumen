@@ -1,6 +1,7 @@
 import { cpuTone, TONE_CLASS, widthClass, type StatusTone } from "@/lib/status";
 import { isStale, relativeTime, staleAfterForIntervalMs } from "@/lib/time";
 import { Sparkline } from "@/components/Sparkline";
+import { Surface } from "@/components/ui";
 
 export type ContainerInfo = {
   id: string;
@@ -96,13 +97,13 @@ export function HostCard({
   };
 
   return (
-    <div
+    <Surface
       role={interactive ? "button" : undefined}
       tabIndex={interactive ? 0 : undefined}
       onClick={interactive ? handleClick : undefined}
       onKeyDown={interactive ? handleKey : undefined}
       className={
-        "rounded-2xl border border-[color:var(--color-border)] bg-[color:var(--color-card)] p-4 shadow-sm " +
+        "p-4 " +
         (interactive
           ? "cursor-pointer transition-all hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-[color:var(--color-accent)]"
           : "")
@@ -149,7 +150,7 @@ export function HostCard({
           </span>
         </div>
       )}
-    </div>
+    </Surface>
   );
 }
 
