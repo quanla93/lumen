@@ -1,8 +1,10 @@
 import { useState } from "react";
 import { authApi, ApiError, type User } from "@/lib/api";
 import { CenterCard, Field, FieldInput, PrimaryButton, ErrorText } from "@/components/CenterCard";
+import { useI18n } from "@/i18n/useI18n";
 
 export function LoginForm({ onSuccess }: { onSuccess: (user: User) => void }) {
+  const { t } = useI18n();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -23,9 +25,9 @@ export function LoginForm({ onSuccess }: { onSuccess: (user: User) => void }) {
   }
 
   return (
-    <CenterCard title="Sign in to Lumen">
+    <CenterCard title={t("auth.signInTitle")}>
       <form onSubmit={submit} className="space-y-4">
-        <Field label="Username">
+        <Field label={t("auth.username")}>
           <FieldInput
             type="text"
             autoComplete="username"
@@ -35,7 +37,7 @@ export function LoginForm({ onSuccess }: { onSuccess: (user: User) => void }) {
             autoFocus
           />
         </Field>
-        <Field label="Password">
+        <Field label={t("auth.password")}>
           <FieldInput
             type="password"
             autoComplete="current-password"
@@ -46,7 +48,7 @@ export function LoginForm({ onSuccess }: { onSuccess: (user: User) => void }) {
         </Field>
         {error && <ErrorText message={error} />}
         <PrimaryButton disabled={busy} className="w-full">
-          {busy ? "Signing in…" : "Sign in"}
+          {busy ? t("auth.signingIn") : t("auth.signIn")}
         </PrimaryButton>
       </form>
     </CenterCard>

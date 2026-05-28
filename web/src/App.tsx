@@ -7,6 +7,7 @@ import { Dashboard } from "@/components/Dashboard";
 import { HostDetail } from "@/components/HostDetail";
 import { Settings } from "@/components/Settings";
 import { CenterCard } from "@/components/CenterCard";
+import { useI18n } from "@/i18n/useI18n";
 
 type View =
   | { kind: "loading" }
@@ -15,6 +16,7 @@ type View =
   | { kind: "app"; user: User; tab: Tab; detailHost: string | null };
 
 export default function App() {
+  const { t } = useI18n();
   const [view, setView] = useState<View>({ kind: "loading" });
 
   useEffect(() => {
@@ -28,7 +30,7 @@ export default function App() {
     case "loading":
       return (
         <CenterCard title="Lumen">
-          <p className="text-sm text-[color:var(--color-muted)]">Loading…</p>
+          <p className="text-sm text-[color:var(--color-muted)]">{t("app.loading")}</p>
         </CenterCard>
       );
     case "register":

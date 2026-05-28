@@ -274,9 +274,9 @@ Mỗi quyết định ghi 1 dòng. Không xóa, không sửa — nếu đổi ý
 - [x] Settings redesign: structured sections for Hosts, Account, Runtime, Retention, Downsample policy, and future Log management
 
 #### i18n foundation
-- [ ] Add lightweight UI i18n infrastructure before more copy lands: locale state, persistence, translation lookup, and language toggle
-- [ ] Ship English + Vietnamese strings for AppShell, Dashboard, Host detail, Settings, auth, empty/loading/error states
-- [ ] Keep docs i18n separate from app i18n; Starlight handles docs, the web app owns runtime UI translations
+- [x] Add lightweight UI i18n infrastructure before more copy lands: locale state, persistence, translation lookup, and language toggle
+- [x] Ship English + Vietnamese strings for AppShell, Dashboard, Host detail, Settings, auth, empty/loading/error states
+- [x] Keep docs i18n separate from app i18n; Starlight handles docs, the web app owns runtime UI translations
 
 #### Lightweight log management
 - [ ] Log management RFC: on-demand admin debugging only; no default persistence/indexing/full-text search

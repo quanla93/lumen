@@ -4,14 +4,15 @@ import { EmptyState, StatusPill, Surface } from "@/components/ui";
 import { settingsApi } from "@/lib/api";
 import { cpuTone, TONE_CLASS, type StatusTone } from "@/lib/status";
 import { isStale, staleAfterForIntervalMs } from "@/lib/time";
+import { useI18n } from "@/i18n/useI18n";
 
 type WsStatus = "connecting" | "connected" | "disconnected" | "error";
 
-const STATUS_META: Record<WsStatus, { tone: StatusTone; label: string }> = {
-  connected:    { tone: "ok",     label: "connected" },
-  connecting:   { tone: "warn",   label: "connecting…" },
-  disconnected: { tone: "muted",  label: "disconnected" },
-  error:        { tone: "danger", label: "error" },
+const STATUS_META: Record<WsStatus, { tone: StatusTone; labelKey: "dashboard.wsConnected" | "dashboard.wsConnecting" | "dashboard.wsDisconnected" | "dashboard.wsError" }> = {
+  connected:    { tone: "ok",     labelKey: "dashboard.wsConnected" },
+  connecting:   { tone: "warn",   labelKey: "dashboard.wsConnecting" },
+  disconnected: { tone: "muted",  labelKey: "dashboard.wsDisconnected" },
+  error:        { tone: "danger", labelKey: "dashboard.wsError" },
 };
 
 export function Dashboard({
@@ -19,6 +20,7 @@ export function Dashboard({
 }: {
   onSelectHost?: (hostName: string) => void;
 }) {
+  const { t } = useI18n();
   const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
   const [status, setStatus] = useState<WsStatus>("connecting");
   const [agentInterval, setAgentInterval] = useState("5s");
@@ -64,6 +66,7 @@ export function Dashboard({
     () => [...snapshots].sort((a, b) => a.host.localeCompare(b.host)),
     [snapshots],
   );
+  const hostLabel = sorted.length === 1 ? t("dashboard.hostSingular") : t("dashboard.hostPlural");
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return sorted;
@@ -78,47 +81,47 @@ export function Dashboard({
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <div className="mb-2">
-              <StatusPill tone={meta.tone}>WebSocket {meta.label}</StatusPill>
+              <StatusPill tone={meta.tone}>{t("dashboard.webSocket", { status: t(meta.labelKey) })}</StatusPill>
             </div>
-            <h2 className="text-2xl font-semibold tracking-tight">Homelab overview</h2>
+            <h2 className="text-2xl font-semibold tracking-tight">{t("dashboard.title")}</h2>
             <p className="mt-1 text-sm text-[color:var(--color-muted)]">
-              Live host health, resource pressure, and stale agent detection.
+              {t("dashboard.subtitle")}
             </p>
           </div>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:min-w-[32rem]">
-            <SummaryCard label="Hosts" value={summary.total} detail={`${summary.online} online`} tone="ok" />
-            <SummaryCard label="Stale" value={summary.stale} detail="no recent tick" tone={summary.stale > 0 ? "warn" : "muted"} />
-            <SummaryCard label="Avg CPU" value={`${summary.avgCpu.toFixed(0)}%`} detail="fleet average" tone={cpuTone(summary.avgCpu, summary.total === 0)} />
-            <SummaryCard label="Avg RAM" value={`${summary.avgRam.toFixed(0)}%`} detail="fleet average" tone={cpuTone(summary.avgRam, summary.total === 0)} />
+            <SummaryCard label={t("dashboard.hosts")} value={summary.total} detail={`${summary.online} ${t("dashboard.online")}`} tone="ok" />
+            <SummaryCard label={t("dashboard.stale")} value={summary.stale} detail={t("dashboard.noRecentTick")} tone={summary.stale > 0 ? "warn" : "muted"} />
+            <SummaryCard label={t("dashboard.avgCpu")} value={`${summary.avgCpu.toFixed(0)}%`} detail={t("dashboard.fleetAverage")} tone={cpuTone(summary.avgCpu, summary.total === 0)} />
+            <SummaryCard label={t("dashboard.avgRam")} value={`${summary.avgRam.toFixed(0)}%`} detail={t("dashboard.fleetAverage")} tone={cpuTone(summary.avgRam, summary.total === 0)} />
           </div>
         </div>
       </Surface>
 
       {sorted.length === 0 ? (
         <EmptyState
-          title="No host data yet"
-          detail={<>Add a host in <strong>Settings</strong>, copy its token, then start the agent to stream the first metrics.</>}
+          title={t("dashboard.noHostDataTitle")}
+          detail={t("dashboard.noHostDataDescription")}
         />
       ) : (
         <section>
           <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <h3 className="text-sm font-medium text-[color:var(--color-muted)]">
-              {filtered.length} of {sorted.length} monitored host{sorted.length === 1 ? "" : "s"}
+              {t("dashboard.monitoredHosts", { filtered: filtered.length, total: sorted.length, hostLabel })}
             </h3>
             <label className="relative w-full sm:w-72">
-              <span className="sr-only">Search hosts</span>
+              <span className="sr-only">{t("dashboard.searchHostsLabel")}</span>
               <input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search hosts…"
+                placeholder={t("dashboard.searchHostsPlaceholder")}
                 className="w-full rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-3 py-2 text-sm outline-none transition-colors placeholder:text-[color:var(--color-muted)] focus:border-[color:var(--color-accent)]"
               />
             </label>
           </div>
           {filtered.length === 0 ? (
             <EmptyState
-              title="No matching hosts"
-              detail={<>No hosts match “{query}”.</>}
+              title={t("dashboard.noMatchingHostsTitle")}
+              detail={t("dashboard.noMatchingHostsDescription", { query })}
               className="p-8"
             />
           ) : (

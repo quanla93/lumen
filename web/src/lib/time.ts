@@ -1,16 +1,40 @@
+import type { Locale } from "@/i18n/types";
+
+const RELATIVE_TIME_LABELS = {
+  en: {
+    future: "in the future",
+    secondsAgo: "{value}s ago",
+    minutesAgo: "{value}m ago",
+    hoursAgo: "{value}h ago",
+    daysAgo: "{value}d ago",
+  },
+  vi: {
+    future: "trong tương lai",
+    secondsAgo: "{value} giây trước",
+    minutesAgo: "{value} phút trước",
+    hoursAgo: "{value} giờ trước",
+    daysAgo: "{value} ngày trước",
+  },
+} as const;
+
 /** Format an ISO timestamp as a short relative string ("3s ago", "12m ago"). */
-export function relativeTime(iso: string, now = Date.now()): string {
+export function relativeTime(iso: string, now = Date.now(), locale: Locale = "en"): string {
+  const labels = RELATIVE_TIME_LABELS[locale];
   const ts = new Date(iso).getTime();
   const deltaMs = now - ts;
-  if (deltaMs < 0) return "in the future";
+  if (deltaMs < 0) return labels.future;
   const s = Math.floor(deltaMs / 1000);
-  if (s < 60) return `${s}s ago`;
+  if (s < 60) return formatRelative(labels.secondsAgo, s);
   const m = Math.floor(s / 60);
-  if (m < 60) return `${m}m ago`;
+  if (m < 60) return formatRelative(labels.minutesAgo, m);
   const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h ago`;
+  if (h < 24) return formatRelative(labels.hoursAgo, h);
   const d = Math.floor(h / 24);
-  return `${d}d ago`;
+  return formatRelative(labels.daysAgo, d);
+}
+
+function formatRelative(template: string, value: number): string {
+  return template.replace("{value}", String(value));
 }
 
 /** True when the snapshot timestamp is more than `staleAfterMs` old. */

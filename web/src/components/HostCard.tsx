@@ -2,6 +2,7 @@ import { cpuTone, TONE_CLASS, widthClass, type StatusTone } from "@/lib/status";
 import { isStale, relativeTime, staleAfterForIntervalMs } from "@/lib/time";
 import { Sparkline } from "@/components/Sparkline";
 import { Surface } from "@/components/ui";
+import { useI18n } from "@/i18n/useI18n";
 
 export type ContainerInfo = {
   id: string;
@@ -74,13 +75,14 @@ export function HostCard({
   agentInterval?: string;
   onSelect?: (hostName: string) => void;
 }) {
+  const { locale, t } = useI18n();
   const stale = isStale(snapshot.ts, staleAfterForIntervalMs(agentInterval), now);
   const headerTone = cpuTone(snapshot.cpu_pct, stale);
 
   const rows: MetricRow[] = [
-    metricRow("CPU", snapshot.cpu_pct, stale),
-    metricRow("RAM", snapshot.ram_pct, stale),
-    metricRow("Disk", snapshot.disk_pct, stale),
+    metricRow(t("host.cpu"), snapshot.cpu_pct, stale),
+    metricRow(t("host.ram"), snapshot.ram_pct, stale),
+    metricRow(t("host.disk"), snapshot.disk_pct, stale),
   ];
 
   const hasLoad = snapshot.load1 + snapshot.load5 + snapshot.load15 > 0;
@@ -121,12 +123,13 @@ export function HostCard({
             </span>
           </div>
           <span className="mt-1 block text-xs text-[color:var(--color-muted)]">
-            {stale ? "stale · " : "last seen "}
-            {relativeTime(snapshot.ts, now)}
+            {stale
+              ? t("host.staleLastSeen", { time: relativeTime(snapshot.ts, now, locale) })
+              : t("host.lastSeen", { time: relativeTime(snapshot.ts, now, locale) })}
           </span>
         </div>
         <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${stale ? "bg-[color:var(--color-border)] text-[color:var(--color-muted)]" : "bg-[color:var(--color-accent)] text-[color:var(--color-bg)]"}`}>
-          {stale ? "Stale" : "Online"}
+          {stale ? t("host.stale") : t("host.online")}
         </span>
       </div>
 
@@ -144,7 +147,7 @@ export function HostCard({
 
       {hasLoad && (
         <div className="mt-4 pt-3 border-t border-[color:var(--color-border)] flex items-center justify-between text-xs text-[color:var(--color-muted)]">
-          <span>load avg</span>
+          <span>{t("host.loadAvg")}</span>
           <span className="font-mono tabular-nums">
             {snapshot.load1.toFixed(2)} · {snapshot.load5.toFixed(2)} · {snapshot.load15.toFixed(2)}
           </span>

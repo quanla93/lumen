@@ -1,8 +1,10 @@
 import { useState } from "react";
 import { authApi, ApiError, type User } from "@/lib/api";
 import { CenterCard, Field, FieldInput, PrimaryButton, ErrorText } from "@/components/CenterCard";
+import { useI18n } from "@/i18n/useI18n";
 
 export function RegisterForm({ onSuccess }: { onSuccess: (user: User) => void }) {
+  const { t } = useI18n();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -13,7 +15,7 @@ export function RegisterForm({ onSuccess }: { onSuccess: (user: User) => void })
     e.preventDefault();
     setError(null);
     if (password !== confirm) {
-      setError("Passwords don't match");
+      setError(t("auth.passwordsMismatch"));
       return;
     }
     setBusy(true);
@@ -29,11 +31,11 @@ export function RegisterForm({ onSuccess }: { onSuccess: (user: User) => void })
 
   return (
     <CenterCard
-      title="Create the admin account"
-      subtitle="This is shown only once — Lumen has no admin yet. Pick a strong password; there's no recovery flow."
+      title={t("auth.createAdminTitle")}
+      subtitle={t("auth.createAdminSubtitle")}
     >
       <form onSubmit={submit} className="space-y-4">
-        <Field label="Username">
+        <Field label={t("auth.username")}>
           <FieldInput
             type="text"
             autoComplete="username"
@@ -46,7 +48,7 @@ export function RegisterForm({ onSuccess }: { onSuccess: (user: User) => void })
             autoFocus
           />
         </Field>
-        <Field label="Password (min 8 chars)">
+        <Field label={t("auth.passwordMin")}>
           <FieldInput
             type="password"
             autoComplete="new-password"
@@ -56,7 +58,7 @@ export function RegisterForm({ onSuccess }: { onSuccess: (user: User) => void })
             required
           />
         </Field>
-        <Field label="Confirm password">
+        <Field label={t("auth.confirmPassword")}>
           <FieldInput
             type="password"
             autoComplete="new-password"
@@ -68,7 +70,7 @@ export function RegisterForm({ onSuccess }: { onSuccess: (user: User) => void })
         </Field>
         {error && <ErrorText message={error} />}
         <PrimaryButton disabled={busy} className="w-full">
-          {busy ? "Creating…" : "Create admin & sign in"}
+          {busy ? t("auth.creating") : t("auth.createAdminAndSignIn")}
         </PrimaryButton>
       </form>
     </CenterCard>

@@ -12,30 +12,32 @@ import { relativeTime } from "@/lib/time";
 import { ErrorText, Field, FieldInput, GhostButton, PrimaryButton } from "@/components/CenterCard";
 import { Surface } from "@/components/ui";
 import { TokenReveal } from "@/components/TokenReveal";
+import { useI18n } from "@/i18n/useI18n";
 
 type SettingsTab = "hosts" | "account" | "runtime" | "retention" | "downsample" | "logs";
 
-const TABS: { id: SettingsTab; label: string }[] = [
-  { id: "hosts",     label: "Hosts" },
-  { id: "account",   label: "Account" },
-  { id: "runtime",    label: "Runtime" },
-  { id: "retention",  label: "Retention" },
-  { id: "downsample", label: "Downsample" },
-  { id: "logs",       label: "Logs" },
+const TABS: { id: SettingsTab; labelKey: "settings.tabs.hosts" | "settings.tabs.account" | "settings.tabs.runtime" | "settings.tabs.retention" | "settings.tabs.downsample" | "settings.tabs.logs" }[] = [
+  { id: "hosts",     labelKey: "settings.tabs.hosts" },
+  { id: "account",   labelKey: "settings.tabs.account" },
+  { id: "runtime",   labelKey: "settings.tabs.runtime" },
+  { id: "retention", labelKey: "settings.tabs.retention" },
+  { id: "downsample", labelKey: "settings.tabs.downsample" },
+  { id: "logs",      labelKey: "settings.tabs.logs" },
 ];
 
 export function Settings({ user }: { user: User }) {
+  const { t } = useI18n();
   const [tab, setTab] = useState<SettingsTab>("hosts");
   return (
     <div className="space-y-4">
       <nav className="flex items-center gap-1 border-b border-[color:var(--color-border)] -mt-2 pb-0">
-        {TABS.map((t) => (
+        {TABS.map((item) => (
           <SubTabButton
-            key={t.id}
-            active={t.id === tab}
-            onClick={() => setTab(t.id)}
+            key={item.id}
+            active={item.id === tab}
+            onClick={() => setTab(item.id)}
           >
-            {t.label}
+            {t(item.labelKey)}
           </SubTabButton>
         ))}
       </nav>
@@ -81,6 +83,7 @@ function SubTabButton({
 type RevealState = { hostName: string; token: string } | null;
 
 function HostsSettings() {
+  const { locale, t } = useI18n();
   const [hosts, setHosts] = useState<Host[]>([]);
   const [loading, setLoading] = useState(true);
   const [listError, setListError] = useState<string | null>(null);
@@ -108,10 +111,9 @@ function HostsSettings() {
   return (
     <div className="space-y-6">
       <section>
-        <h2 className="text-base font-semibold tracking-tight mb-3">Hosts</h2>
+        <h2 className="text-base font-semibold tracking-tight mb-3">{t("settings.hostsTitle")}</h2>
         <p className="text-sm text-[color:var(--color-muted)] mb-4">
-          Create a host to mint a bearer token. The agent uses that token
-          to push metrics; the hub stores only its SHA-256 hash.
+          {t("settings.hostsDescription")}
         </p>
 
         <CreateHostForm
@@ -135,10 +137,10 @@ function HostsSettings() {
       <section>
         {listError && <ErrorText message={listError} />}
         {loading ? (
-          <p className="text-sm text-[color:var(--color-muted)]">Loading hosts…</p>
+          <p className="text-sm text-[color:var(--color-muted)]">{t("settings.loadingHosts")}</p>
         ) : hosts.length === 0 ? (
           <p className="text-sm text-[color:var(--color-muted)]">
-            No hosts yet. Create one above.
+            {t("settings.noHosts")}
           </p>
         ) : (
           <HostsTable
@@ -146,6 +148,8 @@ function HostsSettings() {
             now={now}
             onChanged={refresh}
             onTokenRevealed={(hostName, token) => setReveal({ hostName, token })}
+            locale={locale}
+            t={t}
           />
         )}
       </section>
@@ -158,6 +162,7 @@ function CreateHostForm({
 }: {
   onCreated: (host: Host, token: string) => void;
 }) {
+  const { t } = useI18n();
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -180,7 +185,7 @@ function CreateHostForm({
   return (
     <form onSubmit={submit} className="flex items-end gap-2 max-w-md">
       <div className="flex-1">
-        <Field label="New host name">
+        <Field label={t("settings.newHostName")}>
           <FieldInput
             type="text"
             placeholder="pve-01"
@@ -192,7 +197,7 @@ function CreateHostForm({
         </Field>
       </div>
       <PrimaryButton disabled={busy || !name}>
-        {busy ? "Creating…" : "Create"}
+        {busy ? t("common.creating") : t("common.create")}
       </PrimaryButton>
       {error && (
         <div className="ml-2">
@@ -208,21 +213,25 @@ function HostsTable({
   now,
   onChanged,
   onTokenRevealed,
+  locale,
+  t,
 }: {
   hosts: Host[];
   now: number;
   onChanged: () => void;
   onTokenRevealed: (hostName: string, token: string) => void;
+  locale: ReturnType<typeof useI18n>["locale"];
+  t: ReturnType<typeof useI18n>["t"];
 }) {
   return (
     <div className="overflow-x-auto rounded-lg border border-[color:var(--color-border)]">
       <table className="w-full text-sm">
         <thead>
           <tr className="text-left text-xs uppercase tracking-wide text-[color:var(--color-muted)] bg-[color:var(--color-card)]">
-            <th className="px-3 py-2 font-medium">Name</th>
-            <th className="px-3 py-2 font-medium">Last seen</th>
-            <th className="px-3 py-2 font-medium">Created</th>
-            <th className="px-3 py-2 font-medium text-right">Actions</th>
+            <th className="px-3 py-2 font-medium">{t("settings.tableName")}</th>
+            <th className="px-3 py-2 font-medium">{t("settings.tableLastSeen")}</th>
+            <th className="px-3 py-2 font-medium">{t("settings.tableCreated")}</th>
+            <th className="px-3 py-2 font-medium text-right">{t("common.actions")}</th>
           </tr>
         </thead>
         <tbody>
@@ -233,6 +242,8 @@ function HostsTable({
               now={now}
               onChanged={onChanged}
               onTokenRevealed={onTokenRevealed}
+              locale={locale}
+              t={t}
             />
           ))}
         </tbody>
@@ -246,11 +257,15 @@ function HostRow({
   now,
   onChanged,
   onTokenRevealed,
+  locale,
+  t,
 }: {
   host: Host;
   now: number;
   onChanged: () => void;
   onTokenRevealed: (hostName: string, token: string) => void;
+  locale: ReturnType<typeof useI18n>["locale"];
+  t: ReturnType<typeof useI18n>["t"];
 }) {
   const [busy, setBusy] = useState(false);
 
@@ -261,14 +276,14 @@ function HostRow({
       onTokenRevealed(host.name, res.token);
     } catch (err) {
       const msg = err instanceof ApiError ? err.message : String(err);
-      window.alert(`Rotate failed: ${msg}`);
+      window.alert(`${t("settings.rotateFailed")}: ${msg}`);
     } finally {
       setBusy(false);
     }
   }
 
   async function remove() {
-    if (!window.confirm(`Delete host "${host.name}"? Past snapshots stay; agent will start failing on next tick.`)) {
+    if (!window.confirm(t("settings.deleteConfirm", { name: host.name }))) {
       return;
     }
     setBusy(true);
@@ -277,7 +292,7 @@ function HostRow({
       onChanged();
     } catch (err) {
       const msg = err instanceof ApiError ? err.message : String(err);
-      window.alert(`Delete failed: ${msg}`);
+      window.alert(`${t("settings.deleteFailed")}: ${msg}`);
     } finally {
       setBusy(false);
     }
@@ -287,17 +302,17 @@ function HostRow({
     <tr className="border-t border-[color:var(--color-border)]">
       <td className="px-3 py-2 font-mono">{host.name}</td>
       <td className="px-3 py-2 text-[color:var(--color-muted)]">
-        {host.last_seen_at ? relativeTime(host.last_seen_at, now) : "never"}
+        {host.last_seen_at ? relativeTime(host.last_seen_at, now, locale) : t("common.never")}
       </td>
       <td className="px-3 py-2 text-[color:var(--color-muted)]">
         {new Date(host.created_at).toLocaleString()}
       </td>
       <td className="px-3 py-2 text-right space-x-2 whitespace-nowrap">
         <GhostButton onClick={rotate} disabled={busy}>
-          Rotate token
+          {t("settings.rotateToken")}
         </GhostButton>
         <GhostButton onClick={remove} disabled={busy}>
-          Delete
+          {t("common.delete")}
         </GhostButton>
       </td>
     </tr>
@@ -307,19 +322,20 @@ function HostRow({
 // ─── Account sub-tab ─────────────────────────────────────────────────────────
 
 function AccountSettings({ user }: { user: User }) {
+  const { t } = useI18n();
   return (
     <div className="space-y-6 max-w-md">
       <section>
-        <h2 className="text-base font-semibold tracking-tight mb-3">Account</h2>
+        <h2 className="text-base font-semibold tracking-tight mb-3">{t("settings.accountTitle")}</h2>
         <dl className="text-sm grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5">
-          <dt className="text-[color:var(--color-muted)]">Username</dt>
+          <dt className="text-[color:var(--color-muted)]">{t("settings.accountUsername")}</dt>
           <dd className="font-mono">{user.username}</dd>
-          <dt className="text-[color:var(--color-muted)]">Created</dt>
+          <dt className="text-[color:var(--color-muted)]">{t("settings.accountCreated")}</dt>
           <dd>{new Date(user.created_at).toLocaleString()}</dd>
         </dl>
       </section>
       <section>
-        <h3 className="text-sm font-semibold tracking-tight mb-2">Change password</h3>
+        <h3 className="text-sm font-semibold tracking-tight mb-2">{t("settings.changePasswordTitle")}</h3>
         <ChangePasswordForm />
       </section>
     </div>
@@ -327,6 +343,7 @@ function AccountSettings({ user }: { user: User }) {
 }
 
 function ChangePasswordForm() {
+  const { t } = useI18n();
   const [current, setCurrent] = useState("");
   const [next, setNext]       = useState("");
   const [confirm, setConfirm] = useState("");
@@ -339,11 +356,11 @@ function ChangePasswordForm() {
     setError(null);
     setSuccess(false);
     if (next.length < 8) {
-      setError("New password must be at least 8 characters");
+      setError(t("settings.newPasswordMin"));
       return;
     }
     if (next !== confirm) {
-      setError("New password and confirmation don't match");
+      setError(t("settings.newPasswordsMismatch"));
       return;
     }
     setBusy(true);
@@ -360,7 +377,7 @@ function ChangePasswordForm() {
 
   return (
     <form onSubmit={submit} className="space-y-3">
-      <Field label="Current password">
+      <Field label={t("settings.currentPassword")}>
         <FieldInput
           type="password"
           autoComplete="current-password"
@@ -369,7 +386,7 @@ function ChangePasswordForm() {
           required
         />
       </Field>
-      <Field label="New password (min 8 chars)">
+      <Field label={t("settings.newPassword")}>
         <FieldInput
           type="password"
           autoComplete="new-password"
@@ -379,7 +396,7 @@ function ChangePasswordForm() {
           required
         />
       </Field>
-      <Field label="Confirm new password">
+      <Field label={t("settings.confirmNewPassword")}>
         <FieldInput
           type="password"
           autoComplete="new-password"
@@ -392,11 +409,11 @@ function ChangePasswordForm() {
       {error && <ErrorText message={error} />}
       {success && (
         <p role="status" className="text-sm text-[color:var(--color-accent)]">
-          Password updated. Your existing session stays valid.
+          {t("settings.passwordUpdated")}
         </p>
       )}
       <PrimaryButton disabled={busy}>
-        {busy ? "Updating…" : "Change password"}
+        {busy ? t("settings.updating") : t("settings.changePassword")}
       </PrimaryButton>
     </form>
   );
@@ -411,11 +428,11 @@ type DurationInput = {
   unit: DurationUnit;
 };
 
-const DURATION_UNITS: { value: DurationUnit; label: string; seconds: number }[] = [
-  { value: "s", label: "seconds", seconds: 1 },
-  { value: "m", label: "minutes", seconds: 60 },
-  { value: "h", label: "hours",   seconds: 60 * 60 },
-  { value: "d", label: "days",    seconds: 24 * 60 * 60 },
+const DURATION_UNITS: { value: DurationUnit; labelKey: "common.seconds" | "common.minutes" | "common.hours" | "common.days"; seconds: number }[] = [
+  { value: "s", labelKey: "common.seconds", seconds: 1 },
+  { value: "m", labelKey: "common.minutes", seconds: 60 },
+  { value: "h", labelKey: "common.hours", seconds: 60 * 60 },
+  { value: "d", labelKey: "common.days", seconds: 24 * 60 * 60 },
 ];
 
 function parseDurationInput(duration: string): DurationInput {
@@ -453,6 +470,7 @@ function DurationField({
   value: DurationInput;
   onChange: (value: DurationInput) => void;
 }) {
+  const { t } = useI18n();
   return (
     <Field label={label}>
       <div className="flex gap-2">
@@ -466,13 +484,13 @@ function DurationField({
           required
         />
         <select
-          aria-label={`${label} unit`}
+          aria-label={t("common.unitAria", { label })}
           className="rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--color-accent)]"
           value={value.unit}
           onChange={(e) => onChange({ ...value, unit: e.target.value as DurationUnit })}
         >
           {DURATION_UNITS.map((unit) => (
-            <option key={unit.value} value={unit.value}>{unit.label}</option>
+            <option key={unit.value} value={unit.value}>{t(unit.labelKey)}</option>
           ))}
         </select>
       </div>
@@ -481,6 +499,7 @@ function DurationField({
 }
 
 function RuntimeSettings() {
+  const { t } = useI18n();
   const [settings, setSettings] = useState<SettingsResponse | null>(null);
   const [agentInterval, setAgentInterval] = useState<DurationInput>({ value: "", unit: "s" });
   const [busy, setBusy] = useState(false);
@@ -501,7 +520,7 @@ function RuntimeSettings() {
     setError(null);
     const nextInterval = formatDurationInput(agentInterval);
     if (!nextInterval) {
-      setError("Agent interval must be a positive whole number.");
+      setError(t("settings.agentIntervalInvalid"));
       return;
     }
     setBusy(true);
@@ -523,30 +542,29 @@ function RuntimeSettings() {
   return (
     <div className="max-w-md space-y-4">
       <section>
-        <h2 className="text-base font-semibold tracking-tight mb-3">Runtime</h2>
+        <h2 className="text-base font-semibold tracking-tight mb-3">{t("settings.runtimeTitle")}</h2>
         <p className="text-sm text-[color:var(--color-muted)]">
-          Agent collection interval controls how often agents sample host metrics.
-          Running agents apply changes after their next policy refresh.
+          {t("settings.runtimeDescription")}
         </p>
       </section>
 
       {!settings ? (
-        <p className="text-sm text-[color:var(--color-muted)]">Loading…</p>
+        <p className="text-sm text-[color:var(--color-muted)]">{t("common.loading")}</p>
       ) : (
         <form onSubmit={submit} className="space-y-3">
           <DurationField
-            label="Agent collection interval"
+            label={t("settings.agentCollectionInterval")}
             value={agentInterval}
             onChange={setAgentInterval}
           />
           {error && <ErrorText message={error} />}
           {savedAt && !dirty && (
             <p role="status" className="text-sm text-[color:var(--color-accent)]">
-              Saved {new Date(savedAt).toLocaleTimeString()}.
+              {t("common.savedAt", { time: new Date(savedAt).toLocaleTimeString() })}.
             </p>
           )}
           <PrimaryButton disabled={busy || !dirty}>
-            {busy ? "Saving…" : "Save"}
+            {busy ? t("common.saving") : t("common.save")}
           </PrimaryButton>
         </form>
       )}
@@ -555,6 +573,7 @@ function RuntimeSettings() {
 }
 
 function DownsampleSettings() {
+  const { t } = useI18n();
   const [settings, setSettings] = useState<SettingsResponse | null>(null);
   const [bucketSize, setBucketSize] = useState<DurationInput>({ value: "", unit: "m" });
   const [hotWindow, setHotWindow] = useState<DurationInput>({ value: "", unit: "h" });
@@ -581,7 +600,7 @@ function DownsampleSettings() {
     const nextHotWindow = formatDurationInput(hotWindow);
     const nextArchiveWindow = formatDurationInput(archiveWindow);
     if (!nextBucketSize || !nextHotWindow || !nextArchiveWindow) {
-      setError("Downsample policy values must be positive whole numbers.");
+      setError(t("settings.downsampleInvalid"));
       return;
     }
     setBusy(true);
@@ -615,45 +634,44 @@ function DownsampleSettings() {
   return (
     <div className="max-w-md space-y-4">
       <section>
-        <h2 className="text-base font-semibold tracking-tight mb-3">Downsample policy</h2>
+        <h2 className="text-base font-semibold tracking-tight mb-3">{t("settings.downsampleTitle")}</h2>
         <p className="text-sm text-[color:var(--color-muted)]">
-          These settings control how long Lumen keeps detailed raw metrics, and
-          how older metrics will be compressed into long-term history.
+          {t("settings.downsampleDescription")}
         </p>
         <ul className="mt-3 space-y-1.5 text-sm text-[color:var(--color-muted)]">
-          <li><strong className="text-[color:var(--color-fg)]">Bucket size</strong> is the time span for one archived point. Example: 5m means old data is averaged into one point every 5 minutes.</li>
-          <li><strong className="text-[color:var(--color-fg)]">Hot window</strong> is how long full-detail raw data stays in SQLite. Example: 24h means the last day keeps every agent sample.</li>
-          <li><strong className="text-[color:var(--color-fg)]">Archive window</strong> is how long compressed history is kept. Example: 365d means archived data is kept for one year.</li>
+          <li><strong className="text-[color:var(--color-fg)]">{t("settings.bucketSize")}</strong>: {t("settings.downsampleBucketHelp")}</li>
+          <li><strong className="text-[color:var(--color-fg)]">{t("settings.hotWindow")}</strong>: {t("settings.downsampleHotHelp")}</li>
+          <li><strong className="text-[color:var(--color-fg)]">{t("settings.archiveWindow")}</strong>: {t("settings.downsampleArchiveHelp")}</li>
         </ul>
       </section>
 
       {!settings ? (
-        <p className="text-sm text-[color:var(--color-muted)]">Loading…</p>
+        <p className="text-sm text-[color:var(--color-muted)]">{t("common.loading")}</p>
       ) : (
         <form onSubmit={submit} className="space-y-3">
           <DurationField
-            label="Bucket size"
+            label={t("settings.bucketSize")}
             value={bucketSize}
             onChange={setBucketSize}
           />
           <DurationField
-            label="Hot window"
+            label={t("settings.hotWindow")}
             value={hotWindow}
             onChange={setHotWindow}
           />
           <DurationField
-            label="Archive window"
+            label={t("settings.archiveWindow")}
             value={archiveWindow}
             onChange={setArchiveWindow}
           />
           {error && <ErrorText message={error} />}
           {savedAt && !dirty && (
             <p role="status" className="text-sm text-[color:var(--color-accent)]">
-              Saved {new Date(savedAt).toLocaleTimeString()}.
+              {t("common.savedAt", { time: new Date(savedAt).toLocaleTimeString() })}.
             </p>
           )}
           <PrimaryButton disabled={busy || !dirty}>
-            {busy ? "Saving…" : "Save"}
+            {busy ? t("common.saving") : t("common.save")}
           </PrimaryButton>
         </form>
       )}
@@ -680,21 +698,22 @@ function SettingsPanel({
 }
 
 function LogManagementSettings() {
+  const { t } = useI18n();
   return (
     <div className="grid gap-4 lg:grid-cols-2">
       <SettingsPanel
-        title="On-demand log viewer"
-        description="Phase 3 will add bounded, admin-only log retrieval for incident debugging. Lumen will show recent lines on request instead of indexing every log line."
+        title={t("settings.logsTitle")}
+        description={t("settings.logsDescription")}
       >
         <ul className="space-y-2 text-sm text-[color:var(--color-muted)]">
-          <li><strong className="text-[color:var(--color-fg)]">Sources:</strong> Lumen agent, systemd/journald units, and Docker containers.</li>
-          <li><strong className="text-[color:var(--color-fg)]">Limits:</strong> last N lines, short time ranges, optional live tail.</li>
-          <li><strong className="text-[color:var(--color-fg)]">Storage:</strong> no default persistence, indexing, or global search.</li>
+          <li><strong className="text-[color:var(--color-fg)]">{t("common.sources")}:</strong> {t("settings.logsSources")}</li>
+          <li><strong className="text-[color:var(--color-fg)]">{t("common.limits")}:</strong> {t("settings.logsLimits")}</li>
+          <li><strong className="text-[color:var(--color-fg)]">{t("common.storage")}:</strong> {t("settings.logsStorage")}</li>
         </ul>
       </SettingsPanel>
       <SettingsPanel
-        title="Not a Loki replacement"
-        description="Log management stays lightweight so the hub remains HDD-friendly and predictable for homelab installs. Export/integration can be researched later."
+        title={t("settings.notLoki")}
+        description={t("settings.notLokiDescription")}
       >
         <div className="rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-bg)] p-4 font-mono text-xs text-[color:var(--color-muted)]">
           host=pve-01 source=docker target=nginx tail=500
@@ -705,6 +724,7 @@ function LogManagementSettings() {
 }
 
 function RetentionSettings() {
+  const { t } = useI18n();
   const [settings, setSettings]       = useState<SettingsResponse | null>(null);
   const [window, setWindow]           = useState<DurationInput>({ value: "", unit: "h" });
   const [interval, setInterval]       = useState<DurationInput>({ value: "", unit: "h" });
@@ -728,7 +748,7 @@ function RetentionSettings() {
     const retentionWindow = formatDurationInput(window);
     const retentionInterval = formatDurationInput(interval);
     if (!retentionWindow || !retentionInterval) {
-      setError("Window and interval must be positive whole numbers.");
+      setError(t("settings.retentionInvalid"));
       return;
     }
     setBusy(true);
@@ -757,40 +777,37 @@ function RetentionSettings() {
   return (
     <div className="max-w-md space-y-4">
       <section>
-        <h2 className="text-base font-semibold tracking-tight mb-3">Retention</h2>
+        <h2 className="text-base font-semibold tracking-tight mb-3">{t("settings.retentionTitle")}</h2>
         <p className="text-sm text-[color:var(--color-muted)]">
-          Snapshots older than <strong>Window</strong> are pruned every{" "}
-          <strong>Interval</strong>. Changes apply on the next sweep —
-          no hub restart required.
+          {t("settings.retentionDescription")}
         </p>
         <p className="mt-2 text-sm text-[color:var(--color-muted)]">
-          Cold-tier (Parquet) archival lands in Phase 5 — for now this is
-          a hard delete.
+          {t("settings.retentionWindowHelp")} {t("settings.retentionIntervalHelp")}
         </p>
       </section>
 
       {!settings ? (
-        <p className="text-sm text-[color:var(--color-muted)]">Loading…</p>
+        <p className="text-sm text-[color:var(--color-muted)]">{t("common.loading")}</p>
       ) : (
         <form onSubmit={submit} className="space-y-3">
           <DurationField
-            label="Window"
+            label={t("settings.window")}
             value={window}
             onChange={setWindow}
           />
           <DurationField
-            label="Interval"
+            label={t("settings.interval")}
             value={interval}
             onChange={setInterval}
           />
           {error && <ErrorText message={error} />}
           {savedAt && !dirty && (
             <p role="status" className="text-sm text-[color:var(--color-accent)]">
-              Saved {new Date(savedAt).toLocaleTimeString()}.
+              {t("common.savedAt", { time: new Date(savedAt).toLocaleTimeString() })}.
             </p>
           )}
           <PrimaryButton disabled={busy || !dirty}>
-            {busy ? "Saving…" : "Save"}
+            {busy ? t("common.saving") : t("common.save")}
           </PrimaryButton>
         </form>
       )}

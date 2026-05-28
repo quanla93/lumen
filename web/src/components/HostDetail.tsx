@@ -12,6 +12,8 @@ import { EmptyState, Surface } from "@/components/ui";
 import type { Snapshot, ContainerInfo } from "@/components/HostCard";
 import { type StatusTone } from "@/lib/status";
 import { isStale, relativeTime } from "@/lib/time";
+import { useI18n } from "@/i18n/useI18n";
+import type { Locale } from "@/i18n/types";
 
 type Range = "1h" | "6h" | "24h";
 
@@ -56,6 +58,7 @@ export function HostDetail({
   hostName: string;
   onBack: () => void;
 }) {
+  const { locale, t } = useI18n();
   const [range, setRange] = useState<Range>("1h");
   const [host, setHost] = useState<Host | null>(null);
   const [resp, setResp] = useState<MetricsResponse | null>(null);
@@ -82,7 +85,7 @@ export function HostDetail({
       if (cancelled) return;
       const match = hosts.find((h) => h.name === hostName);
       if (!match) {
-        setErr(`Host "${hostName}" is no longer registered.`);
+        setErr(t("host.removed", { host: hostName }));
         setLoading(false);
         return;
       }
@@ -94,7 +97,7 @@ export function HostDetail({
       }
     });
     return () => { cancelled = true; };
-  }, [hostName]);
+  }, [hostName, t]);
 
   useEffect(() => {
     const scheme = window.location.protocol === "https:" ? "wss" : "ws";
@@ -168,10 +171,12 @@ export function HostDetail({
         range={range}
         onRangeChange={setRange}
         onBack={onBack}
+        locale={locale}
+        t={t}
       />
 
       {live?.cpu_per_core && live.cpu_per_core.length > 0 && (
-        <PerCoreStrip cores={live.cpu_per_core} />
+        <PerCoreStrip cores={live.cpu_per_core} t={t} />
       )}
 
       {err && (
@@ -181,49 +186,49 @@ export function HostDetail({
       )}
 
       {loading && !resp ? (
-        <p className="text-sm text-[color:var(--color-muted)]">Loading…</p>
+        <p className="text-sm text-[color:var(--color-muted)]">{t("host.loadingHistory")}</p>
       ) : !resp || resp.points.length === 0 ? (
         <EmptyState
-          title="No history yet for this host"
-          detail="Once the agent sends a few samples, charts will fill in."
+          title={t("host.noHistoryTitle")}
+          detail={t("host.noHistoryDescription")}
         />
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <ChartCard
-            title="CPU"
+            title={t("host.cpu")}
             badges={[swatch(COLOR.cpu, `${(last?.cpu_pct ?? 0).toFixed(1)}%`)]}
           >
             <UPlotChart
               key={`cpu-${themeKey}`}
               data={data.cpu}
-              options={percentOpts(COLOR.cpu, "cpu")}
+              options={percentOpts(COLOR.cpu, t("host.seriesCpu"))}
               className="h-[220px] w-full"
             />
           </ChartCard>
           <ChartCard
-            title="RAM"
+            title={t("host.ram")}
             badges={[swatch(COLOR.ram, `${(last?.ram_pct ?? 0).toFixed(1)}%`)]}
           >
             <UPlotChart
               key={`ram-${themeKey}`}
               data={data.ram}
-              options={percentOpts(COLOR.ram, "ram")}
+              options={percentOpts(COLOR.ram, t("host.ram"))}
               className="h-[220px] w-full"
             />
           </ChartCard>
           <ChartCard
-            title="Disk"
+            title={t("host.disk")}
             badges={[swatch(COLOR.disk, `${(last?.disk_pct ?? 0).toFixed(1)}%`)]}
           >
             <UPlotChart
               key={`disk-${themeKey}`}
               data={data.disk}
-              options={percentOpts(COLOR.disk, "disk")}
+              options={percentOpts(COLOR.disk, t("host.disk"))}
               className="h-[220px] w-full"
             />
           </ChartCard>
           <ChartCard
-            title="Load avg"
+            title={t("host.loadAverage")}
             badges={[
               swatch(COLOR.load1, `1m ${(last?.load1 ?? 0).toFixed(2)}`),
               swatch(COLOR.load5, `5m ${(last?.load5 ?? 0).toFixed(2)}`),
@@ -233,12 +238,12 @@ export function HostDetail({
             <UPlotChart
               key={`load-${themeKey}`}
               data={data.load}
-              options={loadOpts()}
+              options={loadOpts([t("host.series1m"), t("host.series5m"), t("host.series15m")])}
               className="h-[220px] w-full"
             />
           </ChartCard>
           <ChartCard
-            title="Network"
+            title={t("host.network")}
             badges={[
               swatch(COLOR.netRx, `↓ ${formatBps(last?.net_rx_bps ?? 0)}`),
               swatch(COLOR.netTx, `↑ ${formatBps(last?.net_tx_bps ?? 0)}`),
@@ -247,12 +252,12 @@ export function HostDetail({
             <UPlotChart
               key={`net-${themeKey}`}
               data={data.net}
-              options={bpsOpts(["download", "upload"], [COLOR.netRx, COLOR.netTx])}
+              options={bpsOpts([t("host.seriesDownload"), t("host.seriesUpload")], [COLOR.netRx, COLOR.netTx])}
               className="h-[220px] w-full"
             />
           </ChartCard>
           <ChartCard
-            title="Disk I/O"
+            title={t("host.diskIo")}
             badges={[
               swatch(COLOR.diskR, `read ${formatBps(last?.disk_r_bps ?? 0)}`),
               swatch(COLOR.diskW, `write ${formatBps(last?.disk_w_bps ?? 0)}`),
@@ -261,19 +266,19 @@ export function HostDetail({
             <UPlotChart
               key={`dio-${themeKey}`}
               data={data.diskIO}
-              options={bpsOpts(["read", "write"], [COLOR.diskR, COLOR.diskW])}
+              options={bpsOpts([t("host.seriesRead"), t("host.seriesWrite")], [COLOR.diskR, COLOR.diskW])}
               className="h-[220px] w-full"
             />
           </ChartCard>
           {hasTemp && (
             <ChartCard
-              title="Temperature"
+              title={t("host.temperature")}
               badges={[swatch(COLOR.temp, `${(last?.temp_c ?? 0).toFixed(1)}°C`)]}
             >
               <UPlotChart
                 key={`temp-${themeKey}`}
                 data={data.temp}
-                options={tempOpts()}
+                options={tempOpts(t("host.seriesTemp"))}
                 className="h-[220px] w-full"
               />
             </ChartCard>
@@ -282,13 +287,12 @@ export function HostDetail({
       )}
 
       {live?.containers && live.containers.length > 0 && (
-        <ContainersTable containers={live.containers} />
+        <ContainersTable containers={live.containers} t={t} />
       )}
 
       {resp && (
         <p className="mt-6 text-xs text-[color:var(--color-muted)]">
-          {resp.points.length} points · step {resp.step_seconds}s · refreshing
-          every {Math.round(REFRESH_MS / 1000)}s
+          {t("host.points", { points: resp.points.length, step: resp.step_seconds, refresh: Math.round(REFRESH_MS / 1000) })}
         </p>
       )}
     </>
@@ -302,6 +306,8 @@ function HostSummaryHeader({
   range,
   onRangeChange,
   onBack,
+  locale,
+  t,
 }: {
   host: Host | null;
   live: Snapshot | null;
@@ -309,14 +315,16 @@ function HostSummaryHeader({
   range: Range;
   onRangeChange: (range: Range) => void;
   onBack: () => void;
+  locale: Locale;
+  t: ReturnType<typeof useI18n>["t"];
 }) {
   const lastSeen = live?.ts ?? host?.last_seen_at ?? null;
   const stale = live ? isStale(live.ts, undefined, now) : true;
   const status: { label: string; tone: StatusTone } = live && !stale
-    ? { label: "Up", tone: "ok" }
+    ? { label: t("host.up"), tone: "ok" }
     : lastSeen
-    ? { label: "Stale", tone: "warn" }
-    : { label: "Waiting", tone: "muted" };
+    ? { label: t("host.stale"), tone: "warn" }
+    : { label: t("host.waiting"), tone: "muted" };
   const system = live?.system ?? host?.system;
   const [rangeOpen, setRangeOpen] = useState(false);
   const rangeMenuRef = useRef<HTMLDivElement>(null);
@@ -341,14 +349,14 @@ function HostSummaryHeader({
             onClick={onBack}
             className="mb-3 inline-flex items-center gap-1.5 rounded-full border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-3 py-1.5 text-xs text-[color:var(--color-muted)] transition-colors hover:bg-[color:var(--color-border)] hover:text-[color:var(--color-fg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-accent)]"
           >
-            ← Dashboard
+            {t("host.backToDashboard")}
           </button>
           <h2 className="truncate text-2xl font-bold tracking-tight">
-            {host?.name ?? live?.host ?? "Resolving host…"}
+            {host?.name ?? live?.host ?? t("common.loading")}
           </h2>
           <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-[color:var(--color-muted)]">
             <MetaItem icon={<StatusIcon tone={status.tone} />} text={status.label} strong />
-            <SystemMetaLine system={system} lastSeen={lastSeen} now={now} />
+            <SystemMetaLine system={system} lastSeen={lastSeen} now={now} locale={locale} t={t} />
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
@@ -357,10 +365,10 @@ function HostSummaryHeader({
               type="button"
               onClick={() => setRangeOpen((open) => !open)}
               className="inline-flex items-center rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-3 py-2 text-sm hover:bg-[color:var(--color-border)] transition-colors"
-              title="Time range"
+              title={t("host.timeRange")}
             >
               <ClockIcon />
-              <span className="ml-2 min-w-[58px] text-left">{rangeLabel(range)}</span>
+              <span className="ml-2 min-w-[58px] text-left">{rangeLabel(range, t)}</span>
               <ChevronDownIcon />
             </button>
             {rangeOpen && (
@@ -375,7 +383,7 @@ function HostSummaryHeader({
                     }}
                     className={`block w-full px-3 py-2 text-left text-sm transition-colors ${r === range ? "bg-[color:var(--color-border)] text-[color:var(--color-fg)]" : "text-[color:var(--color-muted)] hover:bg-[color:var(--color-border)] hover:text-[color:var(--color-fg)]"}`}
                   >
-                    {rangeLabel(r)}
+                    {rangeLabel(r, t)}
                   </button>
                 ))}
               </div>
@@ -384,7 +392,7 @@ function HostSummaryHeader({
           <button
             type="button"
             className="rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-3 py-2 text-lg leading-none hover:bg-[color:var(--color-border)] transition-colors"
-            title="Layout"
+            title={t("host.layout")}
           >
             ⊞
           </button>
@@ -398,10 +406,14 @@ function SystemMetaLine({
   system,
   lastSeen,
   now,
+  locale,
+  t,
 }: {
   system?: Host["system"] | Snapshot["system"];
   lastSeen: string | null;
   now: number;
+  locale: Locale;
+  t: ReturnType<typeof useI18n>["t"];
 }) {
   const uptime = formatUptime(system?.uptime_seconds);
   const endpoint = system?.primary_ip ?? system?.hostname ?? null;
@@ -410,7 +422,7 @@ function SystemMetaLine({
   if (system?.os) items.push({ icon: <MonitorIcon />, text: system.os });
   if (uptime) items.push({ icon: <UptimeIcon />, text: uptime });
   if (!system && lastSeen) {
-    items.push({ icon: <ClockIcon />, text: `last seen ${relativeTime(lastSeen, now)}` });
+    items.push({ icon: <ClockIcon />, text: t("host.lastSeen", { time: relativeTime(lastSeen, now, locale) }) });
   }
 
   if (items.length === 0) return null;
@@ -493,10 +505,10 @@ function UptimeIcon() {
   );
 }
 
-function rangeLabel(range: Range): string {
-  if (range === "1h") return "1 hour";
-  if (range === "6h") return "6 hours";
-  return "24 hours";
+function rangeLabel(range: Range, t: ReturnType<typeof useI18n>["t"]): string {
+  if (range === "1h") return t("host.oneHour");
+  if (range === "6h") return t("host.sixHours");
+  return t("host.twentyFourHours");
 }
 
 function formatUptime(seconds?: number): string | null {
@@ -513,7 +525,7 @@ function formatUptime(seconds?: number): string | null {
 // live snapshot. Live-only (no historical query); sorted: running first,
 // then alphabetical, so the top of the list is always the things actually
 // burning CPU/RAM right now.
-function ContainersTable({ containers }: { containers: ContainerInfo[] }) {
+function ContainersTable({ containers, t }: { containers: ContainerInfo[]; t: ReturnType<typeof useI18n>["t"] }) {
   const sorted = useMemo(() => {
     return [...containers].sort((a, b) => {
       if (a.state === "running" && b.state !== "running") return -1;
@@ -526,10 +538,10 @@ function ContainersTable({ containers }: { containers: ContainerInfo[] }) {
     <Surface as="section" padded={false} className="mt-6 rounded-lg overflow-hidden">
       <header className="flex items-center justify-between px-4 py-3 border-b border-[color:var(--color-border)]">
         <span className="text-xs uppercase tracking-wide text-[color:var(--color-muted)]">
-          Containers · {containers.length} total
+          {t("host.containers")} · {containers.length} {t("common.total")}
         </span>
         <span className="font-mono text-xs">
-          <span className="text-[color:var(--color-muted)]">running</span>{" "}
+          <span className="text-[color:var(--color-muted)]">{t("common.running")}</span>{" "}
           {running}
         </span>
       </header>
@@ -537,11 +549,11 @@ function ContainersTable({ containers }: { containers: ContainerInfo[] }) {
         <table className="w-full text-sm">
           <thead>
             <tr className="text-left text-[10px] uppercase tracking-wide text-[color:var(--color-muted)]">
-              <th className="px-4 py-2 font-normal">Name</th>
-              <th className="px-2 py-2 font-normal">State</th>
-              <th className="px-2 py-2 font-normal">Image</th>
-              <th className="px-2 py-2 font-normal text-right">CPU</th>
-              <th className="px-4 py-2 font-normal text-right">Memory</th>
+              <th className="px-4 py-2 font-normal">{t("common.name")}</th>
+              <th className="px-2 py-2 font-normal">{t("common.state")}</th>
+              <th className="px-2 py-2 font-normal">{t("common.image")}</th>
+              <th className="px-2 py-2 font-normal text-right">{t("host.cpu")}</th>
+              <th className="px-4 py-2 font-normal text-right">{t("common.memory")}</th>
             </tr>
           </thead>
           <tbody>
@@ -633,9 +645,10 @@ function formatBytes(b: number): string {
 //   ≤ 32 cores → medium tiles, percentage label only
 //   > 32 cores → compact tiles (no labels, just colored fill)
 // Empty tracks stay visible at 0% so the operator can always count cores.
-function PerCoreStrip({ cores }: { cores: number[] }) {
+function PerCoreStrip({ cores, t }: { cores: number[]; t: ReturnType<typeof useI18n>["t"] }) {
   const n = cores.length;
   const avg = cores.reduce((a, b) => a + b, 0) / n;
+  const coreLabel = n === 1 ? t("host.coreSingular") : t("host.corePlural");
 
   const layout = n <= 8
     ? { tile: 64, height: 56, labels: "full" as const }
@@ -649,10 +662,10 @@ function PerCoreStrip({ cores }: { cores: number[] }) {
     <Surface padded={false} className="mb-4 rounded-lg px-4 py-3">
       <div className="mb-3 flex items-center justify-between">
         <span className="text-xs uppercase tracking-wide text-[color:var(--color-muted)]">
-          per-core CPU · {n} core{n === 1 ? "" : "s"}
+          {t("host.perCoreCpu")} · {t("host.cores", { count: n, coreLabel })}
         </span>
         <span className="font-mono text-xs">
-          <span className="text-[color:var(--color-muted)]">avg</span>{" "}
+          <span className="text-[color:var(--color-muted)]">{t("common.avg")}</span>{" "}
           {avg.toFixed(1)}%
         </span>
       </div>
@@ -667,6 +680,7 @@ function PerCoreStrip({ cores }: { cores: number[] }) {
             pct={pct}
             height={layout.height}
             labels={layout.labels}
+            t={t}
           />
         ))}
       </div>
@@ -679,11 +693,13 @@ function CoreTile({
   pct,
   height,
   labels,
+  t,
 }: {
   idx: number;
   pct: number;
   height: number;
   labels: "full" | "pct" | "none";
+  t: ReturnType<typeof useI18n>["t"];
 }) {
   const tone = pct >= 90 ? "danger" : pct >= 60 ? "warn" : "ok";
   const toneClass =
@@ -695,7 +711,7 @@ function CoreTile({
   return (
     <div
       className="flex flex-col items-center gap-1"
-      title={`core ${idx} · ${pct.toFixed(1)}%`} /* tooltip works even in compact mode */
+      title={t("host.coreTooltip", { index: idx, pct: pct.toFixed(1) })} /* tooltip works even in compact mode */
     >
       <div
         className="relative w-full rounded-sm border border-[color:var(--color-border)] bg-[color:var(--color-bg)] overflow-hidden"
@@ -838,15 +854,15 @@ function percentOpts(color: string, label: string): Omit<Options, "width" | "hei
   };
 }
 
-function loadOpts(): Omit<Options, "width" | "height"> {
+function loadOpts(labels: [string, string, string]): Omit<Options, "width" | "height"> {
   return {
     axes: baseAxes(undefined, 44),
     legend: legend(),
     series: [
       {},
-      { label: "1m",  value: (_u, v) => v == null ? "—" : v.toFixed(2), stroke: COLOR.load1,  width: 1.75, points: { show: false } },
-      { label: "5m",  value: (_u, v) => v == null ? "—" : v.toFixed(2), stroke: COLOR.load5,  width: 1.5,  points: { show: false } },
-      { label: "15m", value: (_u, v) => v == null ? "—" : v.toFixed(2), stroke: COLOR.load15, width: 1.5,  points: { show: false } },
+      { label: labels[0], value: (_u, v) => v == null ? "—" : v.toFixed(2), stroke: COLOR.load1,  width: 1.75, points: { show: false } },
+      { label: labels[1], value: (_u, v) => v == null ? "—" : v.toFixed(2), stroke: COLOR.load5,  width: 1.5,  points: { show: false } },
+      { label: labels[2], value: (_u, v) => v == null ? "—" : v.toFixed(2), stroke: COLOR.load15, width: 1.5,  points: { show: false } },
     ],
   };
 }
@@ -863,13 +879,13 @@ function bpsOpts(labels: [string, string], colors: [string, string]): Omit<Optio
   };
 }
 
-function tempOpts(): Omit<Options, "width" | "height"> {
+function tempOpts(label: string): Omit<Options, "width" | "height"> {
   return {
     axes: baseAxes((_u, vals) => vals.map((v) => `${v}°`), 44),
     legend: legend(),
     series: [
       {},
-      { label: "temp", value: (_u, v) => v == null ? "—" : `${v.toFixed(1)}°C`, stroke: COLOR.temp, width: 1.75, points: { show: false } },
+      { label, value: (_u, v) => v == null ? "—" : `${v.toFixed(1)}°C`, stroke: COLOR.temp, width: 1.75, points: { show: false } },
     ],
   };
 }
