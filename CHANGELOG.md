@@ -6,6 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-05-28
+
+Phase 3 release: operator customization, UI polish, i18n foundation, and clarified lightweight log direction.
+
+### Added
+
+- Runtime agent collection interval policy from hub settings, with agent polling/apply path and env/YAML bootstrap defaults.
+- Parquet downsample policy controls in settings for bucket size and hot/cold/archive windows ahead of the cold-tier implementation.
+- Product-grade UI polish across app shell, dashboard, host detail, settings, reusable surfaces, empty states, and onboarding-oriented host actions.
+- Bilingual web UI foundation with English and Vietnamese runtime strings plus persisted language toggle.
+- System metadata in host detail headers for hostname/IP, OS, uptime, kernel/arch, CPU model, and agent version context.
+
+### Changed
+
+- Docker agent onboarding is hub-first: create a host token in the UI, then copy the generated Docker command/snippet instead of editing per-agent config manually.
+- Lightweight logs are explicitly deferred to a future dedicated Logs/Console surface with on-demand live streaming; logs must not be shipped through periodic metrics ingest or Host Detail polling.
+
 ## [0.1.0] - 2026-05-27
 
 Initial public MVP release.

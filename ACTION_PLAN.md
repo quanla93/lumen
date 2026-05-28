@@ -100,6 +100,7 @@ Mỗi quyết định ghi 1 dòng. Không xóa, không sửa — nếu đổi ý
 | 2026-05-27 | External data access/export is an official expansion path | Lumen should not assume users only consume data through the built-in web UI. Future API/export surfaces should allow external dashboards such as Grafana to query or ingest monitoring data while Lumen can remain the preferred dashboard for users who want it. |
 | 2026-05-27 | Log management = lightweight on-demand debugging, not Loki | Lumen should support quick incident debugging via hub/agent/systemd/journald/Docker log viewing, but must not become centralized log aggregation or full-text log analytics. Default behavior: admin-only, on-demand last-N/live-tail, no persistence/indexing unless a later RFC explicitly expands scope. |
 | 2026-05-27 | UI polish is a product requirement, not cosmetic cleanup | Lumen must feel like a polished self-hosted monitoring product, not just a technical MVP. Use Beszel as a benchmark for completeness and UX quality without copying its visual identity. Prioritize dashboard, host detail, settings, onboarding, and reusable design components. |
+| 2026-05-28 | Logs live viewer = separate surface, not Host Detail metrics ingest | Temporarily set log viewing aside from Host Detail. Future logs belong in a dedicated Logs/Console page using on-demand live streaming (WS/SSE style) only when opened/subscribed. Do not poll log-targets or ship Docker logs in periodic metrics ingest; keep it bounded, live-only by default, and globally/agent-disableable. |
 
 ---
 
@@ -279,10 +280,11 @@ Mỗi quyết định ghi 1 dòng. Không xóa, không sửa — nếu đổi ý
 - [x] Keep docs i18n separate from app i18n; Starlight handles docs, the web app owns runtime UI translations
 
 #### Lightweight log management
+- [x] Log management product direction: separate Logs/Console surface, not Host Detail metrics ingest; on-demand live stream only when opened/subscribed
 - [ ] Log management RFC: on-demand admin debugging only; no default persistence/indexing/full-text search
-- [ ] Agent log source abstraction: journald/systemd unit logs, Docker container logs, and Lumen agent self logs
-- [ ] Hub API/WS for on-demand log retrieval by host + source + target + line limit/time range
-- [ ] Host detail Logs tab: source selector, target selector, limit presets, refresh, optional live tail, copy/download
+- [ ] Agent log source abstraction: hub logs, journald/systemd unit logs, Docker container logs, and Lumen agent self logs
+- [ ] Hub API/WS/SSE for on-demand log retrieval by host + source + target + line limit/time range; no periodic log-target polling
+- [ ] Dedicated Logs/Console page: source selector, target selector, limit presets, optional live tail, copy/download; bounded buffer/rate limits and auto-unsubscribe
 - [ ] Docs: position Lumen log management as quick incident debugging, not a Loki replacement
 
 **Definition of done**: Current four priorities are shipped or have accepted RFCs where implementation must follow a later phase.
