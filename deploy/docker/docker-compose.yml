@@ -86,27 +86,6 @@ services:
       - lumen-agent-data:/data
     restart: unless-stopped
 
-  # Second demo agent — opt-in via `--profile extra`. Prefer the generated
-  # Docker command in the UI for real hosts.
-  agent2:
-    profiles: ["extra"]
-    image: lumen-agent:dev
-    build:
-      context: ../..
-      dockerfile: deploy/docker/Dockerfile.agent
-    container_name: lumen-agent-2
-    depends_on:
-      - hub
-    env_file:
-      - path: ../../.env
-        required: false
-    environment:
-      LUMEN_HUB_URL: "http://hub:8090"
-      LUMEN_AGENT_HOST: "compose-agent-2"
-      # Interpolated from .env at compose time — empty → 401 from hub.
-      LUMEN_AGENT_TOKEN: "${LUMEN_AGENT_TOKEN_2:-}"
-    restart: unless-stopped
-
 volumes:
   lumen-data:
   lumen-agent-data:

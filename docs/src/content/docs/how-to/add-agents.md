@@ -32,7 +32,6 @@ one — the old token immediately stops working.
 | **[One-liner install](#the-one-liner-fastest-path)** | Linux + systemd target (covers 95 % of homelab) | ~15 MB binary, ~10 MB RAM |
 | **[Native binary + manual systemd](#a-native-binary-manual-install)** | You want to inspect/customize the unit before installing | Same as above |
 | **[Docker container](#b-docker-container)** | Target already runs Docker and you want one orchestration model | ~30 MB image, ~25 MB RAM |
-| **[Add to hub's compose](#c-second-agent-in-the-hub-compose)** | Local demo / testing the multi-host UI on one machine | Same as above |
 
 **For Proxmox LXC specifically: pick the one-liner or native.** LXC is
 already a container — nesting Docker inside it adds ~100 MB RAM overhead
@@ -169,9 +168,10 @@ deployment blocker today.
 
 ## B. Docker container
 
-Useful when the target host already runs a Docker stack you want to
-manage uniformly. Image is the same `lumen-agent:dev` that
-`deploy/docker/Dockerfile.agent` produces.
+Useful when the target host already runs Docker. Create the host in
+Settings first, then copy the generated Docker command and run it on
+the target machine. The customer flow is token-first; don't edit the
+hub compose file or add one `.env` variable per agent.
 
 ```bash
 docker run -d --name lumen-agent \
@@ -202,30 +202,6 @@ docker run -d --name lumen-agent \
 ```
 
 The `HOST_PROC` / `HOST_SYS` env vars are read by `gopsutil` directly.
-
----
-
-## C. Second agent in the hub compose
-
-For local demos — proves the multi-host UI works on a single machine.
-The compose file ships an opt-in `agent2` service under the `extra`
-profile.
-
-```bash
-# 1. Mint a token in Settings → Hosts (name it "compose-agent-2").
-# 2. Append to .env:
-echo 'LUMEN_AGENT_TOKEN_2=lum_...' >> .env
-
-# 3. Start agent2 only:
-docker compose -f deploy/docker/docker-compose.yml --profile extra up -d agent2
-```
-
-Stop it: `docker compose -f deploy/docker/docker-compose.yml stop agent2`.
-
-To run **N** agents this way, add `agent3`, `agent4`, … blocks copied
-from `agent2` with different `LUMEN_AGENT_HOST` and a per-agent
-`LUMEN_AGENT_TOKEN_N` var. It's deliberately a bit verbose — compose is
-the wrong tool for N >= 3 agents; use mode A.
 
 ---
 
