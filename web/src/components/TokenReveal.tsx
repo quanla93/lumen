@@ -28,7 +28,7 @@ export function TokenReveal({
   onDismiss: () => void;
 }) {
   const { t } = useI18n();
-  const [copied, setCopied] = useState<"token" | "oneliner" | "docker" | "env" | null>(null);
+  const [copied, setCopied] = useState<"token" | "compose" | "commands" | null>(null);
   const hubUrl =
     typeof window !== "undefined"
       ? `${window.location.protocol}//${window.location.host}`
@@ -37,12 +37,30 @@ export function TokenReveal({
   const dockerHubUrl = dockerReachableHubUrl(hubUrl);
   const safeHostName = hostName.replace(/[^A-Za-z0-9_.-]/g, "-");
 
-  const oneLiner = `curl -fsSL ${hubUrl}/install.sh | sudo bash -s -- --token ${token} --host ${hostName}`;
   const agentImage = "ghcr.io/quanla93/lumen-agent:latest";
-  const dockerRun = `docker run -d --pull always --name lumen-agent-${safeHostName} --restart unless-stopped -e LUMEN_HUB_URL=${dockerHubUrl} -e LUMEN_AGENT_TOKEN=${token} -e LUMEN_AGENT_HOST=${hostName} -e LUMEN_AGENT_INTERVAL=5s -v /var/run/docker.sock:/var/run/docker.sock:ro --user 0:0 ${agentImage}`;
-  const envSnippet = `LUMEN_HUB_URL=${hubUrl}\nLUMEN_AGENT_TOKEN=${token}\nLUMEN_AGENT_HOST=${hostName}`;
+  const compose = `services:
+  lumen-agent:
+    image: ${agentImage}
+    container_name: lumen-agent-${safeHostName}
+    restart: unless-stopped
+    user: "0:0"
+    environment:
+      LUMEN_HUB_URL: "${dockerHubUrl}"
+      LUMEN_AGENT_TOKEN: "${token}"
+      LUMEN_AGENT_HOST: "${hostName}"
+      LUMEN_AGENT_INTERVAL: "5s"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+`;
+  const composeCommands = `mkdir -p /opt/lumen-agent
+cd /opt/lumen-agent
+# save the downloaded docker-compose.yml here, then run:
+docker compose up -d
 
-  async function copy(text: string, which: "token" | "oneliner" | "docker" | "env") {
+# future updates:
+docker compose pull && docker compose up -d`;
+
+  async function copy(text: string, which: "token" | "compose" | "commands") {
     try {
       await navigator.clipboard.writeText(text);
       setCopied(which);
@@ -50,6 +68,16 @@ export function TokenReveal({
     } catch {
       // clipboard API may be unavailable on non-HTTPS — user can manually copy
     }
+  }
+
+  function downloadCompose() {
+    const blob = new Blob([compose], { type: "text/yaml" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "docker-compose.yml";
+    a.click();
+    URL.revokeObjectURL(url);
   }
 
   return (
@@ -76,45 +104,33 @@ export function TokenReveal({
       </div>
 
       <div className="mb-4">
-        <div className="flex items-center justify-between mb-1">
-          <p className="text-xs font-semibold">{t("token.installTitle")}</p>
-          <GhostButton onClick={() => copy(oneLiner, "oneliner")}>
-            {copied === "oneliner" ? t("common.copied") : t("common.copy")}
-          </GhostButton>
-        </div>
-        <pre className="text-xs font-mono bg-[color:var(--color-card)] border border-[color:var(--color-border)] rounded p-3 overflow-x-auto">{oneLiner}</pre>
-        <p className="text-xs text-[color:var(--color-muted)] mt-2">
-          {t("token.installDescription")}
-        </p>
-      </div>
-
-      <div className="mb-4">
-        <div className="flex items-center justify-between mb-1">
-          <p className="text-xs font-semibold">{t("token.dockerTitle")}</p>
-          <GhostButton onClick={() => copy(dockerRun, "docker")}>
-            {copied === "docker" ? t("common.copied") : t("common.copy")}
-          </GhostButton>
-        </div>
-        <pre className="text-xs font-mono bg-[color:var(--color-card)] border border-[color:var(--color-border)] rounded p-3 overflow-x-auto whitespace-pre-wrap">{dockerRun}</pre>
-        <p className="text-xs text-[color:var(--color-muted)] mt-2">
-          {t("token.dockerDescription")}
-        </p>
-      </div>
-
-      <details>
-        <summary className="text-xs text-[color:var(--color-muted)] cursor-pointer hover:text-[color:var(--color-fg)]">
-          {t("token.manualTitle")}
-        </summary>
-        <div className="mt-2">
-          <div className="flex items-center justify-between mb-1">
-            <p className="text-xs">{t("token.manualDescription")}</p>
-            <GhostButton onClick={() => copy(envSnippet, "env")}>
-              {copied === "env" ? t("common.copied") : t("common.copy")}
+        <div className="flex items-center justify-between gap-2 mb-1">
+          <p className="text-xs font-semibold">{t("token.composeTitle")}</p>
+          <div className="flex items-center gap-2">
+            <GhostButton onClick={downloadCompose}>{t("common.download")}</GhostButton>
+            <GhostButton onClick={() => copy(compose, "compose")}>
+              {copied === "compose" ? t("common.copied") : t("common.copy")}
             </GhostButton>
           </div>
-          <pre className="text-xs font-mono bg-[color:var(--color-card)] border border-[color:var(--color-border)] rounded p-3 overflow-x-auto">{envSnippet}</pre>
         </div>
-      </details>
+        <pre className="text-xs font-mono bg-[color:var(--color-card)] border border-[color:var(--color-border)] rounded p-3 overflow-x-auto whitespace-pre-wrap">{compose}</pre>
+        <p className="text-xs text-[color:var(--color-muted)] mt-2">
+          {t("token.composeDescription")}
+        </p>
+      </div>
+
+      <div>
+        <div className="flex items-center justify-between gap-2 mb-1">
+          <p className="text-xs font-semibold">{t("token.composeCommandsTitle")}</p>
+          <GhostButton onClick={() => copy(composeCommands, "commands")}>
+            {copied === "commands" ? t("common.copied") : t("common.copy")}
+          </GhostButton>
+        </div>
+        <pre className="text-xs font-mono bg-[color:var(--color-card)] border border-[color:var(--color-border)] rounded p-3 overflow-x-auto whitespace-pre-wrap">{composeCommands}</pre>
+        <p className="text-xs text-[color:var(--color-muted)] mt-2">
+          {t("token.composeCommandsDescription")}
+        </p>
+      </div>
     </div>
   );
 }

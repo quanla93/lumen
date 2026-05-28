@@ -25,13 +25,16 @@ The token shown in Settings is displayed **exactly once**. The hub stores
 only its SHA-256 hash. If you lose it, click **Rotate** to mint a fresh
 one — the old token immediately stops working.
 
+Updating an existing agent is a different flow from onboarding. Do not
+create a new host or token for code updates; see [Update agents](/how-to/update-agents/).
+
 ## Which mode should I pick?
 
 | Mode | When to use | Footprint on target |
 |---|---|---|
 | **[One-liner install](#the-one-liner-fastest-path)** | Linux + systemd target (covers 95 % of homelab) | ~15 MB binary, ~10 MB RAM |
 | **[Native binary + manual systemd](#a-native-binary-manual-install)** | You want to inspect/customize the unit before installing | Same as above |
-| **[Docker container](#b-docker-container)** | Target already runs Docker and you want one orchestration model | ~30 MB image, ~25 MB RAM |
+| **[Docker Compose agent](#b-docker-compose-agent)** | Target already runs Docker and you want simple update/restart/log commands | ~30 MB image, ~25 MB RAM |
 
 **For Proxmox LXC specifically: pick the one-liner or native.** LXC is
 already a container — nesting Docker inside it adds ~100 MB RAM overhead
@@ -166,42 +169,32 @@ deployment blocker today.
 
 ---
 
-## B. Docker container
+## B. Docker Compose agent
 
 Useful when the target host already runs Docker. Create the host in
-Settings first, then copy the generated Docker command and run it on
-the target machine. The customer flow is token-first; don't edit the
-hub compose file or add one `.env` variable per agent.
+Settings first, then copy or download the generated `docker-compose.yml`
+and save it on the target machine.
 
 ```bash
-docker run -d --name lumen-agent \
-  --restart unless-stopped \
-  -e LUMEN_HUB_URL=http://10.0.0.10:8090 \
-  -e LUMEN_AGENT_HOST=docker-node-2 \
-  -e LUMEN_AGENT_TOKEN=lum_... \
-  -e LUMEN_AGENT_INTERVAL=5s \
-  lumen-agent:dev
+sudo mkdir -p /opt/lumen-agent
+cd /opt/lumen-agent
+sudo nano docker-compose.yml
+sudo docker compose up -d
 ```
 
-**Caveat — host vs container metrics:** by default the agent reports
-the *container's* cgroup-restricted view (CPU/RAM look tiny). To monitor
-the **host** from a containerized agent, mount `/proc` and `/sys`:
+Future updates are simple and do not need a new token:
 
 ```bash
-docker run -d --name lumen-agent \
-  --restart unless-stopped \
-  --pid host \
-  -v /proc:/host/proc:ro \
-  -v /sys:/host/sys:ro \
-  -e HOST_PROC=/host/proc \
-  -e HOST_SYS=/host/sys \
-  -e LUMEN_HUB_URL=http://10.0.0.10:8090 \
-  -e LUMEN_AGENT_HOST=docker-node-2 \
-  -e LUMEN_AGENT_TOKEN=lum_... \
-  lumen-agent:dev
+cd /opt/lumen-agent
+sudo docker compose pull
+sudo docker compose up -d
 ```
 
-The `HOST_PROC` / `HOST_SYS` env vars are read by `gopsutil` directly.
+The customer flow is token-first, but not hub-compose-first: don't edit
+the hub's `docker-compose.yml` or add one `.env` variable per agent.
+Each target host owns its own per-agent compose file.
+
+See [Agent — Docker](/install/agent-docker/) for the generated file shape and operational commands.
 
 ---
 
@@ -213,8 +206,7 @@ machine and you want a fresh credential:
 1. Hub UI → **Settings → Hosts** → click **Rotate** next to the host.
 2. Copy the new `lum_…` shown once.
 3. Update `LUMEN_AGENT_TOKEN` on the target and restart the agent
-   (`systemctl restart lumen-agent` / `docker restart lumen-agent` /
-   `docker compose up -d --force-recreate agent2`).
+   (`systemctl restart lumen-agent` / `cd /opt/lumen-agent && docker compose up -d`).
 
 The old token starts returning `401` immediately. The host record
 (metrics history, name, position on dashboard) is preserved.

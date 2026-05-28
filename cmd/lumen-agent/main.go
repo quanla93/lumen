@@ -23,6 +23,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"log/slog"
 	"os"
@@ -34,6 +35,7 @@ import (
 	"github.com/quanla93/lumen/internal/agent/collector"
 	"github.com/quanla93/lumen/internal/agent/config"
 	"github.com/quanla93/lumen/internal/agent/sender"
+	"github.com/quanla93/lumen/internal/agent/updater"
 	"github.com/quanla93/lumen/internal/shared/api"
 	"github.com/quanla93/lumen/internal/shared/envcfg"
 )
@@ -46,6 +48,59 @@ const defaultConfigPath = "/etc/lumen/agent.yaml"
 var version = "dev"
 
 func main() {
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "run":
+			os.Args = append([]string{os.Args[0]}, os.Args[2:]...)
+		case "update-docker":
+			runDockerUpdate(os.Args[2:])
+			return
+		case "help", "--help", "-h":
+			printUsage()
+			return
+		}
+	}
+	runAgent()
+}
+
+func printUsage() {
+	fmt.Fprintln(os.Stdout, "Usage:")
+	fmt.Fprintln(os.Stdout, "  lumen-agent [run]")
+	fmt.Fprintln(os.Stdout, "  lumen-agent update-docker --container <name> [--image <image>] [--apply]")
+}
+
+func runDockerUpdate(args []string) {
+	fs := flag.NewFlagSet("update-docker", flag.ExitOnError)
+	container := fs.String("container", "", "existing Lumen agent container name")
+	image := fs.String("image", "", "override image to pull/run; defaults to existing container image")
+	apply := fs.Bool("apply", false, "pull and recreate the container; default is dry-run")
+	_ = fs.Parse(args)
+
+	plan, err := updater.DockerUpdate(updater.DockerOptions{
+		Container: *container,
+		Image:     *image,
+		Apply:     *apply,
+	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "update-docker failed: %v\n", err)
+		os.Exit(1)
+	}
+	mode := "dry-run"
+	if *apply {
+		mode = "applied"
+	}
+	fmt.Fprintf(os.Stdout, "docker update %s\n", mode)
+	fmt.Fprintf(os.Stdout, "container: %s\n", plan.Container)
+	fmt.Fprintf(os.Stdout, "replacement: %s\n", plan.Replacement)
+	fmt.Fprintf(os.Stdout, "image: %s\n", plan.Image)
+	fmt.Fprintf(os.Stdout, "restart: %s\n", plan.RestartPolicy)
+	fmt.Fprintf(os.Stdout, "user: %s\n", plan.User)
+	fmt.Fprintf(os.Stdout, "env: %d LUMEN_* vars preserved\n", len(plan.Env))
+	fmt.Fprintf(os.Stdout, "mounts: %d binds preserved\n", len(plan.Binds))
+	fmt.Fprintf(os.Stdout, "networks: %v\n", plan.Networks)
+}
+
+func runAgent() {
 	// Stage 1: load YAML config (if present) BEFORE envcfg so its
 	// fields are visible to envcfg.String/Duration/etc. The file
 	// only fills gaps — anything already in the process environment
