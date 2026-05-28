@@ -1,6 +1,6 @@
 ---
 title: Agent — Linux (native)
-description: Install the Lumen agent on any Linux host via the hub-served one-liner.
+description: Install the Lumen agent as a native systemd service on Linux hosts without Docker.
 sidebar:
   order: 4
 ---
@@ -43,46 +43,66 @@ The host name you pick here is **authoritative**: it overrides whatever
 `LUMEN_AGENT_HOST` the agent posts, so a leaked token can't be used to
 spoof a different host.
 
-## 2. Run the one-liner on the target
+## 2. Install the binary
+
+Build or download the matching Linux agent binary, then copy it to the target host:
 
 ```bash
-curl -fsSL http://<your-hub-host>:8090/install.sh | sudo bash -s -- \
-  --token lum_xxxxxxxxxxxxxxxxxxxxx \
-  --host pve-node-01
+# Example from a build machine for linux/amd64.
+GOOS=linux GOARCH=amd64 CGO_ENABLED=0 \
+  go build -o bin/lumen-agent-linux-amd64 ./cmd/lumen-agent
+
+scp bin/lumen-agent-linux-amd64 root@10.0.0.50:/usr/local/bin/lumen-agent
+ssh root@10.0.0.50 'chmod +x /usr/local/bin/lumen-agent'
 ```
 
-For an HTTPS hub:
+For release tarballs, extract the archive and copy the included `lumen-agent` binary to `/usr/local/bin/lumen-agent`.
+
+## 3. Create the systemd service
+
+On the target host, write `/etc/systemd/system/lumen-agent.service`:
+
+```ini
+[Unit]
+Description=Lumen agent
+Documentation=https://github.com/quanla93/lumen
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+Environment=LUMEN_HUB_URL=https://lumen.example.lan
+Environment=LUMEN_AGENT_HOST=pve-node-01
+Environment=LUMEN_AGENT_TOKEN=lum_paste_your_token_here
+Environment=LUMEN_AGENT_INTERVAL=5s
+Environment=LUMEN_AGENT_BUFFER_PATH=/var/lib/lumen-agent/buffer.db
+Environment=LUMEN_AGENT_BUFFER_MAX_AGE=24h
+Environment=LUMEN_AGENT_BUFFER_DRAIN=10
+ExecStart=/usr/local/bin/lumen-agent
+Restart=always
+RestartSec=5s
+
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/lumen-agent
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Then create the buffer directory and start the service:
 
 ```bash
-curl -fsSL https://lumen.example.com/install.sh | sudo bash -s -- \
-  --token lum_xxxxxxxxxxxxxxxxxxxxx \
-  --host pve-node-01
+sudo mkdir -p /var/lib/lumen-agent
+sudo systemctl daemon-reload
+sudo systemctl enable --now lumen-agent
 ```
 
-The script:
+Within one collection interval the host card appears on the hub dashboard. Click it to drill into per-core CPU, charts, and the container table.
 
-1. Detects OS + architecture (`amd64` / `arm64` / `armv7`).
-2. Downloads the matching `lumen-agent-linux-<arch>` binary from the
-   hub's `/install/` endpoint.
-3. Installs it to `/usr/local/bin/lumen-agent`.
-4. Writes `/etc/systemd/system/lumen-agent.service` with the token in
-   `Environment=` (file mode 0600, root-only).
-5. `systemctl daemon-reload && systemctl enable --now lumen-agent`.
-
-Within ~5 seconds the host card appears on the hub dashboard. Click it
-to drill into per-core CPU, charts, and the container table.
-
-### Flags
-
-| Flag | Default | Notes |
-|---|---|---|
-| `--token <lum_...>` | _required_ | One-shot token from the hub UI |
-| `--host <name>` | `$(hostname)` | Overridden server-side by the token's host |
-| `--hub <url>` | baked into the script by the hub | Set explicitly if the agent reaches the hub via a different URL (Cloudflare Tunnel, internal IP) |
-| `--interval <duration>` | `5s` | Go duration; `1s` to `1m` is reasonable |
-| `--uninstall` | — | Stop, disable, remove binary + unit |
-
-## 3. Verify
+## 4. Verify
 
 ```bash
 systemctl status lumen-agent
@@ -94,13 +114,15 @@ UI, the host card transitions from "no data" to live values.
 
 ## Fleet install across many LXCs
 
-When you have a Proxmox cluster full of LXCs, the friction is
-"mint a token, ssh in, paste it" times N. Two patterns help:
+When you have a Proxmox cluster full of LXCs, the friction is "mint a token, copy a binary, write a service" times N. Two patterns help:
 
 ### Pattern A — script loop from the Proxmox host
 
+Build the agent once, then copy it into each LXC and write a tiny env file plus a shared unit:
+
 ```bash
 # On the Proxmox host. Mint one token per LXC in the hub UI first.
+AGENT_BIN=./lumen-agent-linux-amd64
 declare -A TOKENS=(
   [100]="lum_aaaa..."
   [101]="lum_bbbb..."
@@ -108,9 +130,33 @@ declare -A TOKENS=(
 )
 for vmid in "${!TOKENS[@]}"; do
   name=$(pct config $vmid | awk '/^hostname:/ {print $2}')
-  pct exec $vmid -- bash -c "
-    curl -fsSL http://hub.lan:8090/install.sh | bash -s -- \
-      --token ${TOKENS[$vmid]} --host $name"
+  pct push "$vmid" "$AGENT_BIN" /usr/local/bin/lumen-agent --perms 0755
+  pct exec "$vmid" -- mkdir -p /etc/lumen /var/lib/lumen-agent
+  pct exec "$vmid" -- tee /etc/lumen/agent.env >/dev/null <<EOF
+LUMEN_HUB_URL=http://hub.lan:8090
+LUMEN_AGENT_HOST=$name
+LUMEN_AGENT_TOKEN=${TOKENS[$vmid]}
+LUMEN_AGENT_INTERVAL=5s
+LUMEN_AGENT_BUFFER_PATH=/var/lib/lumen-agent/buffer.db
+EOF
+  pct exec "$vmid" -- tee /etc/systemd/system/lumen-agent.service >/dev/null <<'EOF'
+[Unit]
+Description=Lumen agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+EnvironmentFile=/etc/lumen/agent.env
+ExecStart=/usr/local/bin/lumen-agent
+Restart=always
+RestartSec=5s
+ReadWritePaths=/var/lib/lumen-agent
+
+[Install]
+WantedBy=multi-user.target
+EOF
+  pct exec "$vmid" -- systemctl daemon-reload
+  pct exec "$vmid" -- systemctl enable --now lumen-agent
 done
 ```
 
@@ -122,13 +168,55 @@ done
   vars:
     lumen_hub_url: http://hub.lan:8090
   tasks:
-    - name: Install Lumen agent
-      shell: |
-        curl -fsSL {{ lumen_hub_url }}/install.sh | bash -s -- \
-          --token {{ agent_token }} \
-          --host {{ inventory_hostname }}
-      args:
-        creates: /usr/local/bin/lumen-agent
+    - name: Install Lumen agent binary
+      copy:
+        src: ./bin/lumen-agent-linux-amd64
+        dest: /usr/local/bin/lumen-agent
+        mode: "0755"
+
+    - name: Create agent config directory
+      file:
+        path: /etc/lumen
+        state: directory
+        mode: "0700"
+
+    - name: Write agent environment
+      copy:
+        dest: /etc/lumen/agent.env
+        mode: "0600"
+        content: |
+          LUMEN_HUB_URL={{ lumen_hub_url }}
+          LUMEN_AGENT_HOST={{ inventory_hostname }}
+          LUMEN_AGENT_TOKEN={{ agent_token }}
+          LUMEN_AGENT_INTERVAL=5s
+          LUMEN_AGENT_BUFFER_PATH=/var/lib/lumen-agent/buffer.db
+
+    - name: Write systemd unit
+      copy:
+        dest: /etc/systemd/system/lumen-agent.service
+        mode: "0644"
+        content: |
+          [Unit]
+          Description=Lumen agent
+          After=network-online.target
+          Wants=network-online.target
+
+          [Service]
+          EnvironmentFile=/etc/lumen/agent.env
+          ExecStart=/usr/local/bin/lumen-agent
+          Restart=always
+          RestartSec=5s
+          ReadWritePaths=/var/lib/lumen-agent
+
+          [Install]
+          WantedBy=multi-user.target
+
+    - name: Start Lumen agent
+      systemd:
+        name: lumen-agent
+        daemon_reload: true
+        enabled: true
+        state: restarted
 ```
 
 `agent_token` is per-host (Ansible vault, group_vars, etc.).
@@ -159,28 +247,22 @@ main unit stays clean.)
 
 ## Upgrade
 
-Re-run the one-liner — the script is idempotent and replaces the binary
-in place + restarts the service.
+Replace `/usr/local/bin/lumen-agent` with the new binary and restart the service:
 
 ```bash
-curl -fsSL http://<hub>:8090/install.sh | sudo bash -s -- \
-  --token lum_... --host my-host
+sudo systemctl stop lumen-agent
+sudo install -m 0755 lumen-agent /usr/local/bin/lumen-agent
+sudo systemctl start lumen-agent
 ```
 
-The token in `/etc/systemd/system/lumen-agent.service` is preserved
-because it's read from your `--token` argument again.
+Do not create a new host or rotate the token for a code update. The existing token stays in the systemd unit or YAML config.
 
 ## Uninstall
 
 ```bash
-curl -fsSL http://<hub>:8090/install.sh | sudo bash -s -- --uninstall
-```
-
-Or, if the hub is offline:
-
-```bash
 sudo systemctl disable --now lumen-agent
 sudo rm /etc/systemd/system/lumen-agent.service /usr/local/bin/lumen-agent
+sudo rm -rf /var/lib/lumen-agent
 sudo systemctl daemon-reload
 ```
 

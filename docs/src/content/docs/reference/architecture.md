@@ -83,8 +83,15 @@ A single Go binary with the web UI embedded via `//go:embed`. Owns:
 - **Retention loop** — 30 s heartbeat re-reads window + interval from
   the `settings` table; sweeps when `time.Since(lastSweep) >=
   interval`. UI edits take effect within 30 s, no restart.
+- **Settings table** — runtime-tunable values for retention, agent
+  collection interval, and downsample policy. Env values seed defaults;
+  once a row exists, database settings win.
+- **Agent policy** — `/api/agent/policy` lets agents fetch the current
+  collection interval after successful ticks and apply it without
+  redeploying.
 - **Auth** — Argon2id passwords + HS256 JWT in an HttpOnly cookie
-  (30 d TTL). Strict bearer-token gate on `/api/ingest`.
+  (30 d TTL). Strict bearer-token gate on `/api/ingest` and
+  `/api/agent/policy`.
 
 ### Web (`web/`)
 
@@ -103,7 +110,7 @@ deployed separately to Cloudflare Pages or GitHub Pages. Not embedded.
 ## Data flow per ingest
 
 ```
-agent tick (every 5s)
+agent tick (every 5s by default; hub policy can change it)
    ↓
 collect() → IngestRequest{ host, ts, cpu_pct, ram_pct, ... }
    ↓
@@ -121,6 +128,8 @@ store.Put (in-mem)         batcher.Add (queue → 60s flush → SQLite)
 WebSocket subscribers receive the update on the next 5s tick
    ↓
 host detail page redraws its uPlot charts; per-core strip animates
+   ↓
+agent fetches /api/agent/policy after successful ticks and updates its next collection interval if Settings → Runtime changed
 ```
 
 The split between in-memory store and batched SQLite is deliberate:
@@ -132,9 +141,9 @@ hub crash, which the agent buffer replays on reconnect.
 
 **One binary per role.** No sidecar, no separate metrics service, no
 external time-series DB. The hub is the time-series DB; SQLite + a
-60 s flush ring is enough for homelab cardinality. Phase 4 adds a
-cold-tier Parquet writer for queries beyond the configured hot window,
-but the hot path stays the same.
+60 s flush ring is enough for homelab cardinality. A later cold-tier
+Parquet writer will serve queries beyond the configured hot window, but
+the hot path stays the same.
 
 **Push, not pull.** Agents POST to the hub. The hub never connects
 out. Reasons:

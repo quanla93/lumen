@@ -1,21 +1,19 @@
 ---
 title: Quickstart
-description: Build Lumen from source and see live CPU metrics in two terminals.
+description: Run Lumen quickly with Docker Compose, then add agents from the web UI.
 sidebar:
   order: 2
 ---
 
-> ℹ️ This is the **pre-v0.1 dev quickstart** — you build the binaries from
-> source. The polished `curl quanla.org/lumen/install | bash` flow lands with v0.1.0
-> (see the [roadmap](https://github.com/quanla93/lumen/blob/main/ACTION_PLAN.md)).
+The fastest path is Docker Compose: one compose file starts the hub, stores the SQLite data in a Docker volume, and lets you add agents from the web UI.
 
 ## Prerequisites
 
-- Go **1.25+** (`go version` to check)
-- Git
-- A terminal — Linux, macOS, or Windows (PowerShell or bash)
+- Docker 20.10+ and Docker Compose v2 (`docker compose version`).
+- Git.
+- A terminal — Linux, macOS, or Windows.
 
-## 1. Clone and build
+## 1. Clone and configure
 
 ```bash
 git clone https://github.com/quanla93/lumen
@@ -23,76 +21,76 @@ cd lumen
 cp .env.example .env
 ```
 
-`.env` is gitignored and holds all config (12-factor — there are no CLI
-flags). Edit it if you want different ports or interval; the defaults are
-fine for local testing.
+Edit `.env` and set a stable hub secret plus a real admin password before exposing the hub:
 
-## 2. Run the hub
+```ini
+LUMEN_HUB_SECRET=<generate with: openssl rand -hex 32>
+LUMEN_HUB_ADMIN_USERNAME=admin
+LUMEN_HUB_ADMIN_PASSWORD=<your-choice>
+```
 
-In terminal **1**:
+## 2. Start the hub with Docker Compose
 
 ```bash
-make dev-hub
-# or:  go run ./cmd/lumen-hub
+docker compose -f deploy/docker/docker-compose.yml up --build -d
 ```
 
-Expected output:
+Open the hub UI:
 
-```
-time=... level=INFO msg="hub listening" addr=:8090 dev=true
+```text
+http://localhost:8090
 ```
 
-Sanity-check the liveness probe:
+On a fresh database, create the first admin account or sign in with the seeded admin from `.env`.
+
+## 3. Add an agent with its own compose file
+
+In the hub UI, go to **Settings → Hosts**, create a host, and copy or download the generated `docker-compose.yml`. Save it on the target machine:
 
 ```bash
-curl -i http://localhost:8090/healthz
-# HTTP/1.1 200 OK
-# Content-Type: application/json
-#
-# {"status":"ok"}
+sudo mkdir -p /opt/lumen-agent
+cd /opt/lumen-agent
+sudo nano docker-compose.yml
+sudo chmod 600 docker-compose.yml
+sudo docker compose up -d
+sudo docker compose logs -f
 ```
 
-## 3. Run the agent
+The agent card appears on the dashboard within one collection interval. Click it to open historical charts, per-core CPU, network/disk throughput, temperature when available, and live Docker container data when the agent can read the Docker socket.
 
-In terminal **2**:
+## 4. Update later
+
+Hub updates:
 
 ```bash
-make dev-agent
-# or:  go run ./cmd/lumen-agent
+git pull
+docker compose -f deploy/docker/docker-compose.yml up -d --build
 ```
 
-You should see one log line per tick (default 5s, tunable in `.env` via
-`LUMEN_AGENT_INTERVAL`):
+Agent updates run on each target machine that owns an agent compose file:
 
-```
-time=... level=INFO msg="agent starting" hub=http://localhost:8090 host=<hostname> interval=5s
-time=... level=INFO msg=ingested cpu_pct=12.34
-time=... level=INFO msg=ingested cpu_pct=8.76
-```
-
-And the hub log (terminal 1) shows each ingest accepted:
-
-```
-time=... level=DEBUG msg="ingest accepted" host=<hostname> cpu_pct=12.34
+```bash
+cd /opt/lumen-agent
+sudo docker compose pull
+sudo docker compose up -d
 ```
 
-## 4. (coming soon) Live dashboard
+Do not create a new host or rotate the token for a code update.
 
-The web dashboard lands in Phase 1.6 of the [roadmap](https://github.com/quanla93/lumen/blob/main/ACTION_PLAN.md).
-Until then, the hub's `POST /api/ingest` is the only ingest path, and
-`GET /api/stream` (WebSocket) is the only realtime output. A minimal
-React+Vite UI consuming `/api/stream` is the next milestone.
+## Other install paths
+
+- [Hub — Docker Compose](/install/hub-compose/) is the main install guide.
+- [Agent — Docker Compose](/install/agent-docker/) has the full agent compose reference.
+- [Run from source](/how-to/run-from-source/) is for development.
+- [Native hub](/install/hub-binary/) and [native agent](/install/agent-linux/) are advanced/manual paths.
 
 ## Troubleshooting
 
-**`go: command not found`**
-: Install Go 1.24+ from [go.dev/dl](https://go.dev/dl/). On Windows, after
-the MSI installer, open a fresh terminal so the new PATH is picked up.
+**Compose port 8090 already in use**
+: Edit the host port in `deploy/docker/docker-compose.yml`, for example `8091:8090`, then start the stack again. Agents must use the URL reachable from their target machine.
 
-**`bind: address already in use` on port 8090**
-: Another process holds the port. Either stop it or change `LUMEN_HUB_ADDR`
-in `.env` (e.g. `:9090`) and update `LUMEN_HUB_URL` to match.
+**Agent logs `401 invalid token`**
+: The token in the target machine's `/opt/lumen-agent/docker-compose.yml` is wrong or was rotated. Rotate only when you intentionally want to invalidate the old credential.
 
-**Agent logs `ingest send failed`**
-: The hub isn't reachable. Verify `LUMEN_HUB_URL` matches `LUMEN_HUB_ADDR`
-and that the hub terminal is still running.
+**Container table is empty**
+: Host metrics still work. Keep the read-only Docker socket mount in the agent compose file only when you want container telemetry.

@@ -71,15 +71,16 @@ Effects:
 - Snapshots already accepted under the old token stay — `host` rows
   don't churn on rotation.
 - The agent on the target host will log `hub returned 401: invalid
-  token` until you update its `LUMEN_AGENT_TOKEN` and restart it:
+  token` until you update its `LUMEN_AGENT_TOKEN` and restart it.
 
-  ```bash
-  sudo systemctl edit lumen-agent
-  # Replace LUMEN_AGENT_TOKEN= with the new value
-  sudo systemctl restart lumen-agent
-  ```
+For the recommended Docker Compose agent path, edit `/opt/lumen-agent/docker-compose.yml` on the target host and replace `LUMEN_AGENT_TOKEN`, then recreate the container:
 
-Or simpler — re-run the installer one-liner with the new `--token`.
+```bash
+cd /opt/lumen-agent
+sudo docker compose up -d
+```
+
+For native/manual agents, update the systemd environment or YAML config and restart `lumen-agent`.
 
 ## When to rotate
 

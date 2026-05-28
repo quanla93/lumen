@@ -7,8 +7,9 @@ sidebar:
 
 ## What is Lumen, in one line?
 
-A single-binary monitoring tool for homelabs: HTTPS, HDD-friendly,
-mobile-ready, Proxmox-native at v0.2.
+A lightweight self-hosted monitoring tool for homelabs: HTTPS push,
+HDD-friendly writes, a mobile-ready web UI, and a roadmap toward
+Proxmox-native monitoring.
 
 ## Who is this for?
 
@@ -30,8 +31,8 @@ The three needles Lumen threads:
    shape as cAdvisor's metrics endpoint but with a hub on the
    receiving end.
 2. **HDD-friendly storage**. SQLite WAL + 60s batched flushes,
-   bounded retention. Phase 4 adds a Parquet cold tier so a
-   Raspberry-Pi-class hub can serve a year of data from a USB HDD.
+   bounded retention. A future Parquet cold tier will let a
+   Raspberry-Pi-class hub serve longer history from a USB HDD.
 3. **Mobile-first dashboard**. Most homelab monitoring UIs are
    built desktop-first and look terrible on a phone. Lumen is the
    inverse — phone-readable first, desktop refinements second.
@@ -49,14 +50,12 @@ list with units and gotchas.
 
 Locked anti-features, won't be added even if asked:
 
-- **Logs.** Loki / Grafana / journalctl already do this well. The
-  hub is metrics-only.
+- **Log aggregation / full-text search.** Loki / Grafana / journalctl already do this well. Lumen's planned log surface is lightweight, on-demand operator debugging only.
 - **Distributed tracing.** Tempo / Jaeger / OpenTelemetry land. Not
   a homelab problem.
 - **Multi-tenant.** One hub, one operator. No org/team/role
   hierarchy.
-- **Enterprise SSO.** Username + password + bearer tokens. If you
-  need OIDC, put it in front via a reverse proxy.
+- **Enterprise RBAC.** Username + password + bearer tokens today. Custom OIDC is deferred; SAML2 is only considered later if complexity stays acceptable.
 - **Synthetic checks / blackbox monitoring.** Run `uptime-kuma`
   alongside; that's its scope.
 
@@ -76,15 +75,17 @@ database process to crash-recover, no port to fail2ban, no version
 upgrade to plan. WAL mode + a 60s batched flush makes it
 HDD-friendly even on a Raspberry Pi 4.
 
-Phase 4 adds a Parquet cold tier for queries past the hot window;
-SQLite stays as the hot layer.
+The planned Parquet cold tier will handle queries past the hot window;
+SQLite stays as the hot layer. Today, old SQLite rows are deleted by
+retention, while downsample settings are stored for the future cold-tier
+compactor.
 
 ## Will Lumen work on Proxmox?
 
-Yes — it's the v0.2 wedge. Today (v0.1) you install the agent
-inside each LXC like any Linux host. v0.2 adds a Proxmox-host
-collector that reads the Proxmox API directly: ZFS pools, LXC vs
-QEMU distinction, cluster quorum, PBS backup status. See the
+Yes. Today you can run the hub in a Proxmox LXC and install agents
+inside Linux VMs/LXCs like any other host. The Proxmox API collector is
+the planned Phase 5 / v0.4 wedge: ZFS pools, LXC vs QEMU distinction,
+cluster quorum, and PBS backup status. See the
 [ACTION_PLAN](https://github.com/quanla93/lumen/blob/main/ACTION_PLAN.md)
 for the breakdown.
 

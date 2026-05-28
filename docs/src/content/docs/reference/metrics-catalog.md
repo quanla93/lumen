@@ -196,10 +196,32 @@ If the socket is missing: silent. If present but unreadable
 (permissions): one Warn line at agent startup, then Debug — the
 agent doesn't spam the log.
 
+## System metadata
+
+Agents also send system metadata with each ingest. The hub stores the
+latest values on the host record, not in each historical snapshot row.
+The dashboard uses these fields for the host detail header and future
+version-awareness UI.
+
+| Field | Source | Persisted |
+|---|---|---|
+| `system.os` | gopsutil host info | host record |
+| `system.hostname` | OS hostname | host record |
+| `system.primary_ip` | first non-loopback private/global IP | host record |
+| `system.kernel` | gopsutil host info | host record |
+| `system.arch` | runtime architecture | host record |
+| `system.cpu_model` | CPU info | host record |
+| `system.uptime_seconds` | gopsutil host info | host record |
+| `system.agent_version` | agent build metadata | host record |
+
+`agent_version` records what the agent reports today. Comparing it to a
+hub-known latest version is planned for the agent lifecycle UI, but is
+not implemented yet.
+
 ## Hub-side derived fields
 
-The hub adds two fields to each `HostSnapshot` it broadcasts that
-the agent doesn't send:
+The hub adds fields to each `HostSnapshot` it broadcasts that the agent
+doesn't send:
 
 | Field | Purpose |
 |---|---|
@@ -226,6 +248,7 @@ What an agent POSTs to `/api/ingest`:
 | `disk_r_bps`, `disk_w_bps` | yes | — | All block devices summed |
 | `temp_c` | yes | — | 0 if no sensor |
 | `containers[]` | — | yes | Cap 500 |
+| `system` | host record | latest value in WS | Host metadata, not stored per history point |
 
 ## Field stability
 

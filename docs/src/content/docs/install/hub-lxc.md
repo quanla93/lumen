@@ -1,24 +1,22 @@
 ---
 title: Hub — Proxmox LXC
-description: Install Lumen hub inside a Proxmox LXC container — native binary or Docker compose.
+description: Install Lumen hub inside a Proxmox LXC container, preferably with Docker Compose for the fastest path.
 sidebar:
   order: 2
 ---
 
-The recommended Proxmox deployment for the hub is a dedicated LXC. This
-page walks through both supported shapes:
+The recommended Proxmox deployment for the hub is a dedicated LXC. For now, the fastest default is Docker Compose inside that LXC; native systemd remains available as an advanced/manual path.
 
 | Shape | When to use | Disk | RAM |
 |---|---|---|---|
-| **A. Native binary + systemd** | You want the smallest, simplest install. Recommended for production. | ~25 MiB image + DB | 60–80 MiB |
-| **B. Docker compose inside LXC** | You already manage everything via compose; you want the agent shipped alongside; you'll add other Docker services later. | ~250 MiB image | 150 MiB |
+| **A. Docker Compose inside LXC** | Recommended first path: quick setup, easy update/restart/log commands, same Docker flow as agents. | ~250 MiB image | 150 MiB |
+| **B. Native binary + systemd** | Advanced/manual path when you want the smallest footprint and no Docker. | ~25 MiB image + DB | 60–80 MiB |
 
 Both shapes work on the same LXC; pick one to start.
 
 ## 1. Create the LXC (one time, on the Proxmox host)
 
-Use the Proxmox UI **or** these `pct` commands. The LXC needs `nesting=1`
-**only** for shape B (Docker-in-LXC). Shape A doesn't need it.
+Use the Proxmox UI **or** these `pct` commands. The LXC needs `nesting=1` for the recommended Docker Compose shape. Native systemd does not need it.
 
 ```bash
 # Pick a free VMID and download the Debian template once if needed.
@@ -26,7 +24,7 @@ pveam update
 pveam available --section system | grep debian-12-standard
 pveam download local debian-12-standard_12.7-1_amd64.tar.zst
 
-# Create the container. Memory + disk are conservative for shape A;
+# Create the container. Memory + disk are conservative for Docker Compose;
 # bump to 1024 / 16 GB if you'll also store cold tier here later.
 pct create 200 local:vztmpl/debian-12-standard_12.7-1_amd64.tar.zst \
   --hostname lumen \
@@ -35,7 +33,7 @@ pct create 200 local:vztmpl/debian-12-standard_12.7-1_amd64.tar.zst \
   --net0 name=eth0,bridge=vmbr0,ip=dhcp,firewall=1 \
   --onboot 1 \
   --unprivileged 1 \
-  --features nesting=1,keyctl=1   # only needed for shape B (Docker-in-LXC)
+  --features nesting=1,keyctl=1   # needed for the recommended Docker Compose shape
 
 pct start 200
 pct enter 200
@@ -49,9 +47,9 @@ apt-get update
 
 If `apt-get` resolves and downloads, you're good.
 
-## Shape A — Native binary + systemd (recommended)
+## Shape B — Native binary + systemd
 
-This is identical to a bare-metal Debian install. The only LXC-specific
+Use this advanced/manual path when you want the smallest footprint and no Docker. This is identical to a bare-metal Debian install. The only LXC-specific
 note: temperature readings are unavailable inside an LXC because
 `/sys/class/hwmon` is not mounted by default. The agent reports
 `temp_c=0` — the temperature chart simply hides itself.
@@ -111,9 +109,9 @@ pct exec 200 ip -4 addr show eth0 | grep inet
 `admin / lumenadmin` is the seeded admin. Change it via the UI before
 opening this LXC to a network you don't control.
 
-## Shape B — Docker compose inside LXC
+## Shape A — Docker Compose inside LXC
 
-Requires `features: nesting=1` on the LXC (set during `pct create` above,
+This is the recommended fast path. It requires `features: nesting=1` on the LXC (set during `pct create` above,
 or add later via `pct set 200 --features nesting=1,keyctl=1` + reboot).
 
 ### B.1 Install Docker inside the LXC
@@ -145,7 +143,7 @@ docker compose -f deploy/docker/docker-compose.yml up -d
 
 ### B.3 Open the UI
 
-`http://<lxc-ip>:8090` — same as shape A.
+`http://<lxc-ip>:8090` — same URL shape as the native path.
 
 ### B.4 Note on agent scope
 
@@ -164,13 +162,13 @@ for Phase 3 (Proxmox API client, agentless multi-LXC enumeration).
 
 ## Operations
 
-| Task | Shape A | Shape B |
+| Task | Docker Compose | Native systemd |
 |---|---|---|
-| Logs | `journalctl -u lumen-hub -f` | `docker compose logs -f hub` |
-| Restart | `systemctl restart lumen-hub` | `docker compose restart hub` |
-| Edit config | `$EDITOR /etc/lumen/hub.env` + restart | `$EDITOR .env` + `up -d --force-recreate hub` |
-| Backup DB | `cp /var/lib/lumen/lumen.db /backup/` (hub-running OK — WAL) | `docker run --rm -v lumen_lumen-data:/data -v /backup:/out alpine cp /data/lumen.db /out/` |
-| Upgrade | `tar xf newer.tar.gz && ./install-hub.sh` | `git pull && docker compose up -d --build hub` |
+| Logs | `docker compose logs -f hub` | `journalctl -u lumen-hub -f` |
+| Restart | `docker compose restart hub` | `systemctl restart lumen-hub` |
+| Edit config | `$EDITOR .env` + `up -d --force-recreate hub` | `$EDITOR /etc/lumen/hub.env` + restart |
+| Backup DB | `docker run --rm -v lumen_lumen-data:/data -v /backup:/out alpine cp /data/lumen.db /out/` | `cp /var/lib/lumen/lumen.db /backup/` (hub-running OK — WAL) |
+| Upgrade | `git pull && docker compose up -d --build hub` | `tar xf newer.tar.gz && ./install-hub.sh` |
 
 ## Backup the LXC
 
@@ -180,9 +178,7 @@ Use Proxmox's normal vzdump:
 vzdump 200 --mode snapshot --storage local --compress zstd
 ```
 
-For shape A the DB is at `/var/lib/lumen/lumen.db`; vzdump captures it
-along with everything else. For shape B the DB lives in the Docker
-volume `lumen_lumen-data`, also inside the LXC rootfs → also captured.
+For native systemd the DB is at `/var/lib/lumen/lumen.db`; vzdump captures it along with everything else. For Docker Compose the DB lives in the Docker volume `lumen_lumen-data`, also inside the LXC rootfs → also captured.
 
 ## Snapshots before risky upgrades
 
@@ -195,11 +191,11 @@ pct rollback 200 pre-lumen-upgrade
 
 ## Troubleshooting
 
-**Shape B: `docker run hello-world` fails with `iptables: chain not found`**
+**Docker Compose: `docker run hello-world` fails with `iptables: chain not found`**
 : Nesting is off. Add via Proxmox host:
   `pct set 200 --features nesting=1,keyctl=1` then `pct reboot 200`.
 
-**Shape B: agent inside the LXC reports zero containers**
+**Docker Compose: agent inside the LXC reports zero containers**
 : Same docker.sock permission story as on the Mac. The agent must run
   as root to read the LXC's docker socket. The shipped compose already
   sets `user: "0:0"` on the agent service.

@@ -29,16 +29,16 @@ Honest is faster than oversell:
 
 - **One hub** binary serves the API, the WebSocket realtime stream, and the React dashboard. ~60 MB RAM.
 - **One agent** binary runs on each server you monitor. Pushes metrics to the hub over HTTPS. ~10 MB RAM.
-- **SQLite** stores recent data; older data rolls into compressed **Parquet** files.
+- **SQLite** stores current hot data with WAL and batched writes. The **Parquet** cold tier is planned; downsample settings already exist so the compaction policy can land without changing the UI contract.
 
-A full Architecture reference doc lands with v0.2. Until then, architecture
-decisions live under [`docs/adr/`](https://github.com/quanla93/lumen/tree/main/docs/adr)
-in the repo.
+For the full system shape, see [Architecture](/reference/architecture/). Architecture decisions also live under [`docs/adr/`](https://github.com/quanla93/lumen/tree/main/docs/adr) in the repo.
 
 ## What's next
 
-- [Quickstart](./quickstart.md) — build from source, see live CPU in two terminals.
+- [Quickstart](./quickstart.md) — run the hub with Docker Compose, then add an agent from the web UI.
+- [Hub — Docker Compose](/install/hub-compose/) — the main install path for now.
+- [Add agents](/how-to/add-agents/) — create a host and run the generated per-agent `docker-compose.yml`.
+- [Use the web UI](/how-to/use-the-web-ui/) — navigate the dashboard, host detail, and settings.
 - [Concepts](./concepts.md) — Hub, Agent, Token, Tier.
 
-The Docker Compose / Proxmox / install guides land in v0.1 → v0.3 (see the
-[roadmap](https://github.com/quanla93/lumen/blob/main/ACTION_PLAN.md)).
+Advanced/manual guides are still available for [native hub install](/install/hub-binary/), [Proxmox LXC](/install/hub-lxc/), and [native Linux agents](/install/agent-linux/). Proxmox API integration is a planned product wedge tracked in the [roadmap](https://github.com/quanla93/lumen/blob/main/ACTION_PLAN.md).

@@ -17,10 +17,10 @@ bounded by deleting rows older than a configurable window.
 | `retention_window` | `24h` | 5m – 365d | Rows with `ts < now - WINDOW` are deleted. |
 | `retention_interval` | `1h` | 1m – 24h | How often the sweep runs. |
 
-Set both via the **Settings → Retention** UI tab. Changes apply on the
-next sweep — **no hub restart needed**. The retention loop polls these
-values per iteration and reset its ticker if `retention_interval`
-changes.
+Set both via the **Settings → Retention** UI tab. Changes apply within
+about 30 seconds — **no hub restart needed**. The retention loop wakes on
+a fixed heartbeat, re-reads the settings table, and runs a sweep once
+`time.Since(lastSweep) >= retention_interval`.
 
 ## Env defaults
 
@@ -127,7 +127,7 @@ DEBUG retention sweep clean cutoff=...  ← when nothing aged out yet
 Change a setting in the UI and you should see:
 
 ```
-INFO retention interval changed; resetting ticker old=1h0m0s new=30m0s
+INFO retention interval changed old=1h0m0s new=30m0s
 ```
 
 ## Reset to defaults

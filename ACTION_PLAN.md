@@ -12,6 +12,7 @@
 > - Mỗi khi hoàn thành 1 step, tick checkbox và commit kèm.
 > - Mọi quyết định lớn → thêm vào mục [Decisions log](#decisions-log) (append-only).
 > - Đổi scope/hủy step → đánh dấu ❌ + ghi lý do, không xóa.
+> - Mỗi feature mới phải đi kèm docs/hướng dẫn sử dụng trong `docs/src/content/docs/` trước khi được xem là done.
 
 ---
 
@@ -102,6 +103,8 @@ Mỗi quyết định ghi 1 dòng. Không xóa, không sửa — nếu đổi ý
 | 2026-05-27 | UI polish is a product requirement, not cosmetic cleanup | Lumen must feel like a polished self-hosted monitoring product, not just a technical MVP. Use Beszel as a benchmark for completeness and UX quality without copying its visual identity. Prioritize dashboard, host detail, settings, onboarding, and reusable design components. |
 | 2026-05-28 | Logs live viewer = separate surface, not Host Detail metrics ingest | Temporarily set log viewing aside from Host Detail. Future logs belong in a dedicated Logs/Console page using on-demand live streaming (WS/SSE style) only when opened/subscribed. Do not poll log-targets or ship Docker logs in periodic metrics ingest; keep it bounded, live-only by default, and globally/agent-disableable. |
 | 2026-05-28 | Agent lifecycle = per-agent Docker Compose by default | For server management, the simplest supported lifecycle is a per-agent `docker-compose.yml` generated when the one-shot token is revealed. The file lives on the target VM/LXC, stores the existing token/config there, and future updates are `docker compose pull && docker compose up -d`. `docker run` remains a quick fallback, not the recommended long-running install path. |
+| 2026-05-28 | Feature done means feature docs + usage guide done | Every new feature must include matching docs under `docs/src/content/docs/` before its checklist item can be considered complete. User-facing features need operator/user guidance, not just implementation notes. |
+| 2026-05-28 | Install/onboarding docs are Docker-first | Keep the default operator path focused on Dockerfile/docker-compose.yml and Docker Compose for fast setup/update/debug. Native binary/systemd and `install.sh` can stay as optional/manual shortcuts, not the primary docs flow. |
 
 ---
 
@@ -254,6 +257,7 @@ Mỗi quyết định ghi 1 dòng. Không xóa, không sửa — nếu đổi ý
 - [x] `reference/architecture.md` — ASCII diagram + component breakdown + threat model.
 - [x] `reference/api.md` — every REST endpoint + WS frame format + StreamControl + error shape.
 - [x] `reference/metrics-catalog.md` — every metric, source, unit, persisted-vs-live, gotchas.
+- [x] `how-to/use-the-web-ui.md` — guided tour for dashboard, host detail, settings, token management, and troubleshooting.
 - [x] `faq.md`
 
 **Definition of done**: Có thể tag `v0.1.0`, public Show HN / r/selfhosted post.
@@ -300,25 +304,25 @@ Mỗi quyết định ghi 1 dòng. Không xóa, không sửa — nếu đổi ý
 - [ ] Agent includes build/version metadata in every ingest and host metadata update
 - [ ] Hub exposes latest bundled agent image/version metadata from the running hub build
 - [ ] Host list/detail UI shows current agent version vs latest available version
-- [ ] Docs explain that token rotation is unrelated to code updates; existing compose credentials stay valid during update
+- [x] Docs explain that token rotation is unrelated to code updates; existing compose credentials stay valid during update
 
 #### Compose-first onboarding
 - [x] Token reveal shows a complete per-agent `docker-compose.yml`
 - [x] Token reveal supports copying and downloading `docker-compose.yml`
-- [ ] Token reveal shows copy-ready commands: `mkdir -p /opt/lumen-agent && cd /opt/lumen-agent`, save the file, then `docker compose up -d`
-- [ ] Generated compose file uses stable container name, `restart: unless-stopped`, `user: "0:0"`, hub URL, host name, token, interval, and optional Docker socket mount
-- [ ] `docker run` remains available as a quick fallback, but docs and UI recommend Compose for long-running agents
+- [x] Token reveal shows copy-ready commands: `mkdir -p /opt/lumen-agent && cd /opt/lumen-agent`, save the file, then `docker compose up -d`
+- [x] Generated compose file uses stable container name, `restart: unless-stopped`, `user: "0:0"`, hub URL, host name, token, interval, and optional Docker socket mount
+- [x] `docker run` remains available as a quick fallback, but docs and UI recommend Compose for long-running agents
 
 #### Update path
-- [ ] Document update as: SSH into the VM/LXC that owns the agent compose file, then run `cd /opt/lumen-agent && docker compose pull && docker compose up -d`
+- [x] Document update as: SSH into the VM/LXC that owns the agent compose file, then run `cd /opt/lumen-agent && docker compose pull && docker compose up -d`
 - [ ] Host detail `Update agent` panel shows the Compose update command and explains it must be run on the machine where that compose file exists
-- [ ] No update flow creates or rotates host tokens unless the operator explicitly clicks rotate
-- [ ] No update flow requires editing the hub's `docker-compose.yml` or project `.env`
+- [x] No update flow creates or rotates host tokens unless the operator explicitly clicks rotate
+- [x] No update flow requires editing the hub's `docker-compose.yml` or project `.env`
 
 #### Product + safety
-- [ ] Docs cover initial install, update, restart, logs, and uninstall for the per-agent compose directory
-- [ ] Docs clarify that the token is shown once by the hub but then persists in the target host's `docker-compose.yml`
-- [ ] Keep any custom Docker updater prototype documented as experimental/advanced only, not the primary UX
+- [x] Docs cover initial install, update, restart, logs, and uninstall for the per-agent compose directory
+- [x] Docs clarify that the token is shown once by the hub but then persists in the target host's `docker-compose.yml`
+- [x] Keep any custom Docker updater prototype documented as experimental/advanced only, not the primary UX
 
 **Definition of done**: A user can create a host token, download/copy a per-agent `docker-compose.yml`, start the agent with `docker compose up -d`, and later update it with `docker compose pull && docker compose up -d` without creating a new host/token or using Watchtower/custom updater tooling.
 
@@ -416,14 +420,14 @@ Nếu bạn (hoặc Claude) mở session mới:
 
 > Cập nhật mục này mỗi session.
 
-**Session**: 2026-05-27
-**Đang làm**: Phase 3 closeout + newly added Phase 4 — Agent update UX. Next: design first-class local updater flow (`lumen-agent update`) so existing agents update from their own runtime context without new tokens/hosts or external updater tools.
+**Session**: 2026-05-28
+**Đang làm**: Phase 4 — Docker-first install/onboarding closeout. Tomorrow's system/UI update should align product flows with the docs: hub setup, host creation, token reveal, generated per-agent `docker-compose.yml`, and update panels should all lead with Docker/Compose. Native binary/systemd and `install.sh` remain optional/manual shortcuts.
 **Vừa hoàn thành**:
-- OSS readiness docs: CODE_OF_CONDUCT.md, GOVERNANCE.md, SECURITY.md, SUPPORT.md.
-- CHANGELOG.md initialized with Keep-a-Changelog structure and Unreleased Phase 0-2 summary.
-- ADR-0002 transport choice and ADR-0003 language choice accepted and linked from ADR index.
-- ACTION_PLAN Phase 0 checklist synced with shipped brand assets and docs.
-- Phase 2 checklist is fully green: hub, agent, web, docs, reliability, PWA, CI/CD.
+- Docs website is now a branded Starlight site with a Lumen landing page and Web UI guide.
+- Docs audit synced stale pages with implemented dashboard, Settings runtime policy, retention heartbeat, API shape, metrics metadata, and Compose-first agent lifecycle.
+- Quickstart, hub install, Proxmox LXC, host token, and agent docs now use Docker Compose as the primary operator path.
+- `configure/runtime-settings.md` added for hub-managed agent collection interval and `/api/agent/policy`.
+- ACTION_PLAN now requires docs/hướng dẫn for every new feature before the feature is considered done.
 
 **Phase 1 complete:**
 - ✅ End-to-end skinny slice: hub, agent, ingest, live WS stream, embedded web, Docker Compose, source-run docs, OpenAPI/`.http` tooling.
@@ -441,7 +445,8 @@ Nếu bạn (hoặc Claude) mở session mới:
 - Self-hosted SSO, DuckDB, external Grafana/API export, and backup are deferred to later phases/RFCs until the current four priorities land.
 - Log management scope is intentionally lightweight: on-demand admin debugging via hub/agent/systemd/Docker logs, not Loki-style aggregation/search.
 - UI polish is now tracked as a product requirement: benchmark Beszel for UX/completeness, redesign dashboard/host detail/settings without copying Beszel identity.
-- Agent update UX is now a dedicated Phase 4: existing agents must update from their own runtime context via a first-class local updater flow, preserving the existing token/config and avoiding Watchtower, compose edits, token recreation, or a requirement to replay the one-shot UI install command.
+- Agent update UX is now a dedicated Phase 4: existing Docker agents update from their target VM/LXC via `docker compose pull && docker compose up -d`, preserving the existing token/config and avoiding host/token recreation or edits to the hub compose file.
+- Tomorrow's implementation pass should update the actual hub/web onboarding surfaces to match the Docker-first docs: generated compose file first, install.sh/native path secondary.
 
 **Đã verify trên máy dev**:
 - ✅ Node v22.22.0

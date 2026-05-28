@@ -5,10 +5,14 @@ template: splash
 hero:
   tagline: Lightweight self-hosted server monitoring designed for homelabs — not enterprise clusters.
   actions:
-    - text: Quickstart
-      link: /getting-started/quickstart/
+    - text: Get started
+      link: /getting-started/overview/
       icon: right-arrow
       variant: primary
+    - text: Web UI guide
+      link: /how-to/use-the-web-ui/
+      icon: open-book
+      variant: secondary
     - text: View on GitHub
       link: https://github.com/quanla93/lumen
       icon: external
@@ -16,38 +20,97 @@ hero:
 ---
 
 import { Card, CardGrid } from "@astrojs/starlight/components";
+import logoMark from "../../assets/logo.svg";
 
-## Why Lumen?
+<div class="lumen-hero-grid">
+  <section>
+    <p class="lumen-eyebrow">Lumen docs</p>
+    <h1 class="lumen-title">
+      Clear monitoring for your <span class="lumen-gradient-text">homelab.</span>
+    </h1>
+    <p class="lumen-lead">
+      Lumen is a lightweight self-hosted monitoring platform for small infrastructure:
+      one hub, small agents, live metrics, HDD-friendly storage, and a web UI that is easy to operate.
+    </p>
+    <div class="lumen-actions" aria-label="Documentation actions">
+      <a class="lumen-button primary" href="/getting-started/overview/">Start reading</a>
+      <a class="lumen-button" href="/install/hub-compose/">Install with Docker Compose</a>
+      <a class="lumen-button" href="/how-to/use-the-web-ui/">Use the web UI</a>
+    </div>
+  </section>
+
+  <aside class="lumen-preview-card" aria-label="Lumen dashboard preview">
+    <div class="lumen-card-topbar" aria-hidden="true">
+      <span class="lumen-dot"></span>
+      <span class="lumen-dot"></span>
+      <span class="lumen-dot"></span>
+    </div>
+    <div class="lumen-dashboard-preview">
+      <div class="lumen-status-row">
+        <div class="lumen-metric">
+          <span>Hosts</span>
+          <strong>Online</strong>
+        </div>
+        <div class="lumen-metric">
+          <span>Storage</span>
+          <strong>Quiet</strong>
+        </div>
+        <div class="lumen-metric">
+          <span>Stream</span>
+          <strong>Live</strong>
+        </div>
+      </div>
+      <div class="lumen-pulse">
+        <span class="lumen-rings" aria-hidden="true"></span>
+        <img src={logoMark.src} alt="Lumen signal mark" />
+      </div>
+    </div>
+  </aside>
+</div>
+
+## Build around the operator flow
 
 <CardGrid stagger>
-  <Card title="Proxmox-native" icon="setting">
-    Read the Proxmox API directly. See cluster topology, ZFS pools, PBS backups,
-    LXC vs QEMU — without installing an agent on the host.
+  <Card title="Install the hub" icon="rocket">
+    Run Lumen as a single hub service with Docker Compose, a native binary, or inside a Proxmox LXC.
   </Card>
-  <Card title="HDD-friendly storage" icon="open-book">
-    Batched writes, WAL-tuned SQLite, hot/cold tiering with Parquet.
-    Designed to keep your spinning rust quiet.
+  <Card title="Add agents" icon="setting">
+    Create hosts in the UI, copy one-shot tokens, then install agents on Linux, Docker, VMs, or LXCs.
   </Card>
-  <Card title="HTTPS-only push" icon="rocket">
-    Agents push outbound via HTTPS/WebSocket. Works behind any NAT,
-    through Cloudflare Tunnel or Tailscale Funnel — no SSH keys required.
+  <Card title="Use the dashboard" icon="laptop">
+    Read fleet health, drill into host charts, manage tokens, tune retention, and troubleshoot stale agents.
   </Card>
-  <Card title="Mobile-ready PWA" icon="laptop">
-    Install on your phone. Web Push notifications natively, no extra app.
+  <Card title="Understand the system" icon="open-book">
+    Review architecture, API contracts, metrics catalog, reliability behavior, and project decisions.
   </Card>
 </CardGrid>
 
-## Five minutes to get going
-
-```bash
-# Hub
-curl -fsSL https://quanla.org/lumen/install/compose > docker-compose.yml
-docker compose up -d
-
-# Agent (after creating a host in the UI)
-curl -fsSL https://quanla.org/lumen/install/agent | sudo bash -s -- \
-  --hub https://lumen.example.com \
-  --token lum_xxxxxxxxxx
-```
-
-Open <a href="http://localhost:8090">http://localhost:8090</a> and you're monitoring.
+<div class="lumen-feature-grid">
+  <section class="lumen-panel">
+    <h2>Start here</h2>
+    <p>New to Lumen? Read the overview, then pick the install guide that matches your host.</p>
+    <ul>
+      <li><a href="/getting-started/overview/">Overview</a></li>
+      <li><a href="/getting-started/concepts/">Concepts</a></li>
+      <li><a href="/install/hub-compose/">Hub — Docker Compose</a></li>
+    </ul>
+  </section>
+  <section class="lumen-panel">
+    <h2>Run it</h2>
+    <p>Operate the hub and agents with documented install, update, restart, and troubleshooting flows.</p>
+    <ul>
+      <li><a href="/how-to/add-agents/">Add agents</a></li>
+      <li><a href="/how-to/update-agents/">Update Docker agents</a></li>
+      <li><a href="/configure/hosts-and-tokens/">Hosts and bearer tokens</a></li>
+    </ul>
+  </section>
+  <section class="lumen-panel">
+    <h2>Reference</h2>
+    <p>Use the reference docs when integrating with the API or checking exact metric semantics.</p>
+    <ul>
+      <li><a href="/reference/architecture/">Architecture</a></li>
+      <li><a href="/reference/api/">API</a></li>
+      <li><a href="/reference/metrics-catalog/">Metrics catalog</a></li>
+    </ul>
+  </section>
+</div>

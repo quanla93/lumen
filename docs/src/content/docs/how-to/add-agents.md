@@ -32,58 +32,79 @@ create a new host or token for code updates; see [Update agents](/how-to/update-
 
 | Mode | When to use | Footprint on target |
 |---|---|---|
-| **[One-liner install](#the-one-liner-fastest-path)** | Linux + systemd target (covers 95 % of homelab) | ~15 MB binary, ~10 MB RAM |
-| **[Native binary + manual systemd](#a-native-binary-manual-install)** | You want to inspect/customize the unit before installing | Same as above |
-| **[Docker Compose agent](#b-docker-compose-agent)** | Target already runs Docker and you want simple update/restart/log commands | ~30 MB image, ~25 MB RAM |
+| **[Docker Compose agent](#a-docker-compose-agent-recommended)** | Target already runs Docker, or you want simple update/restart/log commands | ~30 MB image, ~25 MB RAM |
+| **[Native binary + manual systemd](#b-native-binary-manual-install)** | Minimal Linux/systemd install, no Docker on the target | ~15 MB binary, ~10 MB RAM |
 
-**For Proxmox LXC specifically: pick the one-liner or native.** LXC is
-already a container — nesting Docker inside it adds ~100 MB RAM overhead
-and a privileged-flag requirement for no benefit.
+**Recommended default: Docker Compose.** It keeps the agent token/config in one file on the target host and future updates are just `docker compose pull && docker compose up -d`.
 
----
-
-## The one-liner (fastest path)
-
-After clicking **Create** on a host in Settings → Hosts, the token panel
-shows a ready-to-paste install command. On the target machine (as root):
-
-```bash
-curl -fsSL http://<hub-host>:8090/install.sh | sudo bash -s -- \
-  --token lum_xxxxxxxxxxxxxxxxxxxxx \
-  --host pve-node-1
-```
-
-What it does:
-
-1. Detects OS + arch (`linux/amd64`, `linux/arm64`, `linux/armv7`).
-2. Downloads the matching agent binary from **your hub** at `/install/lumen-agent-linux-<arch>`.
-3. Installs to `/usr/local/bin/lumen-agent`.
-4. Writes `/etc/systemd/system/lumen-agent.service` with the token + hub URL baked in (mode `0600` — token isn't world-readable).
-5. `systemctl enable --now lumen-agent`.
-
-Re-running upgrades the binary in place and restarts the service.
-Idempotent.
-
-**Uninstall:**
-
-```bash
-curl -fsSL http://<hub-host>:8090/install.sh | sudo bash -s -- --uninstall
-```
-
-**No public domain needed.** The script downloads from whatever URL you
-ran `curl` against — LAN IP, mDNS name, Tailscale name, anything
-reachable from the target. The hub bakes its own URL into `install.sh`
-at render time (from the `Host` header you used).
-
-**When the install endpoint is disabled.** If `/install.sh` returns
-`503 install endpoint disabled`, the hub was built without staging the
-binaries (e.g. you're running it natively without
-`LUMEN_HUB_INSTALL_DIR`). Either use the [manual install below](#a-native-binary-manual-install)
-or rebuild the hub Docker image (it stages binaries automatically).
+For Proxmox LXC, choose based on how that LXC is managed: use Compose if Docker already belongs there; use native systemd if you want the smallest footprint.
 
 ---
 
-## A. Native binary (manual install)
+## A. Docker Compose agent (recommended)
+
+Create the host in Settings first, then copy or download the generated `docker-compose.yml` and save it on the target machine:
+
+```bash
+sudo mkdir -p /opt/lumen-agent
+cd /opt/lumen-agent
+sudo nano docker-compose.yml
+```
+
+Paste this file and replace the three values marked `CHANGE`:
+
+```yaml
+services:
+  lumen-agent:
+    image: ghcr.io/quanla93/lumen-agent:latest
+    container_name: lumen-agent-my-server
+    restart: unless-stopped
+    user: "0:0"
+    environment:
+      # CHANGE: URL this target host uses to reach your hub.
+      LUMEN_HUB_URL: "https://lumen.example.lan"
+
+      # CHANGE: token shown once in Settings → Hosts.
+      LUMEN_AGENT_TOKEN: "lum_REPLACE_WITH_UI_TOKEN"
+
+      # CHANGE: local display/log name for this target.
+      LUMEN_AGENT_HOST: "my-server"
+
+      LUMEN_AGENT_INTERVAL: "5s"
+      LUMEN_AGENT_BUFFER_PATH: "/data/buffer.db"
+      LUMEN_AGENT_BUFFER_MAX_AGE: "24h"
+      LUMEN_AGENT_BUFFER_DRAIN: "10"
+    volumes:
+      - lumen-agent-data:/data
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+volumes:
+  lumen-agent-data:
+```
+
+Then secure the file and start the agent:
+
+```bash
+sudo chmod 600 docker-compose.yml
+sudo docker compose up -d
+sudo docker compose logs -f
+```
+
+Future updates are simple and do not need a new token:
+
+```bash
+cd /opt/lumen-agent
+sudo docker compose pull
+sudo docker compose up -d
+```
+
+The flow is token-first, but not hub-compose-first: don't edit the hub's `docker-compose.yml` or add one `.env` variable per agent. Each target host owns its own per-agent compose file.
+
+See [Agent — Docker Compose](/install/agent-docker/) for the generated file shape, update path, logs, uninstall, Docker socket options, and troubleshooting.
+
+---
+
+## B. Native binary (manual install)
 
 ### Build the binary
 
@@ -103,7 +124,7 @@ GOOS=linux GOARCH=arm64 CGO_ENABLED=0 \
 runs on Alpine/Ubuntu/Debian/Arch identically.
 
 > 🚧 Pre-built release binaries (`lumen-agent_<version>_linux_amd64.tar.gz`)
-> and an install one-liner ship with v0.1.0 (see [UI & deploy roadmap](#whats-coming-next)).
+> ship with release packaging. For long-running Docker-based agents, prefer the generated Compose file above.
 
 ### Mint a token
 
@@ -169,35 +190,6 @@ deployment blocker today.
 
 ---
 
-## B. Docker Compose agent
-
-Useful when the target host already runs Docker. Create the host in
-Settings first, then copy or download the generated `docker-compose.yml`
-and save it on the target machine.
-
-```bash
-sudo mkdir -p /opt/lumen-agent
-cd /opt/lumen-agent
-sudo nano docker-compose.yml
-sudo docker compose up -d
-```
-
-Future updates are simple and do not need a new token:
-
-```bash
-cd /opt/lumen-agent
-sudo docker compose pull
-sudo docker compose up -d
-```
-
-The customer flow is token-first, but not hub-compose-first: don't edit
-the hub's `docker-compose.yml` or add one `.env` variable per agent.
-Each target host owns its own per-agent compose file.
-
-See [Agent — Docker](/install/agent-docker/) for the generated file shape and operational commands.
-
----
-
 ## Rotating a token
 
 If a token leaks (e.g. committed to git) or an agent moves to a new
@@ -217,9 +209,10 @@ The old token starts returning `401` immediately. The host record
 
 The fast paths are tracked in [ACTION_PLAN.md](https://github.com/quanla93/lumen/blob/main/ACTION_PLAN.md):
 
-- **GitHub Release tarballs** — pre-built `linux/{amd64,arm64,armv7}`, `darwin/{amd64,arm64}`, `windows/amd64` so install doesn't depend on a reachable hub. Lands with **v0.1.0**.
-- **LXC helper script** (Proxmox-flavor) — `pct exec <id> -- bash -c "$(curl ...)"` style, mirrors the [tteck pattern](https://github.com/community-scripts/ProxmoxVE). Lands with **v0.2.0** (Proxmox wedge).
-- **Bulk-add** — paste a list of hosts in Settings, get one token per host. Phase 2 stretch.
+- **Version awareness** — show current agent version vs the latest bundled/released agent version.
+- **Host Detail update panel** — show the Compose update command in the UI for the selected host.
+- **GitHub Release tarballs** — pre-built native binaries for non-Docker installs.
+- **Bulk-add** — paste a list of hosts in Settings, get one token/compose file per host.
 
 ---
 
@@ -233,8 +226,8 @@ The fast paths are tracked in [ACTION_PLAN.md](https://github.com/quanla93/lumen
 : `LUMEN_HUB_URL` is wrong or the hub isn't reachable from the target.
 Test with `curl <LUMEN_HUB_URL>/healthz`.
 
-**Host appears on the dashboard but CPU is always 0**
-: Containerized agent without `--pid host` + `/proc` mount. See [mode B](#b-docker-container).
+**Container table is empty**
+: Host metrics work without Docker access. If you want container telemetry, keep the read-only Docker socket mount documented in [Agent — Docker Compose](/install/agent-docker/#docker-socket-mount).
 
 **Two agents share the same token — what happens?**
 : Both succeed at ingest, but every snapshot overwrites the previous

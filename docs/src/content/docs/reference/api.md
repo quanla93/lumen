@@ -22,7 +22,7 @@ Two different schemes, picked per endpoint:
 | Scheme | Used by | Sent how |
 |---|---|---|
 | **Session cookie** (`lumen_session`) | Browser + UI endpoints | HS256 JWT in HttpOnly cookie set by `/api/login` |
-| **Bearer token** (`lum_…`) | Agent ingest only | `Authorization: Bearer lum_…` header |
+| **Bearer token** (`lum_…`) | Agent ingest and policy | `Authorization: Bearer lum_…` header |
 
 The session cookie is set with `HttpOnly`, `SameSite=Lax`, and
 `Secure` (under HTTPS). 30-day TTL. The bearer token is minted per
@@ -142,10 +142,10 @@ GET /api/me
 ```http
 POST /api/account/password
 Cookie: lumen_session=…
-{"current_password":"…","new_password":"…"}
+{"current":"…","new":"…"}
 → 204
-→ 401 if current_password wrong
-→ 400 if new_password too short (<8)
+→ 401 if current password is wrong
+→ 400 if new password is too short (<8)
 ```
 
 Rehashes with Argon2id. The session cookie stays valid (we don't
@@ -257,6 +257,18 @@ Bounds:
 | `downsample_archive_window` | 1 d – 365 d |
 
 The downsample values configure the future Parquet cold tier: bucket size is the time span represented by one archived point (`5m` averages old samples into one point every 5 minutes), hot window is how long full-detail raw SQLite rows are kept (`24h` keeps every sample for the last day), and archive window is how long compressed history is kept (`8760h` is about one year). Out-of-range or unparseable durations return 400. UI edits propagate to the retention loop within 30 s for retention fields; downsample fields are stored now and consumed once cold-tier compaction lands.
+
+### Agent policy
+
+```http
+GET /api/agent/policy
+Authorization: Bearer lum_REPLACE_ME
+→ 200 {"collection_interval":"5s"}
+```
+
+Agents call this endpoint after successful ticks to pick up runtime policy from the hub. Today the policy contains the effective collection interval from Settings → Runtime. The agent keeps its env/YAML interval as the bootstrap default, then applies this hub policy without a redeploy.
+
+A 401 means the token is invalid or rotated. The response is intentionally small so agents can poll it cheaply.
 
 ## WebSocket — `/api/stream`
 
