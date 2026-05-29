@@ -105,6 +105,9 @@ Mỗi quyết định ghi 1 dòng. Không xóa, không sửa — nếu đổi ý
 | 2026-05-28 | Agent lifecycle = per-agent Docker Compose by default | For server management, the simplest supported lifecycle is a per-agent `docker-compose.yml` generated when the one-shot token is revealed. The file lives on the target VM/LXC, stores the existing token/config there, and future updates are `docker compose pull && docker compose up -d`. `docker run` remains a quick fallback, not the recommended long-running install path. |
 | 2026-05-28 | Feature done means feature docs + usage guide done | Every new feature must include matching docs under `docs/src/content/docs/` before its checklist item can be considered complete. User-facing features need operator/user guidance, not just implementation notes. |
 | 2026-05-28 | Install/onboarding docs are Docker-first | Keep the default operator path focused on Dockerfile/docker-compose.yml and Docker Compose for fast setup/update/debug. Native binary/systemd and `install.sh` can stay as optional/manual shortcuts, not the primary docs flow. |
+| 2026-05-29 | Public API = consolidated module plan (see [Public API module](#-public-api--external-api--module-plan)) | External access was scattered across Phase 6/7/8 + the 2026-05-27 "external data access is official" decision. Pulled into one detailed spec so the team can build it coherently. Primary auth = **API keys with scopes** (not OAuth2/full RBAC — those stay optional/enterprise and remain flagged against the "no complex enterprise RBAC" anti-feature). "Tenant isolation" in a single-hub homelab context = scoping a key to a **host group** (subset of hosts), NOT true multi-tenancy / cluster. Rate limiting = in-memory token bucket (no Redis — respects single-binary/no-cluster). Public API gets a **richer response envelope** (`success`/`error.code`/`requestId`) while internal `/api/*` keeps the terse `{"error":"…"}` shape. |
+| 2026-05-29 | Webhook = **một dispatch engine dùng chung** cho notification channels (Phase 5) + Public API customer webhooks | Đảo lại ý "tách riêng 2 hệ" cùng ngày: cả hai đều là "event → POST HTTP có HMAC/retry/log", khác nhau chỉ ở owner + host scope. Webhook là 1 channel type bên cạnh Discord/Telegram/ntfy/Email. `owner_type=admin` (UI, full scope) hoặc `owner_type=api_key` (Public API, host_scope ép = host group của key, enforce lúc match event). Dùng chung bảng `notification_channels` + `notification_deliveries`. Giảm trùng code, dễ audit, security boundary giữ nguyên ở bước match. |
+| 2026-05-29 | Remote control (nếu làm sau) = **command-channel qua WebSocket sẵn có**, KHÔNG quay lại SSH | Transport push hiện tại (agent dial-out, HTTPS/WS) không khóa cửa control. Nếu tương lai cần điều khiển agent (restart service, update agent, chạy lệnh), đi qua chính WS mà agent đang giữ: hub đẩy lệnh **xuống** kênh đó. Giữ nguyên ưu thế zero-inbound + NAT/CGNAT-friendly (giống Tailscale / GitHub Actions runner / Cloudflare Tunnel). SSH cho control là "free + chín" nhưng đánh đổi cổng inbound + gãy NAT — đúng những thứ wedge HTTPS-only cố tránh. Chi phí WS-command: phải tự thiết kế tập lệnh + auth/scope từng lệnh + audit. Chỉ build khi scope "Management/control" được chốt là in-scope (xem open question). |
 
 ---
 
@@ -239,7 +242,7 @@ Mỗi quyết định ghi 1 dòng. Không xóa, không sửa — nếu đổi ý
 - [x] Overview page: host cards + CPU sparkline + 3 metric bars (CPU/RAM/Disk) + load avg footer
 - [x] Dark/light mode toggle (class-based, persists in localStorage)
 - [x] Auth UI: Register / Login / Logout + AppShell with tab nav
-- [x] Settings UI: hosts table + create + rotate + delete + one-shot token reveal + .env snippet
+- [x] Settings UI: hosts table + create + rotate + delete + one-shot token reveal + generated per-agent Docker Compose setup
 - [x] Settings UI: configure retention, agent refresh interval, and Parquet downsample/cold-tier policy from the web app
 - [x] Host detail page: 6 uPlot charts (CPU%, RAM%, Disk%, load avg, Network rx/tx, Disk I/O r/w) + conditional Temperature chart + per-core CPU live strip (subscribed via WS) + range picker (1h/6h/24h) + auto-refresh every 30s + Containers table (name + state badge + image + CPU + mem usage/limit, sorted running-first, danger highlight at mem ≥ 90%).
 - [x] PWA manifest + service worker — installable to homescreen on mobile; SW caches the app shell (cache-first) but never `/api/*` (network-only). Falls back gracefully on browsers without SW support.
@@ -372,7 +375,7 @@ Mỗi quyết định ghi 1 dòng. Không xóa, không sửa — nếu đổi ý
 - [ ] Backup RFC/UX: local/S3-compatible backup, restore flow, encryption, retention, and whether backup belongs in core or optional module
 - [ ] External data API/export RFC follow-up: Grafana first, auth model, query shape, rate limits, and Prometheus-compatible endpoint vs Grafana datasource plugin vs plain REST
 - [ ] Grafana integration spike follow-up: prove a user can build Grafana dashboards from Lumen monitoring data without using Lumen's web UI
-- [ ] First-run onboarding flow: create admin → add first host → copy agent command → wait for first metrics
+- [ ] First-run onboarding flow: create admin → add first host → use generated per-agent Docker Compose setup → wait for first metrics
 - [ ] Public status page (read-only share)
 - [ ] Web Push notifications (VAPID)
 - [ ] i18n polish follow-up: expand translations to new modules after the Phase 3 foundation lands
@@ -392,6 +395,365 @@ Mỗi quyết định ghi 1 dòng. Không xóa, không sửa — nếu đổi ý
 - [ ] Migration tool from Beszel
 - [ ] Performance regression test suite
 - [ ] Security audit (community-driven)
+
+---
+
+## 🌐 Public API / External API — Module Plan
+
+> **Mục tiêu module**: cho phép khách hàng / bên thứ ba lấy dữ liệu monitoring và nhận cảnh báo **không qua UI của Lumen** (tích hợp hệ thống riêng, Grafana, automation…).
+> **Nguyên tắc nền (bám anti-features đã khóa)**:
+> - Lumen là homelab tool (1–200 hosts, single-hub, no-cluster) → Public API phải **lean**, không biến thành observability platform enterprise.
+> - **Không** build dashboard builder → Grafana = *expose data*, không *build dashboard*.
+> - **Không** complex enterprise RBAC → primary auth là **API Key + scopes**; OAuth2/RBAC động là optional/enterprise, deferred + flagged.
+> - **Không** log aggregation/full-text → Public API logs = on-demand bounded, KHÔNG bulk log export / KHÔNG là Loki.
+> - "Tenant isolation" trong ngữ cảnh single-hub = **host group** (1 key chỉ thấy subset hosts), KHÔNG phải multi-tenancy thật.
+> - Rate limit = **in-memory token bucket** (không Redis — giữ single-binary).
+
+### Phụ thuộc (đọc trước khi estimate)
+
+Public API chỉ là lớp **expose**, không tự sinh dữ liệu. Một số surface bị chặn bởi feature nguồn chưa build:
+
+| Public surface | Nguồn dữ liệu | Trạng thái nguồn | Bị chặn bởi |
+|---|---|---|---|
+| hubs, agents, status, latest metrics | in-memory store + hosts table | ✅ có (Phase 2) | — |
+| metrics query (≤7d, AVG bucket) | `/api/hosts/{id}/metrics` | ✅ có (Phase 2) | — |
+| metrics range dài + p95/percentile | cold tier Parquet | ❌ chưa | Phase 6 (Parquet) |
+| alerts / events read+write | alert engine | ❌ chưa | Phase 5 (alert engine v1) |
+| logs query | on-demand log viewer | 🚧 dở (Phase 3) | Phase 3 log RFC; **bounded only** |
+| webhooks (customer-managed) | dispatch engine notification channels (dùng chung) | ❌ chưa | Phase 5 (notification engine) + module này |
+| Prometheus / Grafana | exporter trên dữ liệu sẵn có | ❌ chưa | module này |
+
+→ Vì vậy roadmap module (PAPI Phase 1..5 bên dưới) **map lên** Phase 5/6/7/8 hiện có, không đánh số xung đột với Phase plan chính.
+
+---
+
+### 1. Public API Strategy
+
+**Phân loại 4 nhóm API (chốt sớm — quyết định path & auth):**
+
+| Nhóm | Base path | Auth | Envelope | Expose ra ngoài? |
+|---|---|---|---|---|
+| **Public API** (khách/bên thứ ba) | `/api/v1/*` | API Key (`lumk_…`) | giàu (`success`/`error.code`/`requestId`) | ✅ **Có** |
+| **Internal/UI API** | `/api/*` (unversioned) | Session cookie (`lumen_session`) | terse (`{"error":"…"}`) | ❌ Không |
+| **Agent API** | `/api/ingest`, `/api/agent/policy` | Bearer host token (`lum_…`) | terse | ❌ Không (chỉ agent) |
+| **Admin API** (quản lý key/webhook/audit) | `/api/admin/*` (hoặc trong `/api/*`) | Session cookie (admin) | terse | ❌ Không (qua UI) |
+
+**Quyết định namespace**: `/api/v1/*` được **dành riêng cho public contract** (versioned, stable, API-key). Internal UI endpoints giữ nguyên `/api/*` unversioned (đính chính lại note cũ trong `reference/api.md` từng nói "mọi endpoint move sang /api/v1"). Như vậy "breaking UI internal" không động vào contract công khai.
+
+**Nguyên tắc public contract**: chỉ expose READ + customer-scoped WRITE (webhooks, alert ack). Không expose host CRUD, token mgmt, settings, user mgmt, hub config qua Public API — những thứ đó là Admin (UI/session) only.
+
+---
+
+### 2. API Versioning
+
+- Path-based: `/api/v1/...`. Khi breaking → `/api/v2/...` song song.
+- **Backward compatibility**: thêm field = non-breaking (clients phải tolerant unknown fields). Đổi/xóa field hoặc đổi semantics = breaking → version mới.
+- **Deprecation policy**: khi `/api/v2` ra → `/api/v1` vào *deprecated* tối thiểu **6 tháng** (hoặc 2 minor releases), trả header `Deprecation: true` + `Sunset: <date>` + link changelog. Log cảnh báo cho key nào còn gọi v1.
+- Version chỉ áp cho Public API; internal/agent có thể đổi tự do.
+
+---
+
+### 3. Authentication & Authorization
+
+**Primary = API Key (OSS-friendly, dễ cho khách):**
+- Format: `lumk_<base62-32-bytes>` (prefix `lumk_` phân biệt với agent `lum_`). Plaintext **hiện 1 lần**; DB chỉ lưu `key_prefix` (8 ký tự đầu để hiển thị/lookup) + `key_hash` (SHA-256, hoặc Argon2id nếu chấp nhận cost).
+- Gửi qua header `Authorization: Bearer lumk_…`.
+- Mỗi key gắn: **scopes**, **host group** (subset hosts được phép, null = tất cả), **IP allowlist** (optional), **expiry** (optional), **rate-limit tier**.
+
+**Scope-based permission (enum khóa cứng, không phải RBAC động):**
+
+| Scope | Cho phép |
+|---|---|
+| `hubs:read` | đọc thông tin hub |
+| `agents:read` | đọc danh sách/chi tiết/status agent |
+| `metrics:read` | đọc latest + query time-series |
+| `logs:read` | đọc logs on-demand (bounded) |
+| `events:read` | đọc events |
+| `alerts:read` | đọc alerts |
+| `alerts:write` | ack/resolve alert |
+| `webhooks:read` / `webhooks:write` | quản lý webhook của chính khách |
+| `export:read` | export dữ liệu (CSV/JSON/Parquet) |
+
+**Authorization check order**: valid key → not revoked/expired → IP allowed → scope đủ → host nằm trong host group của key → rate limit còn quota.
+
+**OAuth2 / RBAC động / SSO cho API**: ❌ **deferred + flagged** (đụng anti-feature "no complex enterprise RBAC"). Chỉ làm nếu có khách enterprise thật + ADR riêng. Khi làm thì là OAuth2 client-credentials grant phát hành short-lived JWT mang scopes — KHÔNG full authz server.
+
+---
+
+### 4. Endpoint List
+
+Tất cả dưới `/api/v1/`, header `Authorization: Bearer lumk_…`, trả envelope giàu.
+
+| Method | Endpoint | Scope | Mục đích | Rate limit (đề xuất) |
+|---|---|---|---|---|
+| GET | `/hubs` | `hubs:read` | thông tin hub (single-hub → trả 1 phần tử) | 60/min |
+| GET | `/agents` | `agents:read` | list agents (paginated, filter, sort) | 120/min |
+| GET | `/agents/{id}` | `agents:read` | chi tiết 1 agent | 120/min |
+| GET | `/agents/{id}/status` | `agents:read` | online/offline + last_seen | 240/min |
+| GET | `/metrics/latest` | `metrics:read` | snapshot mới nhất (1 hoặc nhiều agent) | 120/min |
+| GET | `/metrics/query` | `metrics:read` | time-series (from/to/step/aggregation/groupBy) | 60/min |
+| GET | `/logs/query` | `logs:read` | logs on-demand bounded (host+source+limit/time) | 30/min |
+| GET | `/events` | `events:read` | list events (paginated, filter) | 120/min |
+| GET | `/alerts` | `alerts:read` | list alerts (status/severity filter) | 120/min |
+| POST | `/alerts/{id}/ack` | `alerts:write` | acknowledge alert | 60/min |
+| POST | `/alerts/{id}/resolve` | `alerts:write` | resolve alert | 60/min |
+| GET | `/webhooks` | `webhooks:read` | list webhook của khách | 60/min |
+| POST | `/webhooks` | `webhooks:write` | tạo webhook | 20/min |
+| PUT | `/webhooks/{id}` | `webhooks:write` | update webhook | 20/min |
+| DELETE | `/webhooks/{id}` | `webhooks:write` | xóa webhook | 20/min |
+| POST | `/webhooks/{id}/test` | `webhooks:write` | gửi test event | 10/min |
+| GET | `/webhooks/{id}/deliveries` | `webhooks:read` | delivery log | 60/min |
+| GET | `/export/metrics` | `export:read` | export bulk (CSV/JSON; async cho range lớn) | 6/min |
+| GET | `/prometheus` | `metrics:read` | Prometheus text exposition (all agents) | 60/min |
+| GET | `/prometheus/agents/{id}` | `metrics:read` | Prometheus text (1 agent) | 120/min |
+| GET | `/openapi.json` | none | spec (public) | — |
+
+**Lỗi chuẩn có thể xảy ra** mỗi endpoint: `401 UNAUTHENTICATED` (key thiếu/sai), `403 FORBIDDEN_SCOPE` / `403 HOST_OUT_OF_SCOPE` / `403 IP_NOT_ALLOWED`, `404 NOT_FOUND`, `422 VALIDATION_ERROR` (param sai), `429 RATE_LIMIT_EXCEEDED`, `500 INTERNAL`, `503 COLD_TIER_UNAVAILABLE` (khi query range cần Parquet chưa sẵn).
+
+#### Chi tiết `GET /metrics/query` (mục 6 — time-series)
+
+Params: `agentId` (bắt buộc, hoặc `agentIds` CSV), `metric` (cpu.usage, ram.usage, disk.usage, load1, net.rx, net.tx, diskio.read, diskio.write, temp), `from`/`to` (RFC3339 hoặc relative `now-1h`), `step` (vd `60s`), `aggregation` (`avg|min|max|sum|p95|last`), `groupBy` (optional: `agent`), `fill` (`null|previous|zero`).
+Giới hạn (bám decision cũ): window ≤ 7d trên hot tier; > 7d cần cold tier (Phase 6) → nếu chưa có trả `503 COLD_TIER_UNAVAILABLE`. Max 2000 points/series. `p95` chỉ có sau khi cold tier hoặc on-the-fly compute landed.
+
+```http
+GET /api/v1/metrics/query?agentId=agent-01&metric=cpu.usage&from=now-1h&to=now&step=60s&aggregation=avg
+```
+```json
+{
+  "success": true,
+  "data": {
+    "metric": "cpu.usage",
+    "unit": "percent",
+    "step_seconds": 60,
+    "aggregation": "avg",
+    "series": [
+      {
+        "agentId": "agent-01",
+        "labels": {"host": "webA"},
+        "points": [
+          {"ts": "2026-05-29T08:00:00Z", "value": 12.5},
+          {"ts": "2026-05-29T08:01:00Z", "value": 13.1}
+        ]
+      }
+    ]
+  },
+  "page": {"hasMore": false},
+  "requestId": "req_01J...",
+  "timestamp": "2026-05-29T08:30:00Z"
+}
+```
+
+---
+
+### 3.JSON Response Standard (mục 5)
+
+**Success:**
+```json
+{
+  "success": true,
+  "data": { },
+  "page": {"limit": 50, "cursor": "eyJ...", "hasMore": true},
+  "requestId": "req_01J...",
+  "timestamp": "2026-05-29T08:30:00Z"
+}
+```
+**Error:**
+```json
+{
+  "success": false,
+  "error": {"code": "RATE_LIMIT_EXCEEDED", "message": "Too many requests", "details": {"retryAfter": 30}},
+  "requestId": "req_01J...",
+  "timestamp": "2026-05-29T08:30:00Z"
+}
+```
+**Conventions:**
+- **Pagination**: cursor-based (opaque `cursor` + `limit`, default 50/max 500). Offset chỉ cho dataset nhỏ.
+- **Filtering**: query params whitelisted per endpoint (vd `?status=online&severity=critical`).
+- **Sorting**: `?sort=field` / `?sort=-field` (dấu `-` = desc); chỉ field được whitelist.
+- **Time range**: `from`/`to` RFC3339 **hoặc** relative (`now-1h`, `now-7d`). Server luôn lưu/trả **UTC**; client gửi `?tz=Asia/Ho_Chi_Minh` chỉ ảnh hưởng group-by-day/format hiển thị, không đổi giá trị.
+- **traceId/requestId**: mọi response có `requestId`; cũng trả header `X-Request-Id`. Log nội bộ correlate theo requestId. Nếu client gửi `X-Request-Id` thì echo lại.
+- **Rate-limit headers**: `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`, và `Retry-After` khi 429.
+- **Error codes (enum khóa)**: `UNAUTHENTICATED`, `FORBIDDEN_SCOPE`, `HOST_OUT_OF_SCOPE`, `IP_NOT_ALLOWED`, `NOT_FOUND`, `VALIDATION_ERROR`, `RATE_LIMIT_EXCEEDED`, `COLD_TIER_UNAVAILABLE`, `INTERNAL`.
+
+---
+
+### 4. Security Model (mục 9)
+
+- **API key hashing**: chỉ lưu hash (SHA-256; cân nhắc Argon2id), không bao giờ lưu plaintext. Hiển thị `key_prefix` + `••••`.
+- **Key rotation**: tạo key mới → khách chuyển → revoke key cũ. Hỗ trợ nhiều key/khách để rotate không downtime. `expires_at` optional auto-expire.
+- **IP allowlist**: optional per-key CIDR list; check ở middleware trước scope.
+- **Rate limit**: in-memory token bucket per key + per IP fallback (anti-abuse với key chưa auth). Tier theo key. Trả 429 + `Retry-After`.
+- **Audit log**: ghi key create/revoke/rotate, webhook CRUD, alert ack/resolve, auth_failed. Append-only table.
+- **Request signing**: KHÔNG bắt buộc cho inbound (TLS + bearer là đủ cho homelab). **Bắt buộc cho outbound webhook** (HMAC-SHA256, xem mục Webhook).
+- **Secret masking**: token/secret không bao giờ log; mask trong audit + error.
+- **Tenant isolation**: enforce host-group filter ở **query layer** (mọi query Public API append `WHERE host IN (key's group)`), không chỉ ở handler.
+- **Abuse prevention**: rate limit + cap response size + cap time-range + cap concurrent export jobs + auto-disable key sau N auth_failed liên tiếp (optional).
+- **TLS-only**: Public API chỉ phục vụ qua HTTPS (bám wedge HTTPS-only). 
+
+---
+
+### 5. Webhook Model (mục 8) — *dùng chung delivery engine với notification channels (Phase 5)*
+
+**Gộp 1 engine, không build 2 lần.** "Webhook" là **một channel type** bên cạnh Discord/Telegram/ntfy/Email của notification channels (Phase 5). Cùng dispatch core (event → match → format → deliver → retry → log), cùng bảng channels + delivery log, cùng HMAC signer. Phân biệt bằng:
+- `owner_type=admin` → tạo qua UI, full host scope (operator routing alert của chính mình).
+- `owner_type=api_key` → tạo qua Public API `/api/v1/webhooks`, `host_scope` **ép = host group của key** (khách chỉ nhận event của host trong nhóm mình; enforce ở bước match event, không chỉ ở handler).
+
+Public API customer webhook là `type=webhook` + `owner_type=api_key`. CRUD + test + retry + signature + delivery log — tất cả qua engine chung.
+
+**Outbound payload:**
+```json
+{
+  "id": "evt_01J...",
+  "eventType": "alert.triggered",
+  "alertId": "alert_123",
+  "severity": "critical",
+  "agentId": "agent-01",
+  "host": "webA",
+  "message": "CPU usage is above 90%",
+  "value": 93.4,
+  "threshold": 90,
+  "timestamp": "2026-05-29T08:30:00Z"
+}
+```
+**Event types**: `alert.triggered`, `alert.resolved`, `agent.online`, `agent.offline`, `webhook.test`.
+**Signature verification**: header `X-Lumen-Signature: t=<unix>,v1=<hex(HMAC-SHA256(secret, "<t>.<rawbody>"))>` + `X-Lumen-Event-Id`. Khách verify HMAC + reject nếu `|now-t| > 5m` (chống replay). Secret hiện 1 lần khi tạo webhook.
+**Delivery + retry**: timeout 10s, coi 2xx là success. Retry exponential backoff (vd 0s,30s,2m,10m,1h) tối đa ~6 lần; sau đó mark `failed` + đếm vào metric. Persist delivery log (status, http_status, attempts, next_retry_at, error). Auto-disable webhook nếu fail liên tục quá ngưỡng.
+**Test**: `POST /webhooks/{id}/test` gửi `webhook.test` ngay, trả kết quả delivery synchronous.
+
+---
+
+### 6. Grafana Integration Plan (mục 7 & 10) — *expose, không build dashboard*
+
+- **P1 (ưu tiên)**: **Prometheus-compatible exposition** `GET /api/v1/prometheus` (và `/prometheus/agents/{id}`) trả text format → user cấu hình Prometheus scrape hoặc Grafana dùng Prometheus datasource. API key qua bearer trong scrape config.
+- **P1 (song song)**: **Grafana JSON / Infinity datasource** — endpoint trả JSON đúng shape để Grafana Infinity plugin query trực tiếp `/metrics/query` (không cần viết plugin riêng). Doc kèm dashboard JSON mẫu.
+- **Defer**: Grafana datasource plugin chuyên dụng (chỉ làm nếu nhu cầu thực).
+- **Defer**: OpenTelemetry (OTLP) export — đánh giá sau, không phải P1.
+
+**Prometheus text mẫu:**
+```text
+# HELP lumen_cpu_usage_percent CPU usage percent
+# TYPE lumen_cpu_usage_percent gauge
+lumen_cpu_usage_percent{agent="agent-01",host="webA"} 12.5
+lumen_ram_usage_percent{agent="agent-01",host="webA"} 63.2
+lumen_disk_usage_percent{agent="agent-01",host="webA"} 41.5
+lumen_load1{agent="agent-01",host="webA"} 0.42
+lumen_agent_up{agent="agent-01",host="webA"} 1
+```
+
+---
+
+### 7. Database tables liên quan
+
+Migrations mới (goose), pure-SQLite:
+
+| Table | Cột chính |
+|---|---|
+| `api_keys` | id, name, key_prefix, key_hash, scopes (text/JSON CSV), host_group_id (nullable FK), ip_allowlist (text/CIDR CSV), rate_tier, created_by, created_at, last_used_at, expires_at, revoked_at |
+| `host_groups` | id, name, created_at |
+| `host_group_members` | host_group_id, host_id (PK kép) |
+| `notification_channels` *(dùng chung với Phase 5)* | id, owner_type (admin/api_key), owner_id (api_key_id, null nếu admin), type (webhook/discord/telegram/ntfy/email), config (JSON: url/headers…), secret_hash (HMAC cho webhook), events (CSV), host_scope (null=all hoặc host_group_id; ép = group của key khi owner=api_key), active, description, created_at, disabled_reason, fail_count |
+| `notification_deliveries` *(delivery log dùng chung)* | id, channel_id (FK), event_id, event_type, payload (JSON), status (pending/success/failed), http_status, attempts, next_retry_at, error, created_at, delivered_at |
+| `api_audit_log` | id, actor_type (key/admin), actor_id, action, target, ip, user_agent, request_id, meta (JSON), ts |
+
+Lưu ý dung lượng (HDD-friendly wedge): `public_webhook_deliveries` + `api_audit_log` cần **retention riêng** (vd 30d) để không phình DB; tái dùng pattern retention heartbeat sẵn có.
+
+---
+
+### 8. Roadmap theo phase (PAPI Phase 1..5 — map lên Phase plan chính)
+
+#### PAPI Phase 1 — Basic Public Read API  *(map: sau Phase 5 alert engine, hoặc tách read-only sớm hơn)*
+- **Chức năng**: API key infra + đọc agents/status/latest metrics/short-range metrics query.
+- **Endpoint**: `/hubs`, `/agents`, `/agents/{id}`, `/agents/{id}/status`, `/metrics/latest`, `/metrics/query` (≤7d).
+- **DB**: `api_keys`, `host_groups`, `host_group_members`, `api_audit_log`.
+- **Security**: key hashing, scope check, host-group isolation, rate limit (in-memory), TLS-only, audit.
+- **Testing**: unit (auth/scope/rate-limit middleware), integration (key→query→isolation), negative (401/403/429).
+- **Rủi ro**: dữ liệu nhạy cảm leak nếu host-group enforce sai → enforce ở query layer + test isolation kỹ.
+- **Effort**: ~M (2–3 tuần) — phần lớn là middleware + key mgmt UI.
+
+#### PAPI Phase 2 — Time-series Query API hoàn chỉnh  *(map: Phase 6 cold tier)*
+- **Chức năng**: aggregation đầy đủ (avg/min/max/sum/p95), groupBy, pagination, range dài qua cold tier.
+- **Endpoint**: nâng cấp `/metrics/query`, thêm `/export/metrics` (async cho range lớn).
+- **DB**: dựa Parquet cold tier (Phase 6); có thể thêm `export_jobs` nếu export async.
+- **Security**: cap range/size/concurrent export.
+- **Testing**: correctness của aggregation/p95 so hot vs cold; perf benchmark.
+- **Rủi ro**: query Parquet tốn RAM (đụng DuckDB spike đang pending) → cap + có thể stream.
+- **Effort**: ~L (3–4 tuần, phụ thuộc cold tier).
+
+#### PAPI Phase 3 — Webhook & Export  *(map: Phase 5/6)*
+- **Chức năng**: customer webhook CRUD/test/retry/signature/delivery log — **dùng chung dispatch engine với notification channels (Phase 5)**, chỉ thêm owner=api_key + scope; export CSV/JSON.
+- **Endpoint**: `/webhooks*`, `/events`, `/alerts`, `/alerts/{id}/ack|resolve`, `/export/metrics`.
+- **DB**: `notification_channels`, `notification_deliveries` (dùng chung Phase 5, + cột owner/scope + retention).
+- **Phụ thuộc**: dispatch engine của notification channels (Phase 5) là nền — PAPI Phase 3 chỉ thêm surface api_key + scope lên engine đó.
+- **Security**: HMAC signing, anti-replay, SSRF guard (block internal IP cho webhook URL), auto-disable.
+- **Testing**: delivery retry/backoff, signature verify vector, SSRF block.
+- **Rủi ro**: webhook → SSRF/abuse → validate URL + block private ranges + outbound rate cap.
+- **Effort**: ~L (3–4 tuần) — phụ thuộc alert engine (Phase 5).
+
+#### PAPI Phase 4 — Grafana / Prometheus Compatibility  *(map: Phase 6/7)*
+- **Chức năng**: Prometheus exposition + JSON datasource doc + dashboard mẫu.
+- **Endpoint**: `/prometheus`, `/prometheus/agents/{id}`.
+- **DB**: không thêm (đọc từ store sẵn có).
+- **Security**: scope `metrics:read`, host-group filter trong exposition.
+- **Testing**: validate text format bằng promtool; e2e scrape thử.
+- **Rủi ro**: cardinality (per-core/containers live-only) → chỉ expose scalar persisted.
+- **Effort**: ~M (1–2 tuần).
+
+#### PAPI Phase 5 — Enterprise (OPTIONAL, FLAGGED)  *(map: Phase 8 / chỉ khi có nhu cầu + ADR)*
+- **Chức năng**: OAuth2 client-credentials, quota/SLA tiers, SDK, audit nâng cao.
+- **⚠️ Cảnh báo**: RBAC động + OAuth2 đụng anti-feature "no complex enterprise RBAC" → chỉ làm sau ADR riêng. Không mặc định build.
+- **Effort**: chưa estimate (deferred).
+
+---
+
+### 9. Backlog task chi tiết
+
+**Backend (Go / chi):**
+- [ ] Middleware `apikey.Authenticator`: parse bearer `lumk_`, lookup theo prefix, verify hash, load scopes/group/ip/expiry.
+- [ ] Middleware `scope.Require("metrics:read")` + `hostgroup.Filter` (inject allowed host set vào ctx).
+- [ ] Middleware `ratelimit.TokenBucket` (in-memory, per-key + per-IP), set rate headers.
+- [ ] Envelope helpers `respondOK(data, page)` / `respondErr(code, msg, details)` + requestId middleware (`X-Request-Id`).
+- [ ] Handlers `/api/v1/*` theo Endpoint List; bind vào router group riêng.
+- [ ] Query layer: hàm metrics query nhận `allowedHosts` bắt buộc (enforce isolation tại DB).
+- [ ] Notification dispatch engine (dùng chung Phase 5): event → match channels (type + host scope) → format → deliver (goroutine queue + backoff) → HMAC signer → delivery log + retention; SSRF guard cho webhook URL. Public API chỉ thêm CRUD owner=api_key + ép host scope.
+- [ ] Prometheus exporter (text format) trên store sẵn có.
+- [ ] Export: CSV/JSON streaming; (Phase 2) async job runner.
+- [ ] Migrations goose cho 6 tables; retention sweep cho deliveries + audit.
+- [ ] Audit logger (append-only).
+- [ ] OpenAPI 3.1 spec cho `/api/v1/*` (mở rộng `api/openapi.yaml`).
+
+**Frontend (React / web — Admin UI, KHÔNG phải Public API):**
+- [ ] Settings → **API Keys**: list (prefix + last_used + scopes + group), create (chọn scopes/group/IP/expiry), reveal-once, revoke, rotate.
+- [ ] Settings → **Host Groups**: tạo group, gán hosts.
+- [ ] Settings → **Webhooks**: list/create/edit/delete/test + xem delivery log + secret reveal-once.
+- [ ] **API Audit log** viewer (filter theo key/action/time).
+- [ ] i18n EN + VI cho mọi copy mới (bám i18n foundation Phase 3).
+
+**DevOps / Docs:**
+- [ ] Doc `integrations/public-api.md`: quickstart, auth, scopes, curl + JS + Python examples.
+- [ ] Doc `integrations/grafana.md`: Prometheus datasource + Infinity + dashboard JSON mẫu.
+- [ ] Doc `integrations/webhooks.md`: payload, signature verify (code mẫu), retry.
+- [ ] Publish OpenAPI + Postman collection + `.http` (mở rộng `api/lumen.http`).
+- [ ] Observability cho chính API (mục 10): metrics `api_request_count`, `api_request_latency`, `api_error_rate`, `api_rate_limit_count`, `api_auth_failed_count`, `webhook_delivery_failed_count` → expose nội bộ (Prometheus `/metrics` của hub hoặc log).
+- [ ] (Optional) Sandbox/demo hub read-only cho thử nghiệm.
+- [ ] CHANGELOG + API changelog page.
+
+---
+
+### 10. Các quyết định kỹ thuật nên chốt TRƯỚC khi code
+
+1. ✅ **Auth primary = API Key + scopes** (OAuth2/RBAC deferred+flagged). — *chốt 2026-05-29.*
+2. ✅ **Webhook dùng chung 1 dispatch engine** với notification channels (Phase 5); webhook là 1 channel type, phân biệt bằng `owner_type` + `host_scope`. Public API customer webhook = `owner=api_key`, scope ép = host group. — *chốt 2026-05-29 (đảo lại quyết định "tách riêng" trước đó vì Public API cũng cần noti, gộp giảm trùng code + dễ audit).*
+3. ✅ **Envelope giàu chỉ cho `/api/v1/*`**; internal `/api/*` giữ terse. — *chốt 2026-05-29.*
+4. ✅ **`/api/v1/*` dành riêng cho public contract**; internal UI giữ `/api/*` unversioned (đính chính note cũ). — *chốt 2026-05-29.*
+5. ✅ **Tenant isolation = host group**, enforce ở query layer. — *chốt 2026-05-29.*
+6. ✅ **Rate limit in-memory token bucket** (no Redis). — *chốt 2026-05-29.*
+7. ⏳ **Hashing**: SHA-256 (nhanh) vs Argon2id (chậm, an toàn hơn nếu DB leak) cho `key_hash` — cần chốt (đề xuất: SHA-256 vì key là high-entropy random, không phải password).
+8. ⏳ **Pagination**: cursor opaque encode kiểu gì (base64 của `{ts,id}`?) — chốt format.
+9. ⏳ **Export async**: có cần job runner + table `export_jobs` không, hay chỉ streaming sync với cap? — chốt khi vào PAPI Phase 2.
+10. ⏳ **Prometheus auth**: scrape gửi API key qua bearer header có đủ không (Prometheus hỗ trợ `authorization` trong scrape_config) — confirm.
+11. ⏳ **p95/percentile**: compute on-the-fly trên hot tier (tốn CPU) hay chỉ có sau cold tier — chốt khi vào PAPI Phase 2.
+12. ⏳ **DuckDB dependency**: query cold tier cho range dài có chờ DuckDB spike (đang pending ADR) không — gắn với Phase 6.
+13. ⏳ **Webhook ownership khi rotate/revoke key**: webhook `owner=api_key` nên giữ lại hay disable khi key bị rotate/revoke? (Đề xuất: tách owner thành "api consumer" ổn định thay vì gắn cứng key ephemeral, hoặc cho phép re-claim. Chốt khi vào PAPI Phase 3.)
 
 ---
 
@@ -443,6 +805,8 @@ Nếu bạn (hoặc Claude) mở session mới:
 - Discord/community URL chưa có — placeholder trong README.
 - Current MVP priority queue is now limited to four items: configurable agent refresh/collection interval, configurable Parquet downsample policy, product-grade UI polish, and lightweight log management scope.
 - Self-hosted SSO, DuckDB, external Grafana/API export, and backup are deferred to later phases/RFCs until the current four priorities land.
+- **⏳ Open question — scope "Management/control":** Tên sản phẩm mô tả ban đầu là "Monitoring & **Management** Platform" nhưng ACTION_PLAN đang khóa **monitoring-only** (anti-feature: không exec lệnh xuống agent). Cần chốt: remote control (restart service, update agent, run command) có nằm trong tầm nhìn Lumen không? Nếu **có** → ghi thành mục tiêu + thiết kế command-channel-over-WS sớm để transport hiện tại đỡ nó (xem Decisions log 2026-05-29). Nếu **chưa chắc** → giữ monitoring-only; transport push hiện tại **không cản** việc thêm control sau.
+- **Public API / External API** giờ đã có spec chi tiết riêng — xem mục [Public API / External API — Module Plan](#-public-api--external-api--module-plan). 6 quyết định đã chốt (API-key primary, webhook **gộp chung 1 dispatch engine** với notification channels Phase 5, envelope giàu chỉ cho `/api/v1`, host-group isolation, in-memory rate limit, `/api/v1` = public contract); còn ~7 mục `⏳` cần chốt trước khi code (hashing, cursor format, export async, prometheus auth, p95, DuckDB, webhook ownership khi rotate key). Module map lên Phase 5/6/7/8, không tự build sớm vì phụ thuộc alert engine + notification engine + cold tier.
 - Log management scope is intentionally lightweight: on-demand admin debugging via hub/agent/systemd/Docker logs, not Loki-style aggregation/search.
 - UI polish is now tracked as a product requirement: benchmark Beszel for UX/completeness, redesign dashboard/host detail/settings without copying Beszel identity.
 - Agent update UX is now a dedicated Phase 4: existing Docker agents update from their target VM/LXC via `docker compose pull && docker compose up -d`, preserving the existing token/config and avoiding host/token recreation or edits to the hub compose file.
