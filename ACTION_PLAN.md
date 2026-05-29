@@ -289,6 +289,7 @@ Mỗi quyết định ghi 1 dòng. Không xóa, không sửa — nếu đổi ý
 - [x] Keep docs i18n separate from app i18n; Starlight handles docs, the web app owns runtime UI translations
 
 #### Lightweight log management
+> ⏸️ **Deferred post-v0.3 (2026-05-29).** v0.3.0 (Phase 4) shipped without log management. Only the product direction is locked; the RFC + Logs/Console surface move to a later release. Pick up before/with Phase 5 as capacity allows.
 - [x] Log management product direction: separate Logs/Console surface, not Host Detail metrics ingest; on-demand live stream only when opened/subscribed
 - [ ] Log management RFC: on-demand admin debugging only; no default persistence/indexing/full-text search
 - [ ] Agent log source abstraction: hub logs, journald/systemd unit logs, Docker container logs, and Lumen agent self logs
@@ -784,7 +785,7 @@ Nếu bạn (hoặc Claude) mở session mới:
 > Cập nhật mục này mỗi session.
 
 **Session**: 2026-05-29
-**Đang làm**: Phase 4 **closeout — DONE**. Version awareness + Update-agent panel landed; all Phase 4 boxes ticked. Next pickups: Phase 3 lightweight log management (RFC + Logs/Console surface), or start Phase 5 (Proxmox wedge / alert engine). Public API module remains specced-only (Phase 5+).
+**Đang làm**: Phase 4 **closeout — DONE → releasing v0.3.0**. Version awareness + Update-agent panel landed; all Phase 4 boxes ticked. CHANGELOG cut for v0.3.0. Phase 3 lightweight log management **deferred post-v0.3** (direction locked, RFC + Logs/Console surface to a later release). Next pickups: log management, or start Phase 5 (Proxmox wedge / alert engine). Public API module remains specced-only (Phase 5+).
 **Phase 4 complete (2026-05-29):**
 - Version awareness: fixed ldflags `main.Version` mismatch (agent `var Version` + hub `var Version`); new `GET /api/version` (`internal/hub/meta`, with test); host detail shows `agent <ver>` + update-available pill (click-to-copy update cmd); dashboard host card shows update badge; `"dev"` builds suppress badges.
 - Update-agent panel on host detail: always-present card with the Compose update command, copy button, up-to-date/update-available status, and the "run on the agent's machine, not the hub" note.
