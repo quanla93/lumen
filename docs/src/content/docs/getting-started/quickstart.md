@@ -45,18 +45,17 @@ On a fresh database, create the first admin account or sign in with the seeded a
 
 ## 3. Add an agent with its own compose file
 
-In the hub UI, go to **Settings → Hosts**, create a host, and copy or download the generated `docker-compose.yml`. Save it on the target machine:
+In the hub UI, go to **Settings → Hosts**, create a host, and download or copy the generated per-agent `docker-compose.yml`. Put that exact file on the target machine and start it with Docker Compose:
 
 ```bash
 sudo mkdir -p /opt/lumen-agent
 cd /opt/lumen-agent
-sudo nano docker-compose.yml
-sudo chmod 600 docker-compose.yml
+# Save the generated docker-compose.yml from the hub UI in this directory.
 sudo docker compose up -d
 sudo docker compose logs -f
 ```
 
-The agent card appears on the dashboard within one collection interval. Click it to open historical charts, per-core CPU, network/disk throughput, temperature when available, and live Docker container data when the agent can read the Docker socket.
+The generated compose file already contains the one-shot token, hub URL, host name, Docker socket mount, and durable offline buffer volume. The agent card appears on the dashboard within one collection interval. Click it to open historical charts, per-core CPU, network/disk throughput, temperature when available, and live Docker container data when the agent can read the Docker socket.
 
 ## 4. Update later
 

@@ -1,10 +1,11 @@
-# Lumen dev compose — hub-first local stack.
+# Lumen dev compose — hub-only local stack.
 #
 # From repo root:
 #   docker compose -f deploy/docker/docker-compose.yml up --build
 #
-# Then open http://localhost:8090, create a host token in Settings, and run
-# the generated agent command. The bundled agent service is opt-in via profile.
+# Then open http://localhost:8090, create a host in Settings, and use the
+# generated per-agent Docker Compose setup on the target host. Do not add
+# agent tokens to this hub compose file.
 
 name: lumen
 
@@ -17,75 +18,19 @@ services:
     container_name: lumen-hub
     ports:
       - "8090:8090"
-    # Single source of truth: the repo-root .env. Path is resolved
-    # relative to THIS compose file, so any CWD works (no --env-file flag).
-    # Missing .env is OK; the Go binary falls back to its own defaults.
+    # Single source of truth for hub config: the repo-root .env. Path is
+    # resolved relative to THIS compose file, so any CWD works (no --env-file
+    # flag). Missing .env is OK; the Go binary falls back to its own defaults.
     env_file:
       - path: ../../.env
         required: false
     environment:
-      # Container-only overrides — keep these so a native-tuned .env
-      # (LUMEN_HUB_URL=localhost, LUMEN_HUB_DB_PATH=./lumen.db) doesn't
-      # break things inside the container.
+      # Container-only override — keep this so a native-tuned .env
+      # (LUMEN_HUB_DB_PATH=./lumen.db) does not write inside the container FS.
       LUMEN_HUB_DB_PATH: "/data/lumen.db"
     volumes:
       - lumen-data:/data
     restart: unless-stopped
 
-  # Optional same-machine demo agent. The normal operator flow is:
-  #   1. Start the hub only with `docker compose ... up --build`.
-  #   2. Settings → Hosts → Create → copy the generated Docker command.
-  #   3. Run that command on the target host.
-  # Use this profile only when you deliberately want compose to run a local
-  # demo agent from LUMEN_AGENT_TOKEN in .env.
-  agent:
-    profiles: ["agent"]
-    build:
-      context: ../..
-      dockerfile: deploy/docker/Dockerfile.agent
-    image: lumen-agent:dev
-    container_name: lumen-agent
-    depends_on:
-      - hub
-    env_file:
-      - path: ../../.env
-        required: false
-    environment:
-      # Container-only override: agent reaches the hub via compose DNS.
-      LUMEN_HUB_URL: "http://hub:8090"
-      # Persistent offline queue path — lives on the lumen-agent-data
-      # volume so the bbolt file survives `docker compose down`.
-      LUMEN_AGENT_BUFFER_PATH: "/data/buffer.db"
-    # Override the distroless image's nonroot default. The Docker socket
-    # on Linux (and the macOS Docker Desktop VM) is owned by root:root
-    # mode 660; nonroot (uid 65532) can't read it, and we can't add it
-    # to the docker group inside a distroless image (no /etc/group
-    # editor at runtime). Running as root matches what cAdvisor, Beszel,
-    # node-exporter, and every other monitoring sidecar does — the agent
-    # only READS, never writes, so the elevated UID is for socket /proc
-    # / /sys access, not privilege escalation.
-    user: "0:0"
-    volumes:
-      # Read-only Docker socket so the agent can list + stats containers
-      # on the host. Same pattern as cAdvisor / Beszel / etc.
-      #
-      # On macOS Docker Desktop, this mount silently no-ops unless you
-      # enable Settings → Advanced → "Allow the default Docker socket to
-      # be used (requires password)". When disabled (the default in
-      # Docker Desktop 4.x), the agent will log ONE Warn line on
-      # startup, then fall back to no container reporting — host-level
-      # metrics keep working.
-      #
-      # On Linux this Just Works.
-      #
-      # To disable container monitoring entirely (or if the host isn't
-      # running Docker), remove this line.
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      # Persistent buffer file. Without this, restarting the agent loses
-      # any frames queued during a hub outage.
-      - lumen-agent-data:/data
-    restart: unless-stopped
-
 volumes:
   lumen-data:
-  lumen-agent-data:

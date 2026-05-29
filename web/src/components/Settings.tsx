@@ -148,6 +148,9 @@ function HostsSettings() {
             now={now}
             onChanged={refresh}
             onTokenRevealed={(hostName, token) => setReveal({ hostName, token })}
+            onDeleted={(hostName) => {
+              setReveal((current) => current?.hostName === hostName ? null : current);
+            }}
             locale={locale}
             t={t}
           />
@@ -213,6 +216,7 @@ function HostsTable({
   now,
   onChanged,
   onTokenRevealed,
+  onDeleted,
   locale,
   t,
 }: {
@@ -220,6 +224,7 @@ function HostsTable({
   now: number;
   onChanged: () => void;
   onTokenRevealed: (hostName: string, token: string) => void;
+  onDeleted: (hostName: string) => void;
   locale: ReturnType<typeof useI18n>["locale"];
   t: ReturnType<typeof useI18n>["t"];
 }) {
@@ -242,6 +247,7 @@ function HostsTable({
               now={now}
               onChanged={onChanged}
               onTokenRevealed={onTokenRevealed}
+              onDeleted={onDeleted}
               locale={locale}
               t={t}
             />
@@ -257,6 +263,7 @@ function HostRow({
   now,
   onChanged,
   onTokenRevealed,
+  onDeleted,
   locale,
   t,
 }: {
@@ -264,12 +271,16 @@ function HostRow({
   now: number;
   onChanged: () => void;
   onTokenRevealed: (hostName: string, token: string) => void;
+  onDeleted: (hostName: string) => void;
   locale: ReturnType<typeof useI18n>["locale"];
   t: ReturnType<typeof useI18n>["t"];
 }) {
   const [busy, setBusy] = useState(false);
 
   async function rotate() {
+    if (!window.confirm(t("settings.rotateConfirm", { name: host.name }))) {
+      return;
+    }
     setBusy(true);
     try {
       const res = await hostsApi.rotate(host.id);
@@ -289,6 +300,7 @@ function HostRow({
     setBusy(true);
     try {
       await hostsApi.remove(host.id);
+      onDeleted(host.name);
       onChanged();
     } catch (err) {
       const msg = err instanceof ApiError ? err.message : String(err);

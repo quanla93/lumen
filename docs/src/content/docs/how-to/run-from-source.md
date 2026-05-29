@@ -134,17 +134,16 @@ single binary. No Vite, no node at runtime.
 
 ## 4. Docker Compose
 
-One command spins up hub + one agent in distroless containers.
+One command starts the hub in a distroless container. Agents are added separately from the web UI with generated per-agent Compose files.
 
 ```bash
 docker compose -f deploy/docker/docker-compose.yml up --build
 ```
 
 First run takes ~3 minutes (pulls golang, node, distroless images and
-runs both stages). Subsequent runs are seconds thanks to layer caching.
+runs the hub build). Subsequent runs are seconds thanks to layer caching.
 
-Open **http://localhost:8090**. The hub container exposes :8090; the
-agent container talks to it via the compose DNS name `hub:8090`.
+Open **http://localhost:8090**. The hub container exposes :8090. Only run the optional local demo agent when deliberately testing ingest; reuse one fixed `local-test-agent` host/token instead of creating many agents on the same machine.
 
 Stop and clean up:
 

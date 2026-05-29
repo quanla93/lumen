@@ -20,7 +20,7 @@ Phase 3 release: operator customization, UI polish, i18n foundation, and clarifi
 
 ### Changed
 
-- Docker agent onboarding is hub-first: create a host token in the UI, then copy the generated Docker command/snippet instead of editing per-agent config manually.
+- Docker agent onboarding is hub-first: create a host in the UI, then use the generated per-agent Docker Compose file instead of editing hub compose or per-agent config manually.
 - Lightweight logs are explicitly deferred to a future dedicated Logs/Console surface with on-demand live streaming; logs must not be shipped through periodic metrics ingest or Host Detail polling.
 
 ## [0.1.0] - 2026-05-27

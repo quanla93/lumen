@@ -125,14 +125,15 @@ cd lumen
 # Install web/docs deps
 pnpm install
 
-# Run hub in dev mode (auto-reload, embedded dev frontend)
+# Run hub in dev mode (embedded dev frontend)
 make dev-hub
-
-# In another terminal, run a local agent pointed at the dev hub
-make dev-agent
 
 # Run docs site (Starlight)
 make dev-docs
+
+# Only run an agent when deliberately testing ingest. Reuse one fixed
+# local-test-agent host/token instead of creating multiple agents on one box.
+make dev-agent
 ```
 
 Hub: http://localhost:8090 · Docs: http://localhost:4321

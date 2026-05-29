@@ -1,24 +1,20 @@
 ---
 title: Add agents
-description: Three ways to ship a Lumen agent to a new machine — native binary (recommended), Docker container, or compose service.
+description: Add a Lumen agent to a new machine with the generated Docker Compose file, or use native/manual fallback paths.
 sidebar:
   order: 2
 ---
 
-Every machine you want to monitor runs **one Lumen agent**. The agent is a
-single Go binary (~15 MB, no runtime deps) that POSTs a metrics snapshot
-to the hub every `LUMEN_AGENT_INTERVAL`. Docker is **never required** on
-the target — it's just one of three packaging options.
+Every machine you want to monitor runs **one Lumen agent**. The agent POSTs a metrics snapshot to the hub every `LUMEN_AGENT_INTERVAL`. Docker Compose is the recommended long-running path when Docker is available; native/manual install remains available for hosts where Docker does not belong.
 
 ## The flow at a glance
 
 ```
-┌─ Hub UI ──────────┐    ┌─ Target machine ────────────┐
-│ Settings → Hosts  │    │ LUMEN_HUB_URL=...           │
-│ "Add host"        │ →  │ LUMEN_AGENT_HOST=...        │
-│ → token (1-shot)  │    │ LUMEN_AGENT_TOKEN=lum_...   │
-└───────────────────┘    │ ./lumen-agent  (or systemd) │
-                         └─────────────────────────────┘
+┌─ Hub UI ───────────────────────┐    ┌─ Target machine ────────────────┐
+│ Settings → Hosts → Create      │    │ /opt/lumen-agent/               │
+│ → generated docker-compose.yml │ →  │ docker-compose.yml              │
+│ → token shown once             │    │ docker compose up -d            │
+└────────────────────────────────┘    └─────────────────────────────────┘
 ```
 
 The token shown in Settings is displayed **exactly once**. The hub stores
@@ -43,15 +39,15 @@ For Proxmox LXC, choose based on how that LXC is managed: use Compose if Docker 
 
 ## A. Docker Compose agent (recommended)
 
-Create the host in Settings first, then copy or download the generated `docker-compose.yml` and save it on the target machine:
+Create the host in Settings first, then download or copy the generated per-agent `docker-compose.yml`. Save that exact file on the target machine:
 
 ```bash
 sudo mkdir -p /opt/lumen-agent
 cd /opt/lumen-agent
-sudo nano docker-compose.yml
+# Save the generated docker-compose.yml from the hub UI in this directory.
 ```
 
-Paste this file and replace the three values marked `CHANGE`:
+The generated file is ready to run. If you cannot use the generated file, use this manual fallback template and replace the three values marked `CHANGE`:
 
 ```yaml
 services:
@@ -98,7 +94,7 @@ sudo docker compose pull
 sudo docker compose up -d
 ```
 
-The flow is token-first, but not hub-compose-first: don't edit the hub's `docker-compose.yml` or add one `.env` variable per agent. Each target host owns its own per-agent compose file.
+The flow is UI-generated Compose-first: don't edit the hub's `docker-compose.yml` or add one `.env` variable per agent. Each target host owns its own per-agent compose file.
 
 See [Agent — Docker Compose](/install/agent-docker/) for the generated file shape, update path, logs, uninstall, Docker socket options, and troubleshooting.
 
@@ -197,8 +193,7 @@ machine and you want a fresh credential:
 
 1. Hub UI → **Settings → Hosts** → click **Rotate** next to the host.
 2. Copy the new `lum_…` shown once.
-3. Update `LUMEN_AGENT_TOKEN` on the target and restart the agent
-   (`systemctl restart lumen-agent` / `cd /opt/lumen-agent && docker compose up -d`).
+3. For Docker Compose agents, replace the target host's `/opt/lumen-agent/docker-compose.yml` with the newly generated file and run `docker compose up -d`. For native agents, update `LUMEN_AGENT_TOKEN` in the systemd environment or config and restart `lumen-agent`.
 
 The old token starts returning `401` immediately. The host record
 (metrics history, name, position on dashboard) is preserved.

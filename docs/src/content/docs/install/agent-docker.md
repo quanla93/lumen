@@ -44,10 +44,10 @@ SSH into the machine you want to monitor and create a dedicated directory:
 ```bash
 sudo mkdir -p /opt/lumen-agent
 cd /opt/lumen-agent
-sudo nano docker-compose.yml
+# Save the generated docker-compose.yml from the hub UI in this directory.
 ```
 
-Paste the generated compose file from the hub UI, or use this complete template and replace the three marked values:
+The generated file is ready to run. If you cannot use the generated file, use this manual fallback template and replace the three marked values:
 
 ```yaml
 services:
@@ -84,13 +84,13 @@ volumes:
   lumen-agent-data:
 ```
 
-Then restrict access because the file contains the agent token:
+Restrict access because the file contains the agent token:
 
 ```bash
 sudo chmod 600 docker-compose.yml
 ```
 
-Minimal values you must change:
+Manual fallback values you must change:
 
 | Placeholder | Example | Notes |
 |---|---|---|
@@ -255,15 +255,16 @@ Token rotation is a security action, not an update action. Rotate only if the to
 
 After rotating in the hub UI:
 
-1. Copy the new generated token or compose file.
-2. Edit `/opt/lumen-agent/docker-compose.yml` on the target host.
-3. Replace `LUMEN_AGENT_TOKEN`.
-4. Recreate the container:
+1. Download or copy the newly generated per-agent compose file.
+2. Replace `/opt/lumen-agent/docker-compose.yml` on the target host with that generated file.
+3. Recreate the container:
 
 ```bash
 cd /opt/lumen-agent
 sudo docker compose up -d
 ```
+
+If you are using the manual fallback template, replace only `LUMEN_AGENT_TOKEN` and run the same Compose command.
 
 ## Pin a version
 

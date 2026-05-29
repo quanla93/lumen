@@ -1,0 +1,56 @@
+# Optional local demo agent for the repo hub compose stack.
+#
+# Normal operator flow:
+#   1. Start only the hub with deploy/docker/docker-compose.yml.
+#   2. Settings → Hosts → Create.
+#   3. Use the generated per-agent Docker Compose file on the target host.
+#
+# Use this file only when you deliberately want ONE local test agent attached
+# to the local hub. Reuse the same host/token instead of creating many agents.
+#
+# Example:
+#   docker compose \
+#     -f deploy/docker/docker-compose.yml \
+#     -f deploy/docker/docker-compose.agent.example.yml \
+#     up --build -d agent
+
+services:
+  agent:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.agent
+    image: lumen-agent:dev
+    container_name: lumen-agent-local-test
+    depends_on:
+      - hub
+    env_file:
+      - path: ../../.env
+        required: false
+    environment:
+      # Container-only override: agent reaches the hub via compose DNS.
+      LUMEN_HUB_URL: "http://hub:8090"
+      # Stable local test identity. Create/rotate this host in Settings and put
+      # the token in .env only for deliberate local agent testing.
+      LUMEN_AGENT_HOST: "local-test-agent"
+      # Persistent offline queue path — lives on the lumen-agent-data volume so
+      # the bbolt file survives container recreation.
+      LUMEN_AGENT_BUFFER_PATH: "/data/buffer.db"
+      LUMEN_AGENT_BUFFER_MAX_AGE: "24h"
+      LUMEN_AGENT_BUFFER_DRAIN: "10"
+    # Override the distroless image's nonroot default. The Docker socket on
+    # Linux (and the macOS Docker Desktop VM) is owned by root:root mode 660;
+    # nonroot (uid 65532) can't read it, and we can't add it to the docker group
+    # inside a distroless image. The agent only reads from Docker/proc/sys.
+    user: "0:0"
+    volumes:
+      # Read-only Docker socket so the agent can list + stats containers.
+      # Remove this line if the host is not running Docker or you do not want
+      # container telemetry.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      # Persistent buffer file. Without this, restarting the agent loses any
+      # frames queued during a hub outage.
+      - lumen-agent-data:/data
+    restart: unless-stopped
+
+volumes:
+  lumen-agent-data:

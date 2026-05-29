@@ -14,10 +14,9 @@ function dockerReachableHubUrl(hubUrl: string): string {
   }
 }
 
-/** One-shot token display — shows the plaintext + copy button + the
- * preferred one-liner install command + a fallback manual snippet.
- * Sticks around in the parent's state until the parent removes it
- * (the token CAN'T be fetched again from the hub). */
+/** One-shot token display — shows the generated Docker Compose agent setup
+ * plus the plaintext token for manual fallback. Sticks around in the parent's
+ * state until the parent removes it (the token CAN'T be fetched again from the hub). */
 export function TokenReveal({
   hostName,
   token,
@@ -49,16 +48,25 @@ export function TokenReveal({
       LUMEN_AGENT_TOKEN: "${token}"
       LUMEN_AGENT_HOST: "${hostName}"
       LUMEN_AGENT_INTERVAL: "5s"
+      LUMEN_AGENT_BUFFER_PATH: "/data/buffer.db"
+      LUMEN_AGENT_BUFFER_MAX_AGE: "24h"
+      LUMEN_AGENT_BUFFER_DRAIN: "10"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-`;
-  const composeCommands = `mkdir -p /opt/lumen-agent
-cd /opt/lumen-agent
-# save the downloaded docker-compose.yml here, then run:
-docker compose up -d
+      - lumen-agent-data:/data
 
-# future updates:
-docker compose pull && docker compose up -d`;
+volumes:
+  lumen-agent-data:
+`;
+  const composeCommands = `sudo mkdir -p /opt/lumen-agent
+cd /opt/lumen-agent
+# Save the generated docker-compose.yml in this directory, then start the agent:
+sudo docker compose up -d
+sudo docker compose logs -f
+
+# Future updates:
+sudo docker compose pull
+sudo docker compose up -d`;
 
   async function copy(text: string, which: "token" | "compose" | "commands") {
     try {
@@ -94,13 +102,17 @@ docker compose pull && docker compose up -d`;
         <GhostButton onClick={onDismiss}>{t("common.dismiss")}</GhostButton>
       </div>
 
-      <div className="flex items-center gap-2 mb-4">
-        <code className="flex-1 font-mono text-xs bg-[color:var(--color-card)] border border-[color:var(--color-border)] rounded px-2 py-1.5 overflow-x-auto whitespace-nowrap">
-          {token}
-        </code>
-        <GhostButton onClick={() => copy(token, "token")}>
-          {copied === "token" ? t("common.copied") : t("common.copy")}
-        </GhostButton>
+      <div className="mb-4">
+        <div className="flex items-center justify-between gap-2 mb-1">
+          <p className="text-xs font-semibold">{t("token.composeCommandsTitle")}</p>
+          <GhostButton onClick={() => copy(composeCommands, "commands")}>
+            {copied === "commands" ? t("common.copied") : t("common.copy")}
+          </GhostButton>
+        </div>
+        <pre className="text-xs font-mono bg-[color:var(--color-card)] border border-[color:var(--color-border)] rounded p-3 overflow-x-auto whitespace-pre-wrap">{composeCommands}</pre>
+        <p className="text-xs text-[color:var(--color-muted)] mt-2">
+          {t("token.composeCommandsDescription")}
+        </p>
       </div>
 
       <div className="mb-4">
@@ -121,15 +133,14 @@ docker compose pull && docker compose up -d`;
 
       <div>
         <div className="flex items-center justify-between gap-2 mb-1">
-          <p className="text-xs font-semibold">{t("token.composeCommandsTitle")}</p>
-          <GhostButton onClick={() => copy(composeCommands, "commands")}>
-            {copied === "commands" ? t("common.copied") : t("common.copy")}
+          <p className="text-xs font-semibold">{t("token.manualTokenTitle")}</p>
+          <GhostButton onClick={() => copy(token, "token")}>
+            {copied === "token" ? t("common.copied") : t("common.copy")}
           </GhostButton>
         </div>
-        <pre className="text-xs font-mono bg-[color:var(--color-card)] border border-[color:var(--color-border)] rounded p-3 overflow-x-auto whitespace-pre-wrap">{composeCommands}</pre>
-        <p className="text-xs text-[color:var(--color-muted)] mt-2">
-          {t("token.composeCommandsDescription")}
-        </p>
+        <code className="block font-mono text-xs bg-[color:var(--color-card)] border border-[color:var(--color-border)] rounded px-2 py-1.5 overflow-x-auto whitespace-nowrap">
+          {token}
+        </code>
       </div>
     </div>
   );

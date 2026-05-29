@@ -68,7 +68,7 @@ sudo docker compose up -d
 
 Token rotation is a security action, not an update action. Rotate only if the token leaks or you intentionally want to invalidate the old credential.
 
-After rotating in the hub UI, edit the target host's `/opt/lumen-agent/docker-compose.yml` and replace `LUMEN_AGENT_TOKEN`, then run:
+After rotating in the hub UI, download or copy the newly generated per-agent compose file, replace the target host's `/opt/lumen-agent/docker-compose.yml`, then run:
 
 ```bash
 cd /opt/lumen-agent
