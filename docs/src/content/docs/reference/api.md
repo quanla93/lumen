@@ -193,6 +193,16 @@ DELETE /api/hosts/{id}
 Also evicts that host's in-memory snapshot so the dashboard stops
 showing a ghost card.
 
+### Hosts — set tags
+
+```http
+PUT /api/hosts/{id}/tags
+{ "tags": { "tier": "prod", "env": "prod", "team": "ops" } }
+→ 200 { "tags": { "tier": "prod", "env": "prod", "team": "ops" } }
+```
+
+Replaces the host's tag set wholesale (no patch semantics). Empty map clears all tags. Keys may contain letters/digits/`-_.`, max 64 chars; values max 128 chars, may not contain `=` or `,`. Up to 32 tags per host. Tags surface on `GET /api/hosts` (`tags` field on each host) and feed alert rule `host_selector`.
+
 ### Hosts — metric history
 
 ```http
@@ -276,6 +286,118 @@ Bounds:
 | `downsample_archive_window` | 1 d – 365 d |
 
 The downsample values configure the future Parquet cold tier: bucket size is the time span represented by one archived point (`5m` averages old samples into one point every 5 minutes), hot window is how long full-detail raw SQLite rows are kept (`24h` keeps every sample for the last day), and archive window is how long compressed history is kept (`8760h` is about one year). Out-of-range or unparseable durations return 400. UI edits propagate to the retention loop within 30 s for retention fields; downsample fields are stored now and consumed once cold-tier compaction lands.
+
+### Alerts — rules
+
+```http
+GET    /api/alerts/rules
+POST   /api/alerts/rules
+PUT    /api/alerts/rules/{id}
+DELETE /api/alerts/rules/{id}
+```
+
+Body for create/update:
+
+```json
+{
+  "name": "CPU hot",
+  "metric": "cpu_pct",
+  "comparator": "gt",
+  "threshold": 80,
+  "for_seconds": 60,
+  "host": "web-1,db-1",
+  "host_selector": "tier=prod,env=prod",
+  "severity": "warning",
+  "enabled": true,
+  "channel_ids": [1, 3]
+}
+```
+
+`metric` ∈ `cpu_pct | ram_pct | swap_pct | disk_pct | load1 | offline`. The `offline` metric ignores `comparator`/`threshold` and clamps `for_seconds` up to a 60 s minimum.
+
+Host targeting precedence (first non-empty wins):
+
+1. `host_selector` — comma-separated `key=value` pairs. All must match a host's tag set. Bare key (no `=`) matches when the tag exists with empty value.
+2. `host` — empty (all), exact name, comma list (`web-1,db-1`), or glob (`web-*`, `*-prod`, `db-[0-9]*`) using `path.Match` semantics. Comma list = OR across segments; each segment may itself be exact or glob.
+3. Both empty → every registered + ever-seen host.
+
+`channel_ids` is the rule's routing link set. Omit or pass `null` to leave links unchanged on `PUT`. Pass an empty array to clear all links → broadcast to every enabled channel (Milestone-A default). Pass IDs to scope the rule to those channels only. The response always includes the **current** linked IDs.
+
+### Alerts — channels
+
+```http
+GET    /api/alerts/channels
+POST   /api/alerts/channels
+PUT    /api/alerts/channels/{id}
+DELETE /api/alerts/channels/{id}
+POST   /api/alerts/channels/{id}/test
+```
+
+Body for create/update:
+
+```json
+{
+  "name": "Ops ntfy",
+  "type": "ntfy",
+  "config": { "url": "https://ntfy.sh/lumen-alerts", "priority": "high" },
+  "enabled": true,
+  "min_severity": "warning"
+}
+```
+
+`type` ∈ `ntfy | discord | webhook | telegram`. `min_severity` (`info | warning | critical`, default `info`) makes the channel ignore events below that rank. The `test` action dispatches a synthetic `firing` notification synchronously and returns `{ "ok": true }` on success or `{ "ok": "false", "error": "…" }` on failure (HTTP 502).
+
+Per-type `config` shape:
+
+- **ntfy** – `{ "url": "<topic url>", "priority"?: "min|low|default|high|urgent", "topic"?: "..." }`
+- **discord** – `{ "url": "<webhook url>" }`
+- **webhook** – `{ "url": "<post endpoint>" }`
+- **telegram** – `{ "bot_token": "<BotFather token>", "chat_id": "<numeric or @username>", "parse_mode"?: "HTML|Markdown|MarkdownV2" }`
+
+On `GET`/list, the telegram `bot_token` is masked to `**********`; PUT with the mask preserves the stored token, PUT with a real value rotates it.
+
+### Alerts — events
+
+```http
+GET /api/alerts/events?state=firing|all&limit=100
+```
+
+Returns the persisted alert history newest-first. `state=firing` returns only currently-firing events; `state=all` includes resolved ones. `limit` defaults to 100, caps at 500.
+
+### Alerts — deliveries
+
+```http
+GET /api/alerts/deliveries?status=pending|inflight|sent|failed|dropped&channel_id=N&severity=critical|warning|info&limit=100
+```
+
+Returns the persisted notification dispatch log newest-first. Every (event × channel) attempt is one row. Empty filter values = no filter.
+
+Each row:
+
+```json
+{
+  "id": 42,
+  "event_id": 17,
+  "channel_id": 1,
+  "channel_name": "pager",
+  "channel_type": "ntfy",
+  "severity": "critical",
+  "status": "sent",
+  "attempts": 1,
+  "http_status": 200,
+  "error": null,
+  "next_retry_at": null,
+  "payload": { /* the Notification JSON dispatched */ },
+  "created_at": "2026-05-29T08:30:00Z",
+  "sent_at":    "2026-05-29T08:30:01Z"
+}
+```
+
+```http
+POST /api/alerts/deliveries/{id}/retry
+```
+
+Resets a `failed` or `dropped` row back to `pending` with `attempts=0` and `next_retry_at=NULL`. The next dispatcher tick picks it up. Returns 404 if the id is not in a retryable state.
 
 ### Agent policy
 

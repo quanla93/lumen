@@ -31,10 +31,19 @@ type hostView struct {
 	LastSeenAt        *string             `json:"last_seen_at"`
 	System            *api.SystemMetadata `json:"system,omitempty"`
 	MetadataUpdatedAt *string             `json:"metadata_updated_at,omitempty"`
+	Tags              map[string]string   `json:"tags"`
 }
 
-func toView(h Host) hostView {
-	v := hostView{ID: h.ID, Name: h.Name, CreatedAt: h.CreatedAt.UTC().Format("2006-01-02T15:04:05Z")}
+func toView(h Host, tags []Tag) hostView {
+	v := hostView{
+		ID:        h.ID,
+		Name:      h.Name,
+		CreatedAt: h.CreatedAt.UTC().Format("2006-01-02T15:04:05Z"),
+		Tags:      map[string]string{},
+	}
+	for _, t := range tags {
+		v.Tags[t.Key] = t.Value
+	}
 	if h.LastSeenAt.Valid {
 		s := h.LastSeenAt.Time.UTC().Format("2006-01-02T15:04:05Z")
 		v.LastSeenAt = &s
@@ -88,9 +97,85 @@ func (h *Handlers) List(w http.ResponseWriter, r *http.Request) {
 	}
 	views := make([]hostView, 0, len(all))
 	for _, x := range all {
-		views = append(views, toView(x))
+		tags, terr := ListTags(r.Context(), h.DB, x.ID)
+		if terr != nil {
+			h.Logger.Error("list host tags failed", "err", terr, "host_id", x.ID)
+			writeJSONError(w, http.StatusInternalServerError, "lookup failed")
+			return
+		}
+		views = append(views, toView(x, tags))
 	}
 	writeJSON(w, http.StatusOK, views)
+}
+
+// GET /api/host-tags
+//
+// Returns every distinct (key, value) tag currently in use across the
+// fleet, with the host count. Used by the alerts rule form to render a
+// clickable tag picker — operators see what tags actually exist instead
+// of typing key=value from memory.
+func (h *Handlers) ListTagFacets(w http.ResponseWriter, r *http.Request) {
+	facets, err := ListTagFacets(r.Context(), h.DB)
+	if err != nil {
+		h.Logger.Error("list tag facets failed", "err", err)
+		writeJSONError(w, http.StatusInternalServerError, "lookup failed")
+		return
+	}
+	out := make([]map[string]any, 0, len(facets))
+	for _, f := range facets {
+		out = append(out, map[string]any{
+			"key":        f.Key,
+			"value":      f.Value,
+			"host_count": f.HostCount,
+		})
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+// PUT /api/hosts/{id}/tags
+//
+// Body: {"tags": {"tier":"critical", "env":"prod"}}. Replaces the host's
+// tag set wholesale (no patch semantics). Empty map clears all tags.
+func (h *Handlers) SetTags(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	var req struct {
+		Tags map[string]string `json:"tags"`
+	}
+	if err := decode(r, &req); err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	tags := make([]Tag, 0, len(req.Tags))
+	for k, v := range req.Tags {
+		tags = append(tags, Tag{Key: k, Value: v})
+	}
+	out, err := SetTags(r.Context(), h.DB, id, tags)
+	if err != nil {
+		switch {
+		case errors.Is(err, ErrNotFound):
+			writeJSONError(w, http.StatusNotFound, "host not found")
+		case errors.Is(err, ErrTagKeyRequired),
+			errors.Is(err, ErrTagKeyInvalid),
+			errors.Is(err, ErrTagValueInvalid),
+			errors.Is(err, ErrTagKeyTooLong),
+			errors.Is(err, ErrTagValueTooLong),
+			errors.Is(err, ErrTooManyTags):
+			writeJSONError(w, http.StatusBadRequest, err.Error())
+		default:
+			h.Logger.Error("set host tags failed", "err", err, "host_id", id)
+			writeJSONError(w, http.StatusInternalServerError, "internal error")
+		}
+		return
+	}
+	m := map[string]string{}
+	for _, t := range out {
+		m[t.Key] = t.Value
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"tags": m})
 }
 
 // POST /api/hosts {name}
@@ -115,7 +200,7 @@ func (h *Handlers) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusCreated, map[string]any{
-		"host":  toView(host),
+		"host":  toView(host, nil),
 		"token": token,
 	})
 }

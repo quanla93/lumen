@@ -369,11 +369,11 @@ Mỗi quyết định ghi 1 dòng. Không xóa, không sửa — nếu đổi ý
 
 > 📋 **Implementation plan ready: [`docs/rfcs/0001-alerting.md`](docs/rfcs/0001-alerting.md)** — self-contained (migration 0008, `internal/hub/alerts` package, engine state machine, ntfy/discord/webhook channels, Alerts tab, verification). Milestone A is the first testable cut (ntfy-friendly). Tag v0.4.0 when Milestone A verified.
 
-- [ ] Alert engine v1: rules (threshold-based on metric + comparator + duration), evaluation loop over the in-memory store + history
-- [ ] Alert state model: firing/resolved transitions, dedup, cooldown; persist alert events
-- [ ] Notification channels: Discord, Telegram, ntfy, Webhook, Email (SMTP) — shared delivery engine (HMAC/retry/log) reused later by the Public API customer webhooks (see Public API module)
-- [ ] Alerts UI: rule CRUD + active/resolved alert list
-- [ ] Docs: `configure/alerts.md` + `integrations/notifications.md`
+- [x] Alert engine v1: rules (threshold-based on metric + comparator + duration), evaluation loop over the in-memory store + history (Milestone A — `internal/hub/alerts/engine.go`, eval every `alerts.eval_interval`, default 15s; offline metric clamps `for_seconds` to ≥60s)
+- [x] Alert state model: firing/resolved transitions, dedup, cooldown; persist alert events (per-(rule, host) in-memory state machine; persisted `alert_events` table; dedup via state — one firing row per breach until resolved)
+- [x] Notification channels: ntfy + Discord + Webhook (HTTP POST shared dispatcher in `notify.go`; Test action). Email/Telegram + HMAC signing + per-rule routing deferred to Milestone B+; webhook HMAC arrives with the Public API webhook unification.
+- [x] Alerts UI: rule CRUD + active/resolved alert list (new top-level Alerts tab with Active/History/Rules/Channels sub-tabs; `web/src/components/Alerts.tsx`)
+- [x] Docs: `configure/alerts.md` (`integrations/notifications.md` collapsed in — channel setup lives alongside the rule docs)
 
 **Definition of done**: Create a CPU>90%-for-5m rule, get a Discord/ntfy notification when a host (or Proxmox guest) breaches it, and see it resolve.
 
@@ -810,7 +810,7 @@ Nếu bạn (hoặc Claude) mở session mới:
 > Cập nhật mục này mỗi session.
 
 **Session**: 2026-05-29
-**Đang làm**: v0.3.0 released. **Phase 5 (Proxmox) DEFERRED to ~v1** after objective review (mirror duplicates Proxmox UI; agent push detects faster; alerting/others higher daily value) — agentless "guests-as-hosts" spec kept for revival. **Doing other features first.** Phase 6 = Alerting & notifications was split out and is the leading candidate for next (table-stakes monitoring value). Phase 3 lightweight log management still deferred post-v0.3. Public API module remains specced-only. **Next phase = Phase 6 Alerting** — implementation plan written to [`docs/rfcs/0001-alerting.md`](docs/rfcs/0001-alerting.md) and pushed so it can be coded on another machine. Start at Milestone A (migration 0008 → `internal/hub/alerts` → wiring → Alerts tab → docs).
+**Đang làm**: **Phase 6 Milestone A SHIPPED.** Threshold alerting end-to-end: migration 0008 (`alert_rules`, `notification_channels`, `alert_events`); new `internal/hub/alerts` package (rules/channels CRUD, state-machine engine, ntfy/discord/webhook dispatcher, REST handlers, engine state-machine test); wired into `server.go` + `cmd/lumen-hub/main.go` via `LUMEN_HUB_ALERT_INTERVAL` (default 15s) + settings key `alerts.eval_interval`; new top-level Alerts tab in the web UI (Active/History/Rules/Channels) with full EN+VI i18n; `configure/alerts.md` doc with end-to-end ntfy verification recipe. Go `build`/`vet` clean; `go test ./internal/hub/alerts/...` green; web `tsc --noEmit` clean. Phase 5 (Proxmox) remains deferred; Public API + log management still queued. **Next**: tag a release once verified in Docker against a real ntfy topic, then start Milestone B+ (Email/Telegram, HMAC, per-rule routing) — or pivot to Public API / cold tier per ACTION_PLAN priorities.
 **Phase 4 complete (2026-05-29):**
 - Version awareness: fixed ldflags `main.Version` mismatch (agent `var Version` + hub `var Version`); new `GET /api/version` (`internal/hub/meta`, with test); host detail shows `agent <ver>` + update-available pill (click-to-copy update cmd); dashboard host card shows update badge; `"dev"` builds suppress badges.
 - Update-agent panel on host detail: always-present card with the Compose update command, copy button, up-to-date/update-available status, and the "run on the agent's machine, not the hub" note.

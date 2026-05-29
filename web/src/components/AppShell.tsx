@@ -5,7 +5,7 @@ import { LanguageToggle } from "@/components/LanguageToggle";
 import { LumenWordmark } from "@/components/Logo";
 import { useI18n } from "@/i18n/useI18n";
 
-export type Tab = "dashboard" | "settings";
+export type Tab = "dashboard" | "alerts" | "settings";
 
 export function AppShell({
   user,
@@ -60,6 +60,9 @@ export function AppShell({
           <nav className="flex items-center gap-1 rounded-full border border-[color:var(--color-border)] bg-[color:var(--color-bg)] p-1 shadow-sm">
             <TabButton active={tab === "dashboard"} onClick={() => onTabChange("dashboard")}>
               {t("shell.dashboard")}
+            </TabButton>
+            <TabButton active={tab === "alerts"} onClick={() => onTabChange("alerts")}>
+              {t("shell.alerts")}
             </TabButton>
             <TabButton active={tab === "settings"} onClick={() => onTabChange("settings")}>
               {t("shell.settings")}

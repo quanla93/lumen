@@ -6,6 +6,7 @@ import { AppShell, type Tab } from "@/components/AppShell";
 import { Dashboard } from "@/components/Dashboard";
 import { HostDetail } from "@/components/HostDetail";
 import { Settings } from "@/components/Settings";
+import { Alerts } from "@/components/Alerts";
 import { CenterCard } from "@/components/CenterCard";
 import { useI18n } from "@/i18n/useI18n";
 
@@ -65,6 +66,8 @@ export default function App() {
         ) : (
           <Dashboard onSelectHost={onSelectHost} />
         );
+      } else if (view.tab === "alerts") {
+        body = <Alerts />;
       } else {
         body = <Settings user={view.user} />;
       }

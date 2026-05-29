@@ -16,6 +16,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 
 	hubagent "github.com/quanla93/lumen/internal/hub/agent"
+	"github.com/quanla93/lumen/internal/hub/alerts"
 	"github.com/quanla93/lumen/internal/hub/auth"
 	"github.com/quanla93/lumen/internal/hub/hosts"
 	"github.com/quanla93/lumen/internal/hub/ingest"
@@ -45,6 +46,7 @@ type Config struct {
 	DownsampleArchiveWindow time.Duration // how long archived Parquet data is retained
 	BatchFlushEvery         time.Duration // coalesced INSERT cadence; <=0 → 60s default
 	BatchFlushSize          int           // flush early once pending hits this; <=0 → 5000
+	AlertEvalInterval       time.Duration // alerts engine eval cadence; <=0 → 15s default
 	AdminUsername           string        // env-seeded admin; empty disables seed
 	AdminPassword           string        // plaintext at boot, hashed via Argon2id before insert
 	Logger                  *slog.Logger
@@ -79,6 +81,7 @@ func Run(ctx context.Context, cfg Config) error {
 		settings.KeyDownsampleBucketSize:    cfg.DownsampleBucketSize.String(),
 		settings.KeyDownsampleHotWindow:     cfg.DownsampleHotWindow.String(),
 		settings.KeyDownsampleArchiveWindow: cfg.DownsampleArchiveWindow.String(),
+		settings.KeyAlertEvalInterval:       cfg.AlertEvalInterval.String(),
 	}); err != nil {
 		return fmt.Errorf("seed settings: %w", err)
 	}
@@ -115,6 +118,22 @@ func Run(ctx context.Context, cfg Config) error {
 	settingsHandlers := settings.NewHandlers(db, logger)
 	installHandler := &install.Handler{InstallDir: cfg.InstallDir, Logger: logger}
 	metaHandler := meta.New(cfg.Version)
+	alertsHandlers := alerts.NewHandlers(db, logger.With("subsys", "alerts"))
+	alertsDispatcher := alerts.NewDispatcher(alerts.DispatcherConfig{
+		DB:     db,
+		Logger: logger.With("subsys", "alerts-dispatch"),
+	})
+	go alertsDispatcher.Run(ctx)
+	alertsEngine := alerts.NewEngine(alerts.Config{
+		DB:              db,
+		Store:           st,
+		Hosts:           alerts.HostsListerFromDB(db),
+		Tags:            alerts.TagsListerFromDB(db),
+		Dispatcher:      alertsDispatcher,
+		DefaultInterval: cfg.AlertEvalInterval,
+		Logger:          logger.With("subsys", "alerts"),
+	})
+	go alertsEngine.Run(ctx)
 	requireSession := auth.RequireSession(cfg.Secret)
 
 	r := chi.NewRouter()
@@ -151,11 +170,29 @@ func Run(ctx context.Context, cfg Config) error {
 		r.Delete("/api/hosts/{id}", hostsHandlers.Delete)
 		r.Post("/api/hosts/{id}/rotate", hostsHandlers.Rotate)
 		r.Get("/api/hosts/{id}/metrics", hostsHandlers.Metrics)
+		r.Put("/api/hosts/{id}/tags", hostsHandlers.SetTags)
+		r.Get("/api/host-tags", hostsHandlers.ListTagFacets)
 
 		r.Post("/api/account/password", authHandlers.ChangePassword)
 
 		r.Get("/api/settings", settingsHandlers.Get)
 		r.Put("/api/settings", settingsHandlers.Put)
+
+		r.Get("/api/alerts/rules", alertsHandlers.ListRules)
+		r.Post("/api/alerts/rules", alertsHandlers.CreateRule)
+		r.Put("/api/alerts/rules/{id}", alertsHandlers.UpdateRule)
+		r.Delete("/api/alerts/rules/{id}", alertsHandlers.DeleteRule)
+
+		r.Get("/api/alerts/channels", alertsHandlers.ListChannels)
+		r.Post("/api/alerts/channels", alertsHandlers.CreateChannel)
+		r.Put("/api/alerts/channels/{id}", alertsHandlers.UpdateChannel)
+		r.Delete("/api/alerts/channels/{id}", alertsHandlers.DeleteChannel)
+		r.Post("/api/alerts/channels/{id}/test", alertsHandlers.TestChannel)
+
+		r.Get("/api/alerts/events", alertsHandlers.ListEvents)
+
+		r.Get("/api/alerts/deliveries", alertsHandlers.ListDeliveries)
+		r.Post("/api/alerts/deliveries/{id}/retry", alertsHandlers.RetryDelivery)
 	})
 
 	// Everything else falls to the embedded web bundle (SPA-style), except

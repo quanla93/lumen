@@ -1,0 +1,353 @@
+package alerts
+
+import (
+	"context"
+	"database/sql"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"net/url"
+	"strings"
+	"time"
+)
+
+// Allowed channel types. Email lands in Milestone C.
+var AllowedChannelTypes = []string{"ntfy", "discord", "webhook", "telegram"}
+
+var (
+	ErrChannelNotFound       = errors.New("notification channel not found")
+	ErrChannelNameRequired   = errors.New("name required")
+	ErrInvalidChannelType    = errors.New("invalid channel type")
+	ErrChannelURLRequired    = errors.New("config.url required")
+	ErrChannelURLNotHTTP     = errors.New("config.url must be http(s)")
+	ErrChannelConfigInvalid  = errors.New("invalid channel config")
+	ErrInvalidMinSeverity    = errors.New("invalid min_severity")
+	ErrTelegramBotRequired   = errors.New("config.bot_token required for telegram")
+	ErrTelegramChatRequired  = errors.New("config.chat_id required for telegram")
+)
+
+// Channel holds one notification_channels row. Config is the raw JSON
+// string (opaque to most callers); ChannelConfig exposes the parsed
+// fields the dispatcher actually needs.
+type Channel struct {
+	ID          int64
+	Name        string
+	Type        string
+	Config      string // raw JSON as stored
+	OwnerType   string // 'admin' today; forward-compat for 'api_key'
+	Enabled     bool
+	MinSeverity string // info|warning|critical — channel suppresses events below this rank
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
+// ChannelConfig is the parsed shape of Channel.Config. Different channel
+// types use different subsets:
+//   - ntfy:     URL (topic URL), Priority (optional), Topic (optional)
+//   - discord:  URL (webhook URL)
+//   - webhook:  URL
+//   - telegram: BotToken + ChatID (+ ParseMode optional). No URL needed —
+//               the dispatcher composes the Bot API endpoint from the
+//               token. BotToken is the secret; never log it.
+type ChannelConfig struct {
+	URL       string `json:"url,omitempty"`
+	Topic     string `json:"topic,omitempty"`     // ntfy: optional explicit topic header
+	Priority  string `json:"priority,omitempty"`  // ntfy: min|low|default|high|urgent
+	BotToken  string `json:"bot_token,omitempty"` // telegram
+	ChatID    string `json:"chat_id,omitempty"`   // telegram (string lets users paste @channel or numeric id)
+	ParseMode string `json:"parse_mode,omitempty"` // telegram: HTML|Markdown|MarkdownV2 (default HTML)
+}
+
+func (c *Channel) ParsedConfig() (ChannelConfig, error) {
+	var cc ChannelConfig
+	if c.Config == "" {
+		return cc, nil
+	}
+	if err := json.Unmarshal([]byte(c.Config), &cc); err != nil {
+		return cc, fmt.Errorf("%w: %v", ErrChannelConfigInvalid, err)
+	}
+	return cc, nil
+}
+
+const channelColumns = `id, name, type, config, owner_type, enabled, min_severity, created_at, updated_at`
+
+func scanChannel(scanner interface{ Scan(dest ...any) error }) (Channel, error) {
+	var c Channel
+	var enabled int
+	err := scanner.Scan(
+		&c.ID, &c.Name, &c.Type, &c.Config, &c.OwnerType, &enabled, &c.MinSeverity,
+		&c.CreatedAt, &c.UpdatedAt,
+	)
+	if err != nil {
+		return Channel{}, err
+	}
+	c.Enabled = enabled != 0
+	return c, nil
+}
+
+func validateChannel(c *Channel) error {
+	c.Name = strings.TrimSpace(c.Name)
+	if c.Name == "" {
+		return ErrChannelNameRequired
+	}
+	if len(c.Name) > 128 {
+		return errors.New("name too long (max 128 chars)")
+	}
+	if !contains(AllowedChannelTypes, c.Type) {
+		return fmt.Errorf("%w: %q (allowed: %s)", ErrInvalidChannelType, c.Type, strings.Join(AllowedChannelTypes, ","))
+	}
+	if c.OwnerType == "" {
+		c.OwnerType = "admin"
+	}
+	if c.MinSeverity == "" {
+		c.MinSeverity = "info"
+	}
+	if !contains(AllowedSeverities, c.MinSeverity) {
+		return fmt.Errorf("%w: %q", ErrInvalidMinSeverity, c.MinSeverity)
+	}
+	cc, err := c.ParsedConfig()
+	if err != nil {
+		return err
+	}
+	switch c.Type {
+	case "telegram":
+		if strings.TrimSpace(cc.BotToken) == "" {
+			return ErrTelegramBotRequired
+		}
+		if strings.TrimSpace(cc.ChatID) == "" {
+			return ErrTelegramChatRequired
+		}
+	default:
+		if strings.TrimSpace(cc.URL) == "" {
+			return ErrChannelURLRequired
+		}
+		u, perr := url.Parse(cc.URL)
+		if perr != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+			return ErrChannelURLNotHTTP
+		}
+	}
+	return nil
+}
+
+func ListChannels(ctx context.Context, db *sql.DB) ([]Channel, error) {
+	rows, err := db.QueryContext(ctx,
+		`SELECT `+channelColumns+` FROM notification_channels ORDER BY id DESC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]Channel, 0)
+	for rows.Next() {
+		c, err := scanChannel(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
+// ListEnabledChannels is what the engine dispatches into on every event.
+func ListEnabledChannels(ctx context.Context, db *sql.DB) ([]Channel, error) {
+	rows, err := db.QueryContext(ctx, `
+		SELECT `+channelColumns+` FROM notification_channels
+		WHERE enabled = 1 AND owner_type = 'admin'
+		ORDER BY id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]Channel, 0)
+	for rows.Next() {
+		c, err := scanChannel(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
+func GetChannel(ctx context.Context, db *sql.DB, id int64) (Channel, error) {
+	c, err := scanChannel(db.QueryRowContext(ctx,
+		`SELECT `+channelColumns+` FROM notification_channels WHERE id = ?`, id))
+	if errors.Is(err, sql.ErrNoRows) {
+		return Channel{}, ErrChannelNotFound
+	}
+	return c, err
+}
+
+func CreateChannel(ctx context.Context, db *sql.DB, c Channel) (Channel, error) {
+	if err := validateChannel(&c); err != nil {
+		return Channel{}, err
+	}
+	res, err := db.ExecContext(ctx, `
+		INSERT INTO notification_channels (name, type, config, owner_type, enabled, min_severity)
+		VALUES (?, ?, ?, ?, ?, ?)`,
+		c.Name, c.Type, c.Config, c.OwnerType, boolToInt(c.Enabled), c.MinSeverity,
+	)
+	if err != nil {
+		return Channel{}, fmt.Errorf("insert channel: %w", err)
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		return Channel{}, err
+	}
+	return GetChannel(ctx, db, id)
+}
+
+func UpdateChannel(ctx context.Context, db *sql.DB, c Channel) (Channel, error) {
+	if c.ID <= 0 {
+		return Channel{}, ErrChannelNotFound
+	}
+	if err := validateChannel(&c); err != nil {
+		return Channel{}, err
+	}
+	res, err := db.ExecContext(ctx, `
+		UPDATE notification_channels SET
+			name = ?, type = ?, config = ?, enabled = ?, min_severity = ?,
+			updated_at = CURRENT_TIMESTAMP
+		WHERE id = ?`,
+		c.Name, c.Type, c.Config, boolToInt(c.Enabled), c.MinSeverity, c.ID,
+	)
+	if err != nil {
+		return Channel{}, fmt.Errorf("update channel: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return Channel{}, err
+	}
+	if n == 0 {
+		return Channel{}, ErrChannelNotFound
+	}
+	return GetChannel(ctx, db, c.ID)
+}
+
+// SeverityRank lets the engine compare a channel's min_severity against
+// an event's severity. Unknown values rank as info so we err on the side
+// of delivery.
+func SeverityRank(s string) int {
+	switch s {
+	case "warning":
+		return 1
+	case "critical":
+		return 2
+	default:
+		return 0
+	}
+}
+
+// ChannelsForRule returns the channels the engine should fan out to for
+// the given rule. Empty link set → fall back to "every enabled admin
+// channel" (Milestone-A behaviour, preserves backward compatibility for
+// rules created before routing existed).
+func ChannelsForRule(ctx context.Context, db *sql.DB, ruleID int64) ([]Channel, error) {
+	rows, err := db.QueryContext(ctx, `
+		SELECT `+prefixCols(channelColumns, "c.")+`
+		FROM notification_channels c
+		JOIN alert_rule_channels rc ON rc.channel_id = c.id
+		WHERE rc.rule_id = ? AND c.enabled = 1 AND c.owner_type = 'admin'
+		ORDER BY c.id`, ruleID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]Channel, 0)
+	for rows.Next() {
+		c, err := scanChannel(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if len(out) > 0 {
+		return out, nil
+	}
+	return ListEnabledChannels(ctx, db)
+}
+
+// SetRuleChannels replaces the routing link set for a rule. Empty/nil
+// `channelIDs` clears all links → restores broadcast-to-all behaviour.
+// Caller validates that channel IDs exist (FK constraint will also error).
+func SetRuleChannels(ctx context.Context, db *sql.DB, ruleID int64, channelIDs []int64) error {
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx,
+		`DELETE FROM alert_rule_channels WHERE rule_id = ?`, ruleID); err != nil {
+		return fmt.Errorf("clear rule channels: %w", err)
+	}
+	if len(channelIDs) > 0 {
+		stmt, err := tx.PrepareContext(ctx,
+			`INSERT INTO alert_rule_channels (rule_id, channel_id) VALUES (?, ?)`)
+		if err != nil {
+			return fmt.Errorf("prepare rule channel insert: %w", err)
+		}
+		defer stmt.Close()
+		seen := map[int64]struct{}{}
+		for _, cid := range channelIDs {
+			if cid <= 0 {
+				continue
+			}
+			if _, dup := seen[cid]; dup {
+				continue
+			}
+			seen[cid] = struct{}{}
+			if _, err := stmt.ExecContext(ctx, ruleID, cid); err != nil {
+				return fmt.Errorf("insert rule channel %d: %w", cid, err)
+			}
+		}
+	}
+	return tx.Commit()
+}
+
+// GetRuleChannelIDs is the read side of SetRuleChannels — used by the API
+// to render the rule edit form.
+func GetRuleChannelIDs(ctx context.Context, db *sql.DB, ruleID int64) ([]int64, error) {
+	rows, err := db.QueryContext(ctx,
+		`SELECT channel_id FROM alert_rule_channels WHERE rule_id = ? ORDER BY channel_id`,
+		ruleID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]int64, 0)
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out = append(out, id)
+	}
+	return out, rows.Err()
+}
+
+// prefixCols rewrites a `id, name, ...` column list to `pfx.id, pfx.name, ...`
+// so the same column constant works in JOIN queries.
+func prefixCols(cols, pfx string) string {
+	parts := strings.Split(cols, ",")
+	for i, p := range parts {
+		parts[i] = pfx + strings.TrimSpace(p)
+	}
+	return strings.Join(parts, ", ")
+}
+
+func DeleteChannel(ctx context.Context, db *sql.DB, id int64) error {
+	res, err := db.ExecContext(ctx, `DELETE FROM notification_channels WHERE id = ?`, id)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return ErrChannelNotFound
+	}
+	return nil
+}

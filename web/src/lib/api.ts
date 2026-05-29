@@ -19,6 +19,12 @@ export type SystemMetadata = {
   agent_version?: string;
 };
 
+export type TagFacet = {
+  key: string;
+  value: string;
+  host_count: number;
+};
+
 export type Host = {
   id: number;
   name: string;
@@ -26,6 +32,7 @@ export type Host = {
   last_seen_at: string | null;
   system?: SystemMetadata;
   metadata_updated_at?: string;
+  tags: Record<string, string>;
 };
 
 export type CreateHostResponse = {
@@ -155,6 +162,170 @@ export const settingsApi = {
     }),
 };
 
+// ----- Alerts (Phase 6 / RFC 0001) -----
+
+export type AlertMetric =
+  | "cpu_pct"
+  | "ram_pct"
+  | "swap_pct"
+  | "disk_pct"
+  | "load1"
+  | "offline";
+
+export type AlertComparator = "gt" | "lt";
+export type AlertSeverity = "info" | "warning" | "critical";
+
+export type AlertRule = {
+  id: number;
+  name: string;
+  metric: AlertMetric;
+  comparator: AlertComparator;
+  threshold: number;
+  for_seconds: number;
+  host: string;
+  host_selector: string;
+  severity: AlertSeverity;
+  enabled: boolean;
+  channel_ids: number[];
+  created_at: string;
+  updated_at: string;
+};
+
+export type AlertRuleWrite = {
+  name: string;
+  metric: AlertMetric;
+  comparator: AlertComparator;
+  threshold: number;
+  for_seconds: number;
+  host: string;
+  host_selector: string;
+  severity: AlertSeverity;
+  enabled?: boolean;
+  // null/undefined → backend leaves links unchanged on UPDATE.
+  // Empty array → clear all links → broadcast to every enabled channel.
+  channel_ids?: number[];
+};
+
+export type ChannelType = "ntfy" | "discord" | "webhook" | "telegram";
+
+export type ChannelConfig = {
+  url?: string;
+  topic?: string;
+  priority?: string;
+  bot_token?: string;
+  chat_id?: string;
+  parse_mode?: string;
+};
+
+export type NotificationChannel = {
+  id: number;
+  name: string;
+  type: ChannelType;
+  config: ChannelConfig;
+  owner_type: string;
+  enabled: boolean;
+  min_severity: AlertSeverity;
+  created_at: string;
+  updated_at: string;
+};
+
+export type NotificationChannelWrite = {
+  name: string;
+  type: ChannelType;
+  config: ChannelConfig;
+  enabled?: boolean;
+  min_severity?: AlertSeverity;
+};
+
+// Server-side placeholder for the telegram bot token. The UI keeps this
+// value in the form's bot_token field on edit; PUTting it back tells the
+// hub to preserve the stored token without retyping.
+export const TELEGRAM_TOKEN_MASK = "**********";
+
+export type AlertEvent = {
+  id: number;
+  rule_id: number;
+  rule_name: string;
+  host: string;
+  metric: string;
+  severity: AlertSeverity;
+  state: "firing" | "resolved";
+  value: number;
+  message: string;
+  started_at: string;
+  resolved_at: string | null;
+};
+
+export type DeliveryStatus = "pending" | "inflight" | "sent" | "failed" | "dropped";
+
+export type DeliveryView = {
+  id: number;
+  event_id: number;
+  channel_id: number;
+  channel_name: string;
+  channel_type: string;
+  severity: AlertSeverity;
+  status: DeliveryStatus;
+  attempts: number;
+  http_status: number | null;
+  error: string | null;
+  next_retry_at: string | null;
+  payload: unknown;
+  created_at: string;
+  sent_at: string | null;
+};
+
+export const alertsApi = {
+  rules: {
+    list: () => api<AlertRule[]>("/api/alerts/rules"),
+    create: (r: AlertRuleWrite) =>
+      api<AlertRule>("/api/alerts/rules", {
+        method: "POST",
+        body: JSON.stringify(r),
+      }),
+    update: (id: number, r: AlertRuleWrite) =>
+      api<AlertRule>(`/api/alerts/rules/${id}`, {
+        method: "PUT",
+        body: JSON.stringify(r),
+      }),
+    remove: (id: number) =>
+      api<void>(`/api/alerts/rules/${id}`, { method: "DELETE" }),
+  },
+  channels: {
+    list: () => api<NotificationChannel[]>("/api/alerts/channels"),
+    create: (c: NotificationChannelWrite) =>
+      api<NotificationChannel>("/api/alerts/channels", {
+        method: "POST",
+        body: JSON.stringify(c),
+      }),
+    update: (id: number, c: NotificationChannelWrite) =>
+      api<NotificationChannel>(`/api/alerts/channels/${id}`, {
+        method: "PUT",
+        body: JSON.stringify(c),
+      }),
+    remove: (id: number) =>
+      api<void>(`/api/alerts/channels/${id}`, { method: "DELETE" }),
+    test: (id: number) =>
+      api<{ ok: boolean }>(`/api/alerts/channels/${id}/test`, {
+        method: "POST",
+      }),
+  },
+  events: (state: "firing" | "resolved" | "all" = "all", limit = 100) => {
+    const params = new URLSearchParams({ state, limit: String(limit) });
+    return api<AlertEvent[]>(`/api/alerts/events?${params.toString()}`);
+  },
+  deliveries: (filter?: { status?: DeliveryStatus; channel_id?: number; severity?: AlertSeverity; limit?: number }) => {
+    const params = new URLSearchParams();
+    if (filter?.status) params.set("status", filter.status);
+    if (filter?.channel_id) params.set("channel_id", String(filter.channel_id));
+    if (filter?.severity) params.set("severity", filter.severity);
+    params.set("limit", String(filter?.limit ?? 100));
+    return api<DeliveryView[]>(`/api/alerts/deliveries?${params.toString()}`);
+  },
+  retryDelivery: (id: number) =>
+    api<{ status: string }>(`/api/alerts/deliveries/${id}/retry`, { method: "POST" }),
+};
+
 export const hostsApi = {
   list: () => api<Host[]>("/api/hosts"),
   create: (name: string) =>
@@ -166,6 +337,12 @@ export const hostsApi = {
     api<void>(`/api/hosts/${id}`, { method: "DELETE" }),
   rotate: (id: number) =>
     api<{ token: string }>(`/api/hosts/${id}/rotate`, { method: "POST" }),
+  setTags: (id: number, tags: Record<string, string>) =>
+    api<{ tags: Record<string, string> }>(`/api/hosts/${id}/tags`, {
+      method: "PUT",
+      body: JSON.stringify({ tags }),
+    }),
+  tagFacets: () => api<TagFacet[]>("/api/host-tags"),
   metrics: (id: number, q?: MetricsQuery) => {
     const params = new URLSearchParams();
     if (q?.from) params.set("from", q.from);

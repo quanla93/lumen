@@ -75,7 +75,7 @@ If those are dealbreakers, look at [Grafana + Prometheus](https://grafana.com) o
 | Deploy | Docker Compose (primary), single binary + systemd, install script | ✅ |
 | Agent lifecycle | Per-agent Docker Compose, version awareness, in-UI "Update agent" guidance | ✅ |
 | Auto-discovery | LXC, Proxmox VMs | 🛣️ |
-| Alerts | Discord, Telegram, ntfy, Email, Webhook | 🛣️ |
+| Alerts | Threshold rules + offline detection; ntfy / Discord / webhook delivery (Email + Telegram coming) | ✅ (Milestone A) |
 | TOTP 2FA / multi-user | Optional second factor, read-only viewer role | 🛣️ |
 
 ---

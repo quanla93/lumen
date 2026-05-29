@@ -26,6 +26,7 @@ const (
 	KeyDownsampleBucketSize    = "downsample.bucket_size"
 	KeyDownsampleHotWindow     = "downsample.hot_window"
 	KeyDownsampleArchiveWindow = "downsample.archive_window"
+	KeyAlertEvalInterval       = "alerts.eval_interval"
 )
 
 // Get returns the string value for key, or sql.ErrNoRows if absent.

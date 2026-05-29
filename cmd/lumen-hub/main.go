@@ -14,6 +14,7 @@
 //	LUMEN_HUB_AGENT_INTERVAL      (default "5s")           - runtime policy for agent collection cadence
 //	LUMEN_HUB_BATCH_FLUSH_EVERY   (default "60s")          - coalesced snapshot-INSERT cadence (HDD-friendly)
 //	LUMEN_HUB_BATCH_FLUSH_SIZE    (default "5000")         - flush early once pending rows hit this count
+//	LUMEN_HUB_ALERT_INTERVAL      (default "15s")          - alerts engine evaluation cadence
 //	LUMEN_HUB_ADMIN_USERNAME      (default "")             - seed admin username; both this and password required to enable
 //	LUMEN_HUB_ADMIN_PASSWORD      (default "")             - seed admin plaintext password (Argon2id at write time); empty disables seed
 //
@@ -61,6 +62,7 @@ func main() {
 	downsampleArchiveWindow := envcfg.Duration("LUMEN_HUB_DOWNSAMPLE_ARCHIVE_WINDOW", 365*24*time.Hour)
 	batchFlushEvery := envcfg.Duration("LUMEN_HUB_BATCH_FLUSH_EVERY", 60*time.Second)
 	batchFlushSize := envcfg.Int("LUMEN_HUB_BATCH_FLUSH_SIZE", 5000)
+	alertInterval := envcfg.Duration("LUMEN_HUB_ALERT_INTERVAL", 15*time.Second)
 	adminUsername := envcfg.String("LUMEN_HUB_ADMIN_USERNAME", "")
 	adminPassword := envcfg.String("LUMEN_HUB_ADMIN_PASSWORD", "")
 
@@ -96,6 +98,7 @@ func main() {
 		DownsampleArchiveWindow: downsampleArchiveWindow,
 		BatchFlushEvery:         batchFlushEvery,
 		BatchFlushSize:          batchFlushSize,
+		AlertEvalInterval:       alertInterval,
 		AdminUsername:           adminUsername,
 		AdminPassword:           adminPassword,
 		Logger:                  logger,

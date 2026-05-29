@@ -19,7 +19,9 @@ Alerting is general (every host), not Proxmox-specific. Notification channels he
 - UI: a new top-level **Alerts** tab (active alerts + recent + rules CRUD + channels CRUD + Test).
 - Docs: `configure/alerts.md`.
 
-**Deferred to Milestone B+:** Email (SMTP), Telegram (bot token); per-rule channel routing + severity→channel filters; cooldown/flap-suppression tuning; alert on derived/rate metrics; alert history retention sweep; HMAC signing on the webhook channel (lands with the Public API webhook unification).
+**Milestone B (delivered 2026-05-29):** Telegram channel (Bot API), per-rule channel routing (`alert_rule_channels` M:N), per-channel `min_severity` floor, host glob patterns (stdlib `path.Match`). Engine reads rule's selected channels per dispatch (fallback to all-enabled when empty) so a routing edit lands on the next tick. Telegram bot token masked on read; `**********` on PUT preserves the stored token.
+
+**Deferred to Milestone C+:** Email (SMTP); cooldown/flap-suppression tuning beyond per-rule `for_seconds`; alert on derived/rate metrics; alert history retention sweep; HMAC signing on the webhook channel (lands with the Public API webhook unification); **host tags / label selectors** — a `host_tags(host_id, key, value)` table + a rule `host_selector` field (label-style, e.g. `tier=critical,env=prod`) replacing/extending the current `host` glob for fleets where naming is irregular. Same selector mechanism should serve the Public API key `host_scope` so alerting + RBAC share one selector implementation. Draft as RFC 0002 when the existing per-host/glob idioms stop scaling for a real user.
 
 ## Backend
 
