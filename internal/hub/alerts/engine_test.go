@@ -107,8 +107,9 @@ func TestEvaluate_AllHostsRule_PerHostState(t *testing.T) {
 	}
 }
 
-// 'offline' rule fires when last-seen exceeds the MinOfflineFor floor.
-// for_seconds smaller than 60s is clamped up to 60s.
+// 'offline' rule fires once last-seen age crosses MinOfflineFor (60s).
+// With for_seconds=0 the alert fires on the first tick that detects the
+// breach — the 60s detection window is the only "ignore blips" floor.
 func TestEvaluate_OfflineRule_MinFloor(t *testing.T) {
 	e := newTestEngine()
 	rule := Rule{
@@ -125,26 +126,17 @@ func TestEvaluate_OfflineRule_MinFloor(t *testing.T) {
 		t.Fatalf("expected not offline at 5s age, got %#v", tr)
 	}
 
-	// 90s age > MinOfflineFor (60s): breach + immediate fire (for clamps
-	// to 60s but pendingSince also got bumped, so we need to advance time).
-	// First call: pending set.
+	// 90s age > MinOfflineFor (60s): breach + immediate fire (no extra
+	// persistence window when for_seconds=0).
 	t1 := now.Add(90 * time.Second)
 	tr = e.Tick(t1, []Rule{rule},
 		[]api.HostSnapshot{snap("h1", 0, 90*time.Second, t1)}, nil)
-	if len(tr) != 0 {
-		t.Fatalf("expected pending (not yet firing) at first breach, got %#v", tr)
-	}
-
-	// Advance past clamp window.
-	t2 := t1.Add(MinOfflineFor + time.Second)
-	tr = e.Tick(t2, []Rule{rule},
-		[]api.HostSnapshot{snap("h1", 0, t2.Sub(now), t2)}, nil)
 	if len(tr) != 1 || tr[0].State != "firing" {
-		t.Fatalf("expected firing after clamp window, got %#v", tr)
+		t.Fatalf("expected firing on first tick past 60s silence, got %#v", tr)
 	}
 
 	// Host reports a fresh sample → resolve.
-	t3 := t2.Add(5 * time.Second)
+	t3 := t1.Add(5 * time.Second)
 	tr = e.Tick(t3, []Rule{rule},
 		[]api.HostSnapshot{snap("h1", 0, 0, t3)}, nil)
 	if len(tr) != 1 || tr[0].State != "resolved" {
@@ -152,7 +144,36 @@ func TestEvaluate_OfflineRule_MinFloor(t *testing.T) {
 	}
 }
 
-// Offline against a registered host that has NEVER reported still fires.
+// for_seconds > 0 on offline still adds extra hold on top of the 60s
+// detection window. Confirms we didn't accidentally turn it into a no-op.
+func TestEvaluate_OfflineRule_ForSecondsAddsHold(t *testing.T) {
+	e := newTestEngine()
+	rule := Rule{
+		ID: 4, Name: "offline-hold", Metric: "offline", Comparator: "gt",
+		Threshold: 0, ForSeconds: 30, Host: "h1", Severity: "critical",
+		Enabled: true,
+	}
+	now := time.Date(2026, 5, 29, 12, 0, 0, 0, time.UTC)
+
+	// First breach tick: only sets pendingSince, doesn't fire yet.
+	t1 := now.Add(90 * time.Second)
+	tr := e.Tick(t1, []Rule{rule},
+		[]api.HostSnapshot{snap("h1", 0, 90*time.Second, t1)}, nil)
+	if len(tr) != 0 {
+		t.Fatalf("expected pending (not yet firing) with for_seconds=30, got %#v", tr)
+	}
+
+	// 30s later: hold satisfied, fires.
+	t2 := t1.Add(31 * time.Second)
+	tr = e.Tick(t2, []Rule{rule},
+		[]api.HostSnapshot{snap("h1", 0, t2.Sub(now), t2)}, nil)
+	if len(tr) != 1 || tr[0].State != "firing" {
+		t.Fatalf("expected firing after for_seconds hold, got %#v", tr)
+	}
+}
+
+// Offline against a registered host that has NEVER reported fires on
+// the first tick — evaluateOne returns breach=true unconditionally.
 func TestEvaluate_OfflineRule_NeverReported(t *testing.T) {
 	e := newTestEngine()
 	rule := Rule{
@@ -161,16 +182,9 @@ func TestEvaluate_OfflineRule_NeverReported(t *testing.T) {
 		Enabled: true,
 	}
 	now := time.Date(2026, 5, 29, 12, 0, 0, 0, time.UTC)
-	// First tick: pending.
 	tr := e.Tick(now, []Rule{rule}, nil, []string{"ghost"})
-	if len(tr) != 0 {
-		t.Fatalf("expected pending first tick, got %#v", tr)
-	}
-	// After clamp window: fire.
-	tr = e.Tick(now.Add(MinOfflineFor+time.Second), []Rule{rule},
-		nil, []string{"ghost"})
 	if len(tr) != 1 || tr[0].State != "firing" || tr[0].Host != "ghost" {
-		t.Fatalf("expected firing for never-reported host, got %#v", tr)
+		t.Fatalf("expected firing for never-reported host on first tick, got %#v", tr)
 	}
 }
 

@@ -16,10 +16,12 @@ import (
 	"github.com/quanla93/lumen/internal/shared/api"
 )
 
-// MinOfflineFor is the floor we apply to the 'offline' rule's "for" so a
-// single missed tick never trips alerts. The agent ships every ~5s by
-// default; 60s is roughly 12 missed ticks — comfortably past transient
-// network blips.
+// MinOfflineFor is the silence window before a host is considered
+// offline. The agent ships every ~5s by default; 60s is roughly 12
+// missed ticks — comfortably past transient network blips. This is the
+// only "ignore blips" floor; we do NOT also clamp the rule's
+// for_seconds on top, so for_seconds=0 means "fire as soon as breach
+// is detected" (i.e. at T=60s after silence).
 const MinOfflineFor = 60 * time.Second
 
 // SnapshotProvider is what the engine reads each tick. Implemented by
@@ -250,9 +252,6 @@ func (e *Engine) evaluate(now time.Time, rules []Rule, snap []api.HostSnapshot, 
 
 			breach, value := evaluateOne(r, host, byHost, now)
 			forDur := time.Duration(r.ForSeconds) * time.Second
-			if r.Metric == "offline" && forDur < MinOfflineFor {
-				forDur = MinOfflineFor
-			}
 
 			switch {
 			case breach && !st.firing:
