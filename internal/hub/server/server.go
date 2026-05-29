@@ -20,6 +20,7 @@ import (
 	"github.com/quanla93/lumen/internal/hub/hosts"
 	"github.com/quanla93/lumen/internal/hub/ingest"
 	"github.com/quanla93/lumen/internal/hub/install"
+	"github.com/quanla93/lumen/internal/hub/meta"
 	"github.com/quanla93/lumen/internal/hub/retention"
 	"github.com/quanla93/lumen/internal/hub/settings"
 	"github.com/quanla93/lumen/internal/hub/storage"
@@ -31,6 +32,7 @@ import (
 type Config struct {
 	Addr                    string
 	Dev                     bool
+	Version                 string // hub build version (also the latest agent version, same release train)
 	StreamInterval          time.Duration
 	DBPath                  string
 	InstallDir              string
@@ -112,6 +114,7 @@ func Run(ctx context.Context, cfg Config) error {
 	hostsHandlers := hosts.NewHandlers(db, st, logger)
 	settingsHandlers := settings.NewHandlers(db, logger)
 	installHandler := &install.Handler{InstallDir: cfg.InstallDir, Logger: logger}
+	metaHandler := meta.New(cfg.Version)
 	requireSession := auth.RequireSession(cfg.Secret)
 
 	r := chi.NewRouter()
@@ -142,6 +145,7 @@ func Run(ctx context.Context, cfg Config) error {
 	r.Group(func(r chi.Router) {
 		r.Use(requireSession)
 		r.Get("/api/me", authHandlers.Me)
+		r.Get("/api/version", metaHandler.ServeHTTP)
 		r.Get("/api/hosts", hostsHandlers.List)
 		r.Post("/api/hosts", hostsHandlers.Create)
 		r.Delete("/api/hosts/{id}", hostsHandlers.Delete)

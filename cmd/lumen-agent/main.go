@@ -45,7 +45,10 @@ import (
 // quiet no-op so env-only setups keep working.
 const defaultConfigPath = "/etc/lumen/agent.yaml"
 
-var version = "dev"
+// Version is injected at build time via -ldflags "-X main.Version=...".
+// It defaults to "dev" for source/dev builds and is shipped to the hub in
+// every ingest's SystemMetadata so the UI can flag out-of-date agents.
+var Version = "dev"
 
 func main() {
 	if len(os.Args) > 1 {
@@ -193,7 +196,7 @@ func runAgent() {
 			logger.Info("agent stopped")
 			return
 		case <-t.C:
-			env := collect(ctx, logger, host, diskPath, dockerSocket, rates, version)
+			env := collect(ctx, logger, host, diskPath, dockerSocket, rates, Version)
 			tickOnce(ctx, logger, snd, buf, drainPerTick, env)
 			if next := fetchPolicyInterval(ctx, logger, snd, currentInterval); next != currentInterval {
 				currentInterval = next

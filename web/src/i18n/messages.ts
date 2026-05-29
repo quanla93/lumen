@@ -140,6 +140,15 @@ export const en = {
     seriesRead: "read",
     seriesWrite: "write",
     seriesTemp: "temp",
+    agentVersion: "agent {version}",
+    updateAvailable: "Update to {version}",
+    updateAvailableTitle: "A newer agent ({version}) is available. Update this host's agent on its own machine with: docker compose pull && docker compose up -d",
+    updateCopyHint: "Click to copy update command: {cmd}",
+    updateBadge: "Update available",
+    updatePanelTitle: "Update agent",
+    updatePanelDescription: "Update this agent by pulling the latest image and recreating the container.",
+    updatePanelNote: "Run this on the machine that owns this agent's docker-compose.yml (the target VM/LXC) — not on the hub. The host and its token are preserved.",
+    updatePanelUpToDate: "Up to date",
   },
   settings: {
     tabs: {
@@ -375,6 +384,15 @@ export const vi: WidenStrings<typeof en> = {
     seriesRead: "đọc",
     seriesWrite: "ghi",
     seriesTemp: "nhiệt độ",
+    agentVersion: "agent {version}",
+    updateAvailable: "Cập nhật lên {version}",
+    updateAvailableTitle: "Đã có agent mới hơn ({version}). Cập nhật agent của máy này ngay trên máy đó bằng: docker compose pull && docker compose up -d",
+    updateCopyHint: "Bấm để sao chép lệnh cập nhật: {cmd}",
+    updateBadge: "Có bản cập nhật",
+    updatePanelTitle: "Cập nhật agent",
+    updatePanelDescription: "Cập nhật agent này bằng cách kéo image mới nhất và tạo lại container.",
+    updatePanelNote: "Chạy lệnh này trên máy chứa docker-compose.yml của agent (VM/LXC đích) — không phải trên hub. Host và token được giữ nguyên.",
+    updatePanelUpToDate: "Đã mới nhất",
   },
   settings: {
     tabs: {

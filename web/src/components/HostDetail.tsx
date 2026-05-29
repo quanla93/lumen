@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AlignedData, Options } from "uplot";
 import {
   hostsApi,
+  versionApi,
+  agentUpdateAvailable,
   ApiError,
   type Host,
   type MetricsResponse,
@@ -24,6 +26,11 @@ const RANGE_SECONDS: Record<Range, number> = {
 };
 
 const REFRESH_MS = 30_000;
+
+// Canonical per-agent Compose update command. Run it in the folder that holds
+// the agent's docker-compose.yml, on the target machine — never on the hub
+// (the accompanying note spells out where). No fixed path is assumed.
+const AGENT_UPDATE_CMD = "docker compose pull && docker compose up -d";
 
 // Series strokes. uPlot draws to canvas, so colors are baked at construction
 // time; on theme toggle the whole chart remounts via themeKey so they re-resolve.
@@ -66,6 +73,7 @@ export function HostDetail({
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [now, setNow] = useState(Date.now());
+  const [latestAgentVersion, setLatestAgentVersion] = useState<string | null>(null);
   const reqIdRef = useRef(0);
   const hostId = host?.id ?? null;
 
@@ -77,6 +85,14 @@ export function HostDetail({
   useEffect(() => {
     const t = window.setInterval(() => setNow(Date.now()), 1_000);
     return () => window.clearInterval(t);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    versionApi.get()
+      .then((v) => { if (!cancelled) setLatestAgentVersion(v.latest_agent_version); })
+      .catch(() => {});
+    return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
@@ -172,6 +188,7 @@ export function HostDetail({
         onRangeChange={setRange}
         onBack={onBack}
         locale={locale}
+        latestAgentVersion={latestAgentVersion}
         t={t}
       />
 
@@ -290,6 +307,14 @@ export function HostDetail({
         <ContainersTable containers={live.containers} t={t} />
       )}
 
+      {(host || live) && (
+        <UpdateAgentPanel
+          agentVersion={live?.system?.agent_version ?? host?.system?.agent_version}
+          latestAgentVersion={latestAgentVersion}
+          t={t}
+        />
+      )}
+
       {resp && (
         <p className="mt-6 text-xs text-[color:var(--color-muted)]">
           {t("host.points", { points: resp.points.length, step: resp.step_seconds, refresh: Math.round(REFRESH_MS / 1000) })}
@@ -307,6 +332,7 @@ function HostSummaryHeader({
   onRangeChange,
   onBack,
   locale,
+  latestAgentVersion,
   t,
 }: {
   host: Host | null;
@@ -316,6 +342,7 @@ function HostSummaryHeader({
   onRangeChange: (range: Range) => void;
   onBack: () => void;
   locale: Locale;
+  latestAgentVersion: string | null;
   t: ReturnType<typeof useI18n>["t"];
 }) {
   const lastSeen = live?.ts ?? host?.last_seen_at ?? null;
@@ -356,7 +383,7 @@ function HostSummaryHeader({
           </h2>
           <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-[color:var(--color-muted)]">
             <MetaItem icon={<StatusIcon tone={status.tone} />} text={status.label} strong />
-            <SystemMetaLine system={system} lastSeen={lastSeen} now={now} locale={locale} t={t} />
+            <SystemMetaLine system={system} lastSeen={lastSeen} now={now} locale={locale} latestAgentVersion={latestAgentVersion} t={t} />
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
@@ -407,31 +434,58 @@ function SystemMetaLine({
   lastSeen,
   now,
   locale,
+  latestAgentVersion,
   t,
 }: {
   system?: Host["system"] | Snapshot["system"];
   lastSeen: string | null;
   now: number;
   locale: Locale;
+  latestAgentVersion: string | null;
   t: ReturnType<typeof useI18n>["t"];
 }) {
+  const [copied, setCopied] = useState(false);
+  const copyUpdateCmd = () => {
+    void navigator.clipboard?.writeText(AGENT_UPDATE_CMD)
+      .then(() => {
+        setCopied(true);
+        window.setTimeout(() => setCopied(false), 1500);
+      })
+      .catch(() => {});
+  };
   const uptime = formatUptime(system?.uptime_seconds);
   const endpoint = system?.primary_ip ?? system?.hostname ?? null;
   const items: Array<{ icon: React.ReactNode; text: string }> = [];
   if (endpoint) items.push({ icon: <GlobeIcon />, text: endpoint });
   if (system?.os) items.push({ icon: <MonitorIcon />, text: system.os });
   if (uptime) items.push({ icon: <UptimeIcon />, text: uptime });
+  if (system?.agent_version) {
+    items.push({ icon: <TagIcon />, text: t("host.agentVersion", { version: system.agent_version }) });
+  }
   if (!system && lastSeen) {
     items.push({ icon: <ClockIcon />, text: t("host.lastSeen", { time: relativeTime(lastSeen, now, locale) }) });
   }
 
-  if (items.length === 0) return null;
+  const updateAvailable = agentUpdateAvailable(system?.agent_version, latestAgentVersion ?? undefined);
+
+  if (items.length === 0 && !updateAvailable) return null;
 
   return (
     <>
       {items.map((item) => (
         <MetaItem key={item.text} icon={item.icon} text={item.text} />
       ))}
+      {updateAvailable && (
+        <button
+          type="button"
+          onClick={copyUpdateCmd}
+          className="inline-flex items-center gap-1.5 rounded-full border border-[color:var(--color-warn)] px-2 py-0.5 text-xs font-medium text-[color:var(--color-warn)] transition-colors hover:bg-[color:var(--color-warn)] hover:text-[color:var(--color-bg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-warn)]"
+          title={t("host.updateCopyHint", { cmd: AGENT_UPDATE_CMD })}
+        >
+          {copied ? <CheckIcon /> : <UpdateIcon />}
+          {copied ? t("common.copied") : t("host.updateAvailable", { version: latestAgentVersion ?? "" })}
+        </button>
+      )}
     </>
   );
 }
@@ -505,6 +559,31 @@ function UptimeIcon() {
   );
 }
 
+function TagIcon() {
+  return (
+    <svg aria-hidden className="h-4 w-4 text-[color:var(--color-muted)]" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <path d="M2.5 7.3V3a.5.5 0 0 1 .5-.5h4.3a1 1 0 0 1 .7.3l5.4 5.4a1 1 0 0 1 0 1.4l-4.3 4.3a1 1 0 0 1-1.4 0L2.8 8.7a1 1 0 0 1-.3-.7Z" strokeLinejoin="round" />
+      <circle cx="5.5" cy="5.5" r="1" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
+function UpdateIcon() {
+  return (
+    <svg aria-hidden className="h-3.5 w-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <path d="M13 8a5 5 0 1 1-1.5-3.5M13 2.5v2.5h-2.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function CheckIcon() {
+  return (
+    <svg aria-hidden className="h-3.5 w-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="m3.5 8.5 3 3 6-7" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 function rangeLabel(range: Range, t: ReturnType<typeof useI18n>["t"]): string {
   if (range === "1h") return t("host.oneHour");
   if (range === "6h") return t("host.sixHours");
@@ -563,6 +642,76 @@ function ContainersTable({ containers, t }: { containers: ContainerInfo[]; t: Re
           </tbody>
         </table>
       </div>
+    </Surface>
+  );
+}
+
+// UpdateAgentPanel is the always-present "how to update this agent" card.
+// It shows the canonical Compose update command + a copy button, plus the
+// crucial note that it must run on the machine that owns the agent's
+// docker-compose.yml — not on the hub. When the hub advertises a newer
+// version than this host reports, it flags the update; otherwise it shows
+// "up to date" (or just the reference command when versions are unknown/dev).
+function UpdateAgentPanel({
+  agentVersion,
+  latestAgentVersion,
+  t,
+}: {
+  agentVersion?: string;
+  latestAgentVersion: string | null;
+  t: ReturnType<typeof useI18n>["t"];
+}) {
+  const [copied, setCopied] = useState(false);
+  const copy = () => {
+    void navigator.clipboard?.writeText(AGENT_UPDATE_CMD)
+      .then(() => {
+        setCopied(true);
+        window.setTimeout(() => setCopied(false), 1500);
+      })
+      .catch(() => {});
+  };
+  const updateAvailable = agentUpdateAvailable(agentVersion, latestAgentVersion ?? undefined);
+  const upToDate = !!agentVersion && agentVersion !== "dev"
+    && !!latestAgentVersion && latestAgentVersion !== "dev"
+    && agentVersion === latestAgentVersion;
+
+  return (
+    <Surface as="section" padded={false} className="mt-6 rounded-lg px-4 py-4">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <span className="text-xs uppercase tracking-wide text-[color:var(--color-muted)]">
+          {t("host.updatePanelTitle")}
+        </span>
+        {updateAvailable ? (
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-[color:var(--color-warn)] px-2 py-0.5 text-xs font-medium text-[color:var(--color-warn)]">
+            <UpdateIcon />
+            {t("host.updateAvailable", { version: latestAgentVersion ?? "" })}
+          </span>
+        ) : upToDate ? (
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-[color:var(--color-accent)] px-2 py-0.5 text-xs font-medium text-[color:var(--color-accent)]">
+            <CheckIcon />
+            {t("host.updatePanelUpToDate")}
+          </span>
+        ) : null}
+      </div>
+      <p className="mb-3 text-sm text-[color:var(--color-muted)]">
+        {t("host.updatePanelDescription")}
+      </p>
+      <div className="flex items-center gap-2 rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-3 py-2">
+        <code className="min-w-0 flex-1 overflow-x-auto whitespace-nowrap font-mono text-xs">
+          {AGENT_UPDATE_CMD}
+        </code>
+        <button
+          type="button"
+          onClick={copy}
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-[color:var(--color-border)] px-2 py-1 text-xs transition-colors hover:bg-[color:var(--color-border)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-accent)]"
+        >
+          {copied ? <CheckIcon /> : null}
+          {copied ? t("common.copied") : t("common.copy")}
+        </button>
+      </div>
+      <p className="mt-2 text-xs text-[color:var(--color-muted)]">
+        {t("host.updatePanelNote")}
+      </p>
     </Surface>
   );
 }

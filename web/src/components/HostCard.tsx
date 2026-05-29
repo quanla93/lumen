@@ -2,6 +2,7 @@ import { cpuTone, TONE_CLASS, widthClass, type StatusTone } from "@/lib/status";
 import { isStale, relativeTime, staleAfterForIntervalMs } from "@/lib/time";
 import { Sparkline } from "@/components/Sparkline";
 import { Surface } from "@/components/ui";
+import { agentUpdateAvailable } from "@/lib/api";
 import { useI18n } from "@/i18n/useI18n";
 
 export type ContainerInfo = {
@@ -68,16 +69,22 @@ export function HostCard({
   snapshot,
   now,
   agentInterval,
+  latestAgentVersion,
   onSelect,
 }: {
   snapshot: Snapshot;
   now: number;
   agentInterval?: string;
+  latestAgentVersion?: string | null;
   onSelect?: (hostName: string) => void;
 }) {
   const { locale, t } = useI18n();
   const stale = isStale(snapshot.ts, staleAfterForIntervalMs(agentInterval), now);
   const headerTone = cpuTone(snapshot.cpu_pct, stale);
+  const updateAvailable = agentUpdateAvailable(
+    snapshot.system?.agent_version,
+    latestAgentVersion ?? undefined,
+  );
 
   const rows: MetricRow[] = [
     metricRow(t("host.cpu"), snapshot.cpu_pct, stale),
@@ -128,9 +135,19 @@ export function HostCard({
               : t("host.lastSeen", { time: relativeTime(snapshot.ts, now, locale) })}
           </span>
         </div>
-        <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${stale ? "bg-[color:var(--color-border)] text-[color:var(--color-muted)]" : "bg-[color:var(--color-accent)] text-[color:var(--color-bg)]"}`}>
-          {stale ? t("host.stale") : t("host.online")}
-        </span>
+        <div className="flex shrink-0 flex-col items-end gap-1.5">
+          <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${stale ? "bg-[color:var(--color-border)] text-[color:var(--color-muted)]" : "bg-[color:var(--color-accent)] text-[color:var(--color-bg)]"}`}>
+            {stale ? t("host.stale") : t("host.online")}
+          </span>
+          {updateAvailable && (
+            <span
+              className="rounded-full border border-[color:var(--color-warn)] px-2 py-0.5 text-[10px] font-medium text-[color:var(--color-warn)]"
+              title={t("host.updateAvailableTitle", { version: latestAgentVersion ?? "" })}
+            >
+              {t("host.updateBadge")}
+            </span>
+          )}
+        </div>
       </div>
 
       {series.length >= 2 && (

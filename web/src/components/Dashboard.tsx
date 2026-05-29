@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { HostCard, type Snapshot } from "@/components/HostCard";
 import { EmptyState, StatusPill, Surface } from "@/components/ui";
-import { settingsApi } from "@/lib/api";
+import { settingsApi, versionApi } from "@/lib/api";
 import { cpuTone, TONE_CLASS, type StatusTone } from "@/lib/status";
 import { isStale, staleAfterForIntervalMs } from "@/lib/time";
 import { useI18n } from "@/i18n/useI18n";
@@ -24,6 +24,7 @@ export function Dashboard({
   const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
   const [status, setStatus] = useState<WsStatus>("connecting");
   const [agentInterval, setAgentInterval] = useState("5s");
+  const [latestAgentVersion, setLatestAgentVersion] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   // `now` ticks every second so relative timestamps refresh without a
   // server push.
@@ -34,6 +35,12 @@ export function Dashboard({
     settingsApi.get()
       .then((s) => {
         if (!cancelled) setAgentInterval(s.agent_interval);
+      })
+      .catch(() => {});
+
+    versionApi.get()
+      .then((v) => {
+        if (!cancelled) setLatestAgentVersion(v.latest_agent_version);
       })
       .catch(() => {});
 
@@ -127,7 +134,7 @@ export function Dashboard({
           ) : (
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
               {filtered.map((s) => (
-                <HostCard key={s.host} snapshot={s} now={now} agentInterval={agentInterval} onSelect={onSelectHost} />
+                <HostCard key={s.host} snapshot={s} now={now} agentInterval={agentInterval} latestAgentVersion={latestAgentVersion} onSelect={onSelectHost} />
               ))}
             </div>
           )}

@@ -40,6 +40,11 @@ import (
 	"github.com/quanla93/lumen/internal/shared/envcfg"
 )
 
+// Version is injected at build time via -ldflags "-X main.Version=...".
+// The hub and agent ship from the same release train, so this also tells
+// the UI the latest agent version a host could be running.
+var Version = "dev"
+
 func main() {
 	envcfg.Load()
 	addr := envcfg.String("LUMEN_HUB_ADDR", ":8090")
@@ -78,6 +83,7 @@ func main() {
 	if err := server.Run(ctx, server.Config{
 		Addr:                    addr,
 		Dev:                     dev,
+		Version:                 Version,
 		StreamInterval:          streamInterval,
 		DBPath:                  dbPath,
 		InstallDir:              installDir,

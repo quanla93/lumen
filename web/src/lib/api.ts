@@ -125,6 +125,27 @@ export type SettingsResponse = {
   downsample_archive_window: string;
 };
 
+export type VersionResponse = {
+  hub_version: string;
+  latest_agent_version: string;
+};
+
+export const versionApi = {
+  get: () => api<VersionResponse>("/api/version"),
+};
+
+// agentUpdateAvailable reports whether a host's reported agent version is
+// known, real (not a dev/source build), and behind the latest the hub can
+// vouch for. Dev builds on either side suppress the badge to avoid noise.
+export function agentUpdateAvailable(
+  agentVersion: string | undefined,
+  latest: string | undefined,
+): boolean {
+  if (!agentVersion || !latest) return false;
+  if (agentVersion === "dev" || latest === "dev") return false;
+  return agentVersion !== latest;
+}
+
 export const settingsApi = {
   get: () => api<SettingsResponse>("/api/settings"),
   put: (s: Partial<SettingsResponse>) =>

@@ -319,7 +319,7 @@ Mỗi quyết định ghi 1 dòng. Không xóa, không sửa — nếu đổi ý
 
 #### Update path
 - [x] Document update as: SSH into the VM/LXC that owns the agent compose file, then run `cd /opt/lumen-agent && docker compose pull && docker compose up -d`
-- [ ] Host detail `Update agent` panel shows the Compose update command and explains it must be run on the machine where that compose file exists
+- [x] Host detail `Update agent` panel shows the Compose update command and explains it must be run on the machine where that compose file exists (always-present card with copy button + up-to-date/update-available status; header pill also copies the command when an update is available)
 - [x] No update flow creates or rotates host tokens unless the operator explicitly clicks rotate
 - [x] No update flow requires editing the hub's `docker-compose.yml` or project `.env`
 
@@ -783,8 +783,12 @@ Nếu bạn (hoặc Claude) mở session mới:
 
 > Cập nhật mục này mỗi session.
 
-**Session**: 2026-05-28
-**Đang làm**: Phase 4 — Docker-first install/onboarding closeout. Tomorrow's system/UI update should align product flows with the docs: hub setup, host creation, token reveal, generated per-agent `docker-compose.yml`, and update panels should all lead with Docker/Compose. Native binary/systemd and `install.sh` remain optional/manual shortcuts.
+**Session**: 2026-05-29
+**Đang làm**: Phase 4 **closeout — DONE**. Version awareness + Update-agent panel landed; all Phase 4 boxes ticked. Next pickups: Phase 3 lightweight log management (RFC + Logs/Console surface), or start Phase 5 (Proxmox wedge / alert engine). Public API module remains specced-only (Phase 5+).
+**Phase 4 complete (2026-05-29):**
+- Version awareness: fixed ldflags `main.Version` mismatch (agent `var Version` + hub `var Version`); new `GET /api/version` (`internal/hub/meta`, with test); host detail shows `agent <ver>` + update-available pill (click-to-copy update cmd); dashboard host card shows update badge; `"dev"` builds suppress badges.
+- Update-agent panel on host detail: always-present card with the Compose update command, copy button, up-to-date/update-available status, and the "run on the agent's machine, not the hub" note.
+- Verified end-to-end in Docker: hub `v0.2.0` + agent `v0.1.0` → badge shown → `docker compose up -d` (new image, same tag) → agent `v0.2.0` → badge clears, host+token preserved. Confirmed version is baked into the binary (ldflags), so `:latest` images still self-report the true release version (release.yml passes the git tag as VERSION build-arg).
 **Vừa hoàn thành**:
 - Docs website is now a branded Starlight site with a Lumen landing page and Web UI guide.
 - Docs audit synced stale pages with implemented dashboard, Settings runtime policy, retention heartbeat, API shape, metrics metadata, and Compose-first agent lifecycle.

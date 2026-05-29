@@ -220,6 +220,25 @@ Server-side AVG bucketing on the
 Fields returned match the persisted scalars (no `cpu_per_core`,
 `containers`, or `cpu_series`).
 
+### Version
+
+```http
+GET /api/version
+Cookie: lumen_session=…
+→ 200 {
+    "hub_version": "v0.2.0",
+    "latest_agent_version": "v0.2.0"
+  }
+```
+
+The running hub's build version. Because the hub and agent ship from the
+same release train, `latest_agent_version` mirrors `hub_version` — it is
+the newest agent a host could be running. The web UI compares each host's
+reported `system.agent_version` (sent in every ingest) against this and
+shows an **update-available** badge when a host's agent is behind. Source
+builds (no `-ldflags`) report `"dev"`, which suppresses the badge to avoid
+noise.
+
 ### Settings — get / put
 
 ```http
