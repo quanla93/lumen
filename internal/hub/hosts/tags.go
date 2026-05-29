@@ -6,7 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"sort"
-	"strings"
+
+	"github.com/quanla93/lumen/internal/hub/tagutil"
 )
 
 // Tag is one host_tags row. Keys are short labels (no embedded `=` or
@@ -18,37 +19,20 @@ type Tag struct {
 }
 
 var (
-	ErrTagKeyRequired   = errors.New("tag key required")
-	ErrTagKeyTooLong    = errors.New("tag key too long (max 64 chars)")
-	ErrTagValueTooLong  = errors.New("tag value too long (max 128 chars)")
-	ErrTagKeyInvalid    = errors.New("tag key may only contain letters, digits, '-', '_', '.'")
-	ErrTagValueInvalid  = errors.New("tag value contains reserved chars (',' '=')")
-	ErrTooManyTags      = errors.New("too many tags on a single host (max 32)")
+	ErrTooManyTags         = errors.New("too many tags on a single host (max 32)")
+	ErrTagNotInInventory   = errors.New("tag (key, value) not in inventory — create it in Alerts → Tags first")
 )
 
 const maxTagsPerHost = 32
 
 func validateTag(t Tag) (Tag, error) {
-	t.Key = strings.TrimSpace(t.Key)
-	t.Value = strings.TrimSpace(t.Value)
-	if t.Key == "" {
-		return t, ErrTagKeyRequired
+	t.Key = tagutil.NormalizeKey(t.Key)
+	t.Value = tagutil.NormalizeValue(t.Value)
+	if err := tagutil.ValidateKey(t.Key); err != nil {
+		return t, err
 	}
-	if len(t.Key) > 64 {
-		return t, ErrTagKeyTooLong
-	}
-	if len(t.Value) > 128 {
-		return t, ErrTagValueTooLong
-	}
-	for _, r := range t.Key {
-		if !(r == '-' || r == '_' || r == '.' ||
-			(r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') ||
-			(r >= '0' && r <= '9')) {
-			return t, ErrTagKeyInvalid
-		}
-	}
-	if strings.ContainsAny(t.Value, "=,") {
-		return t, ErrTagValueInvalid
+	if err := tagutil.ValidateValue(t.Value); err != nil {
+		return t, err
 	}
 	return t, nil
 }
@@ -182,6 +166,29 @@ func SetTags(ctx context.Context, db *sql.DB, hostID int64, tags []Tag) ([]Tag, 
 	}
 	if err != nil {
 		return nil, err
+	}
+	// Inventory guard: every (key, value) must already exist in tag_values.
+	// UI picks from a dropdown so this never fires there; it's a safety net
+	// for direct API calls and gives a clear error instead of an opaque FK.
+	if len(cleaned) > 0 {
+		check, err := tx.PrepareContext(ctx,
+			`SELECT 1 FROM tag_values WHERE tag_key = ? AND value = ?`)
+		if err != nil {
+			return nil, fmt.Errorf("prepare inventory check: %w", err)
+		}
+		for _, t := range cleaned {
+			var ok int
+			err := check.QueryRowContext(ctx, t.Key, t.Value).Scan(&ok)
+			if errors.Is(err, sql.ErrNoRows) {
+				check.Close()
+				return nil, fmt.Errorf("%w (key=%q value=%q)", ErrTagNotInInventory, t.Key, t.Value)
+			}
+			if err != nil {
+				check.Close()
+				return nil, fmt.Errorf("inventory check: %w", err)
+			}
+		}
+		check.Close()
 	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM host_tags WHERE host_id = ?`, hostID); err != nil {
 		return nil, fmt.Errorf("clear tags: %w", err)

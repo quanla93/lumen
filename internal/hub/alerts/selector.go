@@ -103,3 +103,68 @@ func (s Selector) Matches(tags map[string]string) bool {
 	}
 	return true
 }
+
+// String renders the canonical form: requirements joined by ",", sorted
+// by key for stable diff. Inverse of ParseSelector for well-formed input.
+func (s Selector) String() string {
+	if s.IsEmpty() {
+		return ""
+	}
+	reqs := make([]SelectorReq, len(s.Reqs))
+	copy(reqs, s.Reqs)
+	// Stable sort by key, then value (defensive for repeated keys, though
+	// ParseSelector dedupes).
+	for i := 1; i < len(reqs); i++ {
+		for j := i; j > 0; j-- {
+			if reqs[j-1].Key < reqs[j].Key ||
+				(reqs[j-1].Key == reqs[j].Key && reqs[j-1].Value <= reqs[j].Value) {
+				break
+			}
+			reqs[j-1], reqs[j] = reqs[j], reqs[j-1]
+		}
+	}
+	var b strings.Builder
+	for i, r := range reqs {
+		if i > 0 {
+			b.WriteByte(',')
+		}
+		b.WriteString(r.Key)
+		b.WriteByte('=')
+		b.WriteString(r.Value)
+	}
+	return b.String()
+}
+
+// DropKey removes every requirement matching key. Returns true if the
+// selector changed. Used when a tag is deleted from the inventory and
+// every rule referencing it must drop the requirement.
+func (s *Selector) DropKey(key string) bool {
+	out := s.Reqs[:0]
+	changed := false
+	for _, r := range s.Reqs {
+		if r.Key == key {
+			changed = true
+			continue
+		}
+		out = append(out, r)
+	}
+	s.Reqs = out
+	return changed
+}
+
+// DropPair removes requirements matching (key, value) exactly. Used
+// when a single tag value is deleted — rules whose selector pins a
+// different value of the same key are untouched.
+func (s *Selector) DropPair(key, value string) bool {
+	out := s.Reqs[:0]
+	changed := false
+	for _, r := range s.Reqs {
+		if r.Key == key && r.Value == value {
+			changed = true
+			continue
+		}
+		out = append(out, r)
+	}
+	s.Reqs = out
+	return changed
+}

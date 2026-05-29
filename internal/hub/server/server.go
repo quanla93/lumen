@@ -193,6 +193,17 @@ func Run(ctx context.Context, cfg Config) error {
 
 		r.Get("/api/alerts/deliveries", alertsHandlers.ListDeliveries)
 		r.Post("/api/alerts/deliveries/{id}/retry", alertsHandlers.RetryDelivery)
+
+		// Tag inventory — first-class CRUD so hosts + rules pick from a
+		// controlled list rather than freeform input. See migration 0012.
+		r.Get("/api/tags", alertsHandlers.ListTags)
+		r.Post("/api/tags", alertsHandlers.CreateTag)
+		r.Put("/api/tags/{key}", alertsHandlers.UpdateTag)
+		r.Delete("/api/tags/{key}", alertsHandlers.DeleteTag)
+		r.Get("/api/tags/{key}/impact", alertsHandlers.TagImpact)
+		r.Post("/api/tags/{key}/values", alertsHandlers.AddTagValue)
+		r.Delete("/api/tags/{key}/values/{value}", alertsHandlers.DeleteTagValue)
+		r.Get("/api/tags/{key}/values/{value}/impact", alertsHandlers.TagValueImpact)
 	})
 
 	// Everything else falls to the embedded web bundle (SPA-style), except

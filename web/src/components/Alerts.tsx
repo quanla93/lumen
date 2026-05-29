@@ -3,6 +3,7 @@ import {
   alertsApi,
   ApiError,
   hostsApi,
+  tagsApi,
   TELEGRAM_TOKEN_MASK,
   type AlertComparator,
   type AlertEvent,
@@ -16,7 +17,7 @@ import {
   type Host,
   type NotificationChannel,
   type NotificationChannelWrite,
-  type TagFacet,
+  type Tag,
 } from "@/lib/api";
 import { relativeTime } from "@/lib/time";
 import {
@@ -27,10 +28,11 @@ import {
   PrimaryButton,
 } from "@/components/CenterCard";
 import { EmptyState, StatusPill, Surface } from "@/components/ui";
+import { AlertTags } from "@/components/AlertTags";
 import { useI18n } from "@/i18n/useI18n";
 import type { TranslationKey } from "@/i18n/types";
 
-type AlertsTab = "active" | "history" | "deliveries" | "rules" | "channels";
+type AlertsTab = "active" | "history" | "deliveries" | "rules" | "channels" | "tags";
 
 const TABS: { id: AlertsTab; labelKey: TranslationKey }[] = [
   { id: "active",     labelKey: "alerts.tabs.active" },
@@ -38,6 +40,7 @@ const TABS: { id: AlertsTab; labelKey: TranslationKey }[] = [
   { id: "deliveries", labelKey: "alerts.tabs.deliveries" },
   { id: "rules",      labelKey: "alerts.tabs.rules" },
   { id: "channels",   labelKey: "alerts.tabs.channels" },
+  { id: "tags",       labelKey: "alerts.tabs.tags" },
 ];
 
 const METRICS: AlertMetric[] = ["cpu_pct", "ram_pct", "swap_pct", "disk_pct", "load1", "offline"];
@@ -97,6 +100,7 @@ export function Alerts() {
         {tab === "deliveries" && <DeliveriesPanel />}
         {tab === "rules"      && <RulesPanel />}
         {tab === "channels"   && <ChannelsPanel />}
+        {tab === "tags"       && <AlertTags />}
       </div>
       {/* locale is read so the relativeTime in nested rows refreshes on language change */}
       <span className="sr-only" aria-hidden>{locale}</span>
@@ -430,7 +434,7 @@ function RulesPanel() {
   const [rules, setRules] = useState<AlertRule[] | null>(null);
   const [channels, setChannels] = useState<NotificationChannel[]>([]);
   const [hosts, setHosts] = useState<Host[]>([]);
-  const [tagFacets, setTagFacets] = useState<TagFacet[]>([]);
+  const [tagInventory, setTagInventory] = useState<Tag[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<number | "new" | null>(null);
   const [draft, setDraft] = useState<AlertRuleWrite>(blankRule());
@@ -439,16 +443,16 @@ function RulesPanel() {
 
   const refresh = useCallback(async () => {
     try {
-      const [rs, chs, hs, fs] = await Promise.all([
+      const [rs, chs, hs, inv] = await Promise.all([
         alertsApi.rules.list(),
         alertsApi.channels.list(),
         hostsApi.list(),
-        hostsApi.tagFacets(),
+        tagsApi.list(),
       ]);
       setRules(rs);
       setChannels(chs);
       setHosts(hs);
-      setTagFacets(fs);
+      setTagInventory(inv);
       setError(null);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : String(err));
@@ -457,15 +461,15 @@ function RulesPanel() {
 
   useEffect(() => { void refresh(); }, [refresh]);
 
-  // refreshLatest pulls hosts + tag facets again so the chip picker
-  // reflects edits the operator made in Settings → Hosts between rule
-  // form sessions. Called when entering New / Edit so chips never lag
+  // refreshLatest pulls hosts + tag inventory again so the picker
+  // reflects edits the operator made in Alerts → Tags between rule
+  // form sessions. Called when entering New / Edit so options never lag
   // behind a tag rename or addition.
   const refreshLatest = useCallback(async () => {
     try {
-      const [hs, fs] = await Promise.all([hostsApi.list(), hostsApi.tagFacets()]);
+      const [hs, inv] = await Promise.all([hostsApi.list(), tagsApi.list()]);
       setHosts(hs);
-      setTagFacets(fs);
+      setTagInventory(inv);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : String(err));
     }
@@ -583,7 +587,7 @@ function RulesPanel() {
               <p className="mt-1 text-xs text-[color:var(--color-muted)]">{t("alerts.forSecondsHint")}</p>
             </Field>
             <div className="sm:col-span-2">
-              <HostTargetingFields draft={draft} setDraft={setDraft} hosts={hosts} tagFacets={tagFacets} />
+              <HostTargetingFields draft={draft} setDraft={setDraft} hosts={hosts} inventory={tagInventory} />
             </div>
             <Field label={t("alerts.fieldSeverity")}>
               <SelectInput
@@ -1029,12 +1033,12 @@ function HostTargetingFields({
   draft,
   setDraft,
   hosts,
-  tagFacets,
+  inventory,
 }: {
   draft: AlertRuleWrite;
   setDraft: (next: AlertRuleWrite) => void;
   hosts: Host[];
-  tagFacets: TagFacet[];
+  inventory: Tag[];
 }) {
   const { t } = useI18n();
   const selectorActive = (draft.host_selector ?? "").trim() !== "";
@@ -1124,14 +1128,44 @@ function HostTargetingFields({
           {t("alerts.fieldHostSelector")}
         </label>
         {(() => {
-          // Orphan = entry in current selector that no host currently
-          // carries. Surfaces stale references after the operator
-          // renames/removes a tag from Settings → Hosts.
-          const facetEntries = new Set(
-            tagFacets.map((f) => (f.value === "" ? f.key : `${f.key}=${f.value}`)),
-          );
-          const orphans = selectorEntries.filter((e) => !facetEntries.has(e));
-          if (tagFacets.length === 0 && orphans.length === 0) {
+          // Each inventory tag becomes one dropdown. "— none —" means
+          // "don't constrain by this tag". Picking a value sets/replaces
+          // the requirement for that key.
+          // Orphan entries — current selector references a (key, value)
+          // not in the inventory — get rendered as deletable red pills
+          // so the operator can spot/repair stale references after the
+          // inventory shrinks.
+          const inventoryPairs = new Set<string>();
+          for (const tag of inventory) {
+            for (const v of tag.values) {
+              inventoryPairs.add(v === "" ? tag.key : `${tag.key}=${v}`);
+            }
+          }
+          const orphans = selectorEntries.filter((e) => !inventoryPairs.has(e));
+
+          // Current selected value per key in the draft selector.
+          const selectedByKey: Record<string, string> = {};
+          for (const entry of selectorEntries) {
+            const eq = entry.indexOf("=");
+            const k = eq < 0 ? entry : entry.slice(0, eq);
+            const v = eq < 0 ? "" : entry.slice(eq + 1);
+            selectedByKey[k] = v;
+          }
+
+          function setKeyValue(key: string, value: string | null) {
+            const next = new Set(selectorSet);
+            for (const existing of next) {
+              const eqIdx = existing.indexOf("=");
+              const existingKey = eqIdx < 0 ? existing : existing.slice(0, eqIdx);
+              if (existingKey === key) next.delete(existing);
+            }
+            if (value !== null) {
+              next.add(value === "" ? key : `${key}=${value}`);
+            }
+            setDraft({ ...draft, host_selector: Array.from(next).join(",") });
+          }
+
+          if (inventory.length === 0 && orphans.length === 0) {
             return (
               <p className="mb-2 text-xs text-[color:var(--color-muted)]">
                 {t("alerts.fieldHostSelectorNoTags")}
@@ -1139,41 +1173,54 @@ function HostTargetingFields({
             );
           }
           return (
-            <div className="mb-2 flex flex-wrap gap-1.5 rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-card)] p-2">
-              {tagFacets.map((f) => {
-                const entry = f.value === "" ? f.key : `${f.key}=${f.value}`;
-                const selected = selectorSet.has(entry);
-                return (
-                  <button
-                    key={`${f.key}=${f.value}`}
-                    type="button"
-                    onClick={() => toggleTag(f.key, f.value)}
-                    className={`rounded-full border px-2 py-0.5 text-xs transition-colors ${
-                      selected
-                        ? "border-[color:var(--color-accent)] bg-[color:var(--color-accent)]/15 text-[color:var(--color-accent)]"
-                        : "border-[color:var(--color-border)] bg-[color:var(--color-bg)] text-[color:var(--color-muted)] hover:text-[color:var(--color-fg)]"
-                    }`}
-                  >
-                    {entry} <span className="opacity-60">· {f.host_count}</span>
-                  </button>
-                );
-              })}
-              {orphans.map((entry) => {
-                const eqIdx = entry.indexOf("=");
-                const key = eqIdx < 0 ? entry : entry.slice(0, eqIdx);
-                const value = eqIdx < 0 ? "" : entry.slice(eqIdx + 1);
-                return (
-                  <button
-                    key={`orphan-${entry}`}
-                    type="button"
-                    onClick={() => toggleTag(key, value)}
-                    title={t("alerts.orphanChipTitle")}
-                    className="rounded-full border border-[color:var(--color-danger)] bg-[color:var(--color-danger)]/10 px-2 py-0.5 text-xs text-[color:var(--color-danger)] line-through hover:bg-[color:var(--color-danger)]/20"
-                  >
-                    {entry} <span className="not-italic no-underline">×</span>
-                  </button>
-                );
-              })}
+            <div className="mb-2 space-y-2 rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-card)] p-2">
+              <div className="grid gap-2 sm:grid-cols-2">
+                {inventory.map((tag) => {
+                  const current = tag.key in selectedByKey ? selectedByKey[tag.key] : "__NONE__";
+                  return (
+                    <label key={tag.key} className="text-xs">
+                      <span className="block text-[color:var(--color-muted)] mb-0.5 font-mono">
+                        {tag.key}
+                      </span>
+                      <select
+                        value={current === "__NONE__" ? "__NONE__" : current}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          setKeyValue(tag.key, v === "__NONE__" ? null : v);
+                        }}
+                        className="w-full rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--color-accent)]"
+                      >
+                        <option value="__NONE__">—</option>
+                        {tag.values.map((v) => (
+                          <option key={v} value={v}>
+                            {v === "" ? "(empty)" : v}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  );
+                })}
+              </div>
+              {orphans.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 border-t border-[color:var(--color-border)] pt-2">
+                  {orphans.map((entry) => {
+                    const eqIdx = entry.indexOf("=");
+                    const key = eqIdx < 0 ? entry : entry.slice(0, eqIdx);
+                    const value = eqIdx < 0 ? "" : entry.slice(eqIdx + 1);
+                    return (
+                      <button
+                        key={`orphan-${entry}`}
+                        type="button"
+                        onClick={() => toggleTag(key, value)}
+                        title={t("alerts.orphanChipTitle")}
+                        className="rounded-full border border-[color:var(--color-danger)] bg-[color:var(--color-danger)]/10 px-2 py-0.5 text-xs text-[color:var(--color-danger)] line-through hover:bg-[color:var(--color-danger)]/20"
+                      >
+                        {entry} <span className="not-italic no-underline">×</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           );
         })()}

@@ -326,6 +326,52 @@ export const alertsApi = {
     api<{ status: string }>(`/api/alerts/deliveries/${id}/retry`, { method: "POST" }),
 };
 
+export type Tag = {
+  key: string;
+  description: string;
+  values: string[];
+  host_count: number;
+  rule_count: number;
+};
+
+export type TagImpact = {
+  host_count: number;
+  rule_count: number;
+  rule_names: string[];
+};
+
+export const tagsApi = {
+  list: () => api<Tag[]>("/api/tags"),
+  create: (key: string, description: string, values: string[]) =>
+    api<Tag>("/api/tags", {
+      method: "POST",
+      body: JSON.stringify({ key, description, values }),
+    }),
+  update: (key: string, description: string) =>
+    api<Tag>(`/api/tags/${encodeURIComponent(key)}`, {
+      method: "PUT",
+      body: JSON.stringify({ description }),
+    }),
+  remove: (key: string) =>
+    api<TagImpact>(`/api/tags/${encodeURIComponent(key)}`, { method: "DELETE" }),
+  impact: (key: string) =>
+    api<TagImpact>(`/api/tags/${encodeURIComponent(key)}/impact`),
+  addValue: (key: string, value: string) =>
+    api<Tag>(`/api/tags/${encodeURIComponent(key)}/values`, {
+      method: "POST",
+      body: JSON.stringify({ value }),
+    }),
+  removeValue: (key: string, value: string) =>
+    api<TagImpact>(
+      `/api/tags/${encodeURIComponent(key)}/values/${encodeURIComponent(value)}`,
+      { method: "DELETE" },
+    ),
+  valueImpact: (key: string, value: string) =>
+    api<TagImpact>(
+      `/api/tags/${encodeURIComponent(key)}/values/${encodeURIComponent(value)}/impact`,
+    ),
+};
+
 export const hostsApi = {
   list: () => api<Host[]>("/api/hosts"),
   create: (name: string) =>

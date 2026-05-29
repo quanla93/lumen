@@ -11,6 +11,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/quanla93/lumen/internal/hub/store"
+	"github.com/quanla93/lumen/internal/hub/tagutil"
 	"github.com/quanla93/lumen/internal/shared/api"
 )
 
@@ -158,12 +159,13 @@ func (h *Handlers) SetTags(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case errors.Is(err, ErrNotFound):
 			writeJSONError(w, http.StatusNotFound, "host not found")
-		case errors.Is(err, ErrTagKeyRequired),
-			errors.Is(err, ErrTagKeyInvalid),
-			errors.Is(err, ErrTagValueInvalid),
-			errors.Is(err, ErrTagKeyTooLong),
-			errors.Is(err, ErrTagValueTooLong),
-			errors.Is(err, ErrTooManyTags):
+		case errors.Is(err, tagutil.ErrKeyRequired),
+			errors.Is(err, tagutil.ErrKeyInvalid),
+			errors.Is(err, tagutil.ErrValueInvalid),
+			errors.Is(err, tagutil.ErrKeyTooLong),
+			errors.Is(err, tagutil.ErrValueTooLong),
+			errors.Is(err, ErrTooManyTags),
+			errors.Is(err, ErrTagNotInInventory):
 			writeJSONError(w, http.StatusBadRequest, err.Error())
 		default:
 			h.Logger.Error("set host tags failed", "err", err, "host_id", id)

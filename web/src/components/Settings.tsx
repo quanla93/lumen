@@ -315,7 +315,7 @@ function HostRow({
     <tr className="border-t border-[color:var(--color-border)]">
       <td className="px-3 py-2 font-mono align-top">{host.name}</td>
       <td className="px-3 py-2 align-top">
-        <HostTagsCell host={host} onChanged={onChanged} t={t} />
+        <HostTagsCell host={host} t={t} />
       </td>
       <td className="px-3 py-2 text-[color:var(--color-muted)] align-top">
         {host.last_seen_at ? relativeTime(host.last_seen_at, now, locale) : t("common.never")}
@@ -335,55 +335,20 @@ function HostRow({
   );
 }
 
+// HostTagsCell is read-only now. Tag assignment moved into Alerts → Tags
+// so the same screen that defines the tag inventory also assigns it.
+// Settings still surfaces the chips for at-a-glance "which tags does this
+// host carry" while listing infrastructure.
 function HostTagsCell({
   host,
-  onChanged,
   t,
 }: {
   host: Host;
-  onChanged: () => void;
   t: ReturnType<typeof useI18n>["t"];
 }) {
-  const [draft, setDraft] = useState<Record<string, string>>(host.tags ?? {});
-  const [editing, setEditing] = useState(false);
-  const [input, setInput] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  function addOne() {
-    const raw = input.trim();
-    if (!raw) return;
-    const eq = raw.indexOf("=");
-    const key = (eq < 0 ? raw : raw.slice(0, eq)).trim();
-    const value = eq < 0 ? "" : raw.slice(eq + 1).trim();
-    if (!key) return;
-    setDraft({ ...draft, [key]: value });
-    setInput("");
-  }
-
-  function removeOne(key: string) {
-    const next = { ...draft };
-    delete next[key];
-    setDraft(next);
-  }
-
-  async function save() {
-    setBusy(true);
-    setError(null);
-    try {
-      await hostsApi.setTags(host.id, draft);
-      setEditing(false);
-      onChanged();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : String(err));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  const chips = Object.entries(draft);
-  if (!editing) {
-    return (
+  const chips = Object.entries(host.tags ?? {});
+  return (
+    <div className="flex flex-col gap-1">
       <div className="flex flex-wrap items-center gap-1.5">
         {chips.length === 0 ? (
           <span className="text-xs text-[color:var(--color-muted)]">{t("settings.tagsEmpty")}</span>
@@ -394,57 +359,10 @@ function HostTagsCell({
             </span>
           ))
         )}
-        <button
-          type="button"
-          onClick={() => setEditing(true)}
-          className="text-xs text-[color:var(--color-muted)] underline hover:text-[color:var(--color-fg)]"
-        >
-          {t("settings.tagsEdit")}
-        </button>
       </div>
-    );
-  }
-
-  return (
-    <div className="space-y-2 min-w-[280px]">
-      <div className="flex flex-wrap items-center gap-1.5">
-        {chips.map(([k, v]) => (
-          <span key={k} className="inline-flex items-center gap-1 rounded-full border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2 py-0.5 text-xs">
-            {v ? `${k}=${v}` : k}
-            <button
-              type="button"
-              onClick={() => removeOne(k)}
-              className="ml-1 text-[color:var(--color-muted)] hover:text-[color:var(--color-danger)]"
-              aria-label="remove"
-            >
-              ×
-            </button>
-          </span>
-        ))}
-      </div>
-      <div className="flex items-center gap-2">
-        <FieldInput
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder="tier=critical"
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              addOne();
-            }
-          }}
-        />
-        <GhostButton onClick={addOne} disabled={busy}>{t("settings.tagsAdd")}</GhostButton>
-      </div>
-      <div className="flex items-center gap-2">
-        <PrimaryButton onClick={save} disabled={busy}>
-          {busy ? t("common.saving") : t("alerts.save")}
-        </PrimaryButton>
-        <GhostButton onClick={() => { setDraft(host.tags ?? {}); setEditing(false); setError(null); }} disabled={busy}>
-          {t("alerts.cancel")}
-        </GhostButton>
-        {error && <ErrorText message={error} />}
-      </div>
+      <span className="text-xs text-[color:var(--color-muted)]">
+        {t("settings.tagsManageHint")}
+      </span>
     </div>
   );
 }
