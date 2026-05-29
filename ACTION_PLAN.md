@@ -109,6 +109,7 @@ Mỗi quyết định ghi 1 dòng. Không xóa, không sửa — nếu đổi ý
 | 2026-05-29 | Webhook = **một dispatch engine dùng chung** cho notification channels (Phase 5) + Public API customer webhooks | Đảo lại ý "tách riêng 2 hệ" cùng ngày: cả hai đều là "event → POST HTTP có HMAC/retry/log", khác nhau chỉ ở owner + host scope. Webhook là 1 channel type bên cạnh Discord/Telegram/ntfy/Email. `owner_type=admin` (UI, full scope) hoặc `owner_type=api_key` (Public API, host_scope ép = host group của key, enforce lúc match event). Dùng chung bảng `notification_channels` + `notification_deliveries`. Giảm trùng code, dễ audit, security boundary giữ nguyên ở bước match. |
 | 2026-05-29 | Remote control (nếu làm sau) = **command-channel qua WebSocket sẵn có**, KHÔNG quay lại SSH | Transport push hiện tại (agent dial-out, HTTPS/WS) không khóa cửa control. Nếu tương lai cần điều khiển agent (restart service, update agent, chạy lệnh), đi qua chính WS mà agent đang giữ: hub đẩy lệnh **xuống** kênh đó. Giữ nguyên ưu thế zero-inbound + NAT/CGNAT-friendly (giống Tailscale / GitHub Actions runner / Cloudflare Tunnel). SSH cho control là "free + chín" nhưng đánh đổi cổng inbound + gãy NAT — đúng những thứ wedge HTTPS-only cố tránh. Chi phí WS-command: phải tự thiết kế tập lệnh + auth/scope từng lệnh + audit. Chỉ build khi scope "Management/control" được chốt là in-scope (xem open question). |
 | 2026-05-29 | "Custom UI kiểu Grafana" cho khách = mức 2 (expose data) + mức 3 (personalize nhẹ in-app), KHÔNG mở dashboard builder | Trả lời câu hỏi "cho khách custom UI như Grafana". **Mức 2** (khách dùng Grafana thật trên dữ liệu Lumen) đã có sẵn trong [Public API module](#-public-api--external-api--module-plan) §6: Prometheus exposition + Grafana Infinity datasource (P1) — *expose data, không build lại dashboard*. **Mức 3 (mới chốt là OK)**: personalize nhẹ *trong* fixed-views — sắp xếp/ẩn host card, chọn metric mặc định hiển thị, lưu 1-2 "view", theme/đơn vị; lưu per-user qua settings KV. **Ranh giới cứng**: KHÔNG panel tùy ý + query editor + grid kéo-thả — đó vẫn là anti-feature "dashboard builder", chỉ lật bằng decision mới. Mức 1 (builder đầy đủ trong Lumen) vẫn khóa. |
+| 2026-05-29 | Phase 5 (Proxmox) redefined → then **deferred to ~v1**; do Alerting/other features first | Same-day arc: first redefined Phase 5 = **agentless** Proxmox-native (hub→API, not agent-on-node) + **split alerting out** into its own phase (Phase 6). Then, on objective user-value review, **deferred Proxmox** out of the immediate queue: a read-only mirror of nodes/cluster/ZFS/PBS **duplicates the Proxmox web UI** (same anti-pattern as rebuilding Grafana); the agent's push/stale model already gives faster failure detection than a 30s poll; and alerting + other features have higher daily value. Proxmox stays the marketing wedge but is not next. **When revived**: lean-core **"guests-as-hosts"** (agentless-pull each guest into the unified host model — shared dashboard/history/alerts, no per-guest agent), NOT a mirror tab; and it's the first of a general **integrations** pattern (ESXi/Docker/NAS/SNMP later), built concretely-first. Agentless poll cadence locked at 30s default + one bulk `cluster/resources` call + tiered slow calls + keep-alive (no per-guest fan-out). |
 
 ---
 
@@ -333,28 +334,52 @@ Mỗi quyết định ghi 1 dòng. Không xóa, không sửa — nếu đổi ý
 
 ---
 
-### Phase 5 — v0.4: Proxmox wedge (Week 10-13)
+### Phase 5 — Proxmox-native monitoring (agentless) ⏸️ DEFERRED to ~v1
 
-**Goal**: Ship signature feature — Proxmox-native.
+> ⏸️ **DEFERRED 2026-05-29** after an objective review (see Decisions log). Reasons: a read-only mirror of nodes/cluster/ZFS/PBS largely **duplicates the Proxmox web UI** (same anti-pattern as rebuilding Grafana); fast failure detection is already served better by the agent's push/stale model; and **Alerting + other features have higher day-to-day user value**. Proxmox remains the marketing wedge but is **not the immediate next phase** — revisit for the v1 push or when there is real user demand. The agentless definition below is kept as the spec for when we pick it up.
+>
+> **If/when revived**, the valuable shape is **lean-core "guests-as-hosts"** (agentless-pull each guest's CPU/RAM into the unified host model → shared dashboard + history + alerts, no per-guest agent install), NOT a separate Proxmox mirror tab. The agentless-pull mechanism is also the first of a general "integrations" pattern (ESXi / Docker / NAS / SNMP later) — build Proxmox concretely first, generalise only on real demand.
 
-- [ ] LXC collector trong agent
-- [ ] Proxmox API client (agentless mode cho host)
-- [ ] Proxmox host config UI: enter URL + API token
-- [ ] Cluster topology view (nodes, quorum)
-- [ ] ZFS pool stats (`zpool list`, `arcstat`)
-- [ ] PBS backup status (read PBS API hoặc parse `vzdump` logs)
-- [ ] LXC vs QEMU distinction trong UI
+**Goal (when revived)**: Read the Proxmox VE REST API directly (agentless, API-token auth) so users see the virtualization layer (nodes, guests, cluster, ZFS, backups) inside Lumen without installing anything on Proxmox.
+
+**Spec (when revived)**: heart = agentless hub→Proxmox API; agent-in-LXC collector + guest history charts deferred further. Auth = Proxmox **API token** (read-only `PVEAuditor`) via `Authorization: PVEAPIToken=<id>=<secret>`; verify-TLS toggle (default off for self-signed); Test-connection action. **Cadence (anti-overload)**: default 30s poll (env `LUMEN_HUB_PROXMOX_INTERVAL`), one bulk `cluster/resources` call (no per-guest fan-out on the hot path), tiered slow cadence for ZFS/backups (~5m), HTTP keep-alive. `cluster/resources` is the inventory workhorse.
+
+**v0.4 scope (5A–5E):**
+- [ ] **5A Connection** — `proxmox_sources` table (URL + token id/secret + verify_tls), CRUD API, Test-connection (`GET /version`), Settings → Proxmox section
+- [ ] **5A** Background poller (`internal/hub/proxmox`, ctx goroutine + settings-driven interval), in-memory state store, `GET /api/proxmox/state`
+- [ ] **5B Inventory** — `GET /cluster/resources`: nodes summary + guests list, **LXC vs QEMU** distinction, running/stopped, CPU/RAM/disk; new top-level **Proxmox** tab
+- [ ] **5C Cluster** — `GET /cluster/status`: multi-node topology + quorum
+- [ ] **5D Storage** — ZFS pools (`/nodes/{node}/disks/zfs`: health/size/alloc) + datastore usage from `cluster/resources`
+- [ ] **5E Backups (PBS)** — recent backup task status (`/nodes/{node}/tasks?typefilter=vzdump`) + backup-type storage usage; full PBS-server API deferred
+- [ ] Docs: `integrations/proxmox.md` (API token creation, add source, TLS/reachability)
+
+**Deferred past v0.4:**
+- [ ] 5F Guest metrics over time (per-VM/LXC history charts)
+- [ ] LXC collector trong agent (agent-side deep OS metrics) + LXC helper script installer
 - [ ] Migration history view
-- [ ] Alert engine v1: rules (threshold-based), evaluation loop
-- [ ] Notification channels: Discord, Telegram, ntfy, Webhook, Email (SMTP)
-- [ ] Docs: `integrations/proxmox.md` + `integrations/lxc.md` + `integrations/zfs.md` + `integrations/pbs.md`
-- [ ] LXC helper script: `bash -c "$(curl ...)"` style installer
+- [ ] Split docs: `integrations/lxc.md` / `integrations/zfs.md` / `integrations/pbs.md`
 
-**Definition of done**: Có thể add 1 Proxmox node, thấy LXC list + ZFS pools + cluster status + nhận alert khi 1 LXC crash.
+**Definition of done (v0.4)**: Add 1 Proxmox API token connection, Test-connection succeeds, and the Proxmox tab shows nodes + LXC/QEMU guests with state + cluster quorum + ZFS pools + recent backup status — reflecting changes (stop/start a guest) within one poll interval.
 
 ---
 
-### Phase 6 — v0.5: Cold tier + retention
+### Phase 6 — v0.5: Alerting & notifications
+
+**Goal**: Threshold-based alerting for **any** host/metric (incl. Proxmox guests once Phase 5 lands). Split out of the old Phase 5 (2026-05-29) — alerting is a general feature, not Proxmox-specific.
+
+> 📋 **Implementation plan ready: [`docs/rfcs/0001-alerting.md`](docs/rfcs/0001-alerting.md)** — self-contained (migration 0008, `internal/hub/alerts` package, engine state machine, ntfy/discord/webhook channels, Alerts tab, verification). Milestone A is the first testable cut (ntfy-friendly). Tag v0.4.0 when Milestone A verified.
+
+- [ ] Alert engine v1: rules (threshold-based on metric + comparator + duration), evaluation loop over the in-memory store + history
+- [ ] Alert state model: firing/resolved transitions, dedup, cooldown; persist alert events
+- [ ] Notification channels: Discord, Telegram, ntfy, Webhook, Email (SMTP) — shared delivery engine (HMAC/retry/log) reused later by the Public API customer webhooks (see Public API module)
+- [ ] Alerts UI: rule CRUD + active/resolved alert list
+- [ ] Docs: `configure/alerts.md` + `integrations/notifications.md`
+
+**Definition of done**: Create a CPU>90%-for-5m rule, get a Discord/ntfy notification when a host (or Proxmox guest) breaches it, and see it resolve.
+
+---
+
+### Phase 7 — v0.6: Cold tier + retention
 
 - [ ] Parquet writer (parquet-go)
 - [ ] Compaction job: SQLite > configurable hot window → Parquet using configurable downsample bucket/policy
@@ -370,7 +395,7 @@ Mỗi quyết định ghi 1 dòng. Không xóa, không sửa — nếu đổi ý
 
 ---
 
-### Phase 7 — v0.6+: Polish & deferred product features
+### Phase 8 — v0.7+: Polish & deferred product features
 
 - [ ] Self-hosted SSO: custom OIDC provider config (issuer/client ID/client secret/scopes/redirect URL), with local admin fallback preserved
 - [ ] SAML2 evaluation after OIDC; implement only if dependency and configuration complexity stay acceptable for homelab/self-hosted use
@@ -390,7 +415,7 @@ Mỗi quyết định ghi 1 dòng. Không xóa, không sửa — nếu đổi ý
 
 ---
 
-### Phase 8 — v1.0: Stable
+### Phase 9 — v1.0: Stable
 
 - [ ] API freeze + version (`/api/v1/...`)
 - [ ] Plugin SDK (Go plugin or external binary + JSON protocol)
@@ -785,7 +810,7 @@ Nếu bạn (hoặc Claude) mở session mới:
 > Cập nhật mục này mỗi session.
 
 **Session**: 2026-05-29
-**Đang làm**: Phase 4 **closeout — DONE → releasing v0.3.0**. Version awareness + Update-agent panel landed; all Phase 4 boxes ticked. CHANGELOG cut for v0.3.0. Phase 3 lightweight log management **deferred post-v0.3** (direction locked, RFC + Logs/Console surface to a later release). Next pickups: log management, or start Phase 5 (Proxmox wedge / alert engine). Public API module remains specced-only (Phase 5+).
+**Đang làm**: v0.3.0 released. **Phase 5 (Proxmox) DEFERRED to ~v1** after objective review (mirror duplicates Proxmox UI; agent push detects faster; alerting/others higher daily value) — agentless "guests-as-hosts" spec kept for revival. **Doing other features first.** Phase 6 = Alerting & notifications was split out and is the leading candidate for next (table-stakes monitoring value). Phase 3 lightweight log management still deferred post-v0.3. Public API module remains specced-only. **Next phase = Phase 6 Alerting** — implementation plan written to [`docs/rfcs/0001-alerting.md`](docs/rfcs/0001-alerting.md) and pushed so it can be coded on another machine. Start at Milestone A (migration 0008 → `internal/hub/alerts` → wiring → Alerts tab → docs).
 **Phase 4 complete (2026-05-29):**
 - Version awareness: fixed ldflags `main.Version` mismatch (agent `var Version` + hub `var Version`); new `GET /api/version` (`internal/hub/meta`, with test); host detail shows `agent <ver>` + update-available pill (click-to-copy update cmd); dashboard host card shows update badge; `"dev"` builds suppress badges.
 - Update-agent panel on host detail: always-present card with the Compose update command, copy button, up-to-date/update-available status, and the "run on the agent's machine, not the hub" note.
