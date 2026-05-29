@@ -365,19 +365,47 @@ Mỗi quyết định ghi 1 dòng. Không xóa, không sửa — nếu đổi ý
 
 ---
 
-### Phase 6 — v0.5: Alerting & notifications
+### Phase 6 — v0.4: Alerting & notifications ✅ (released v0.4.0 — 2026-05-29)
 
 **Goal**: Threshold-based alerting for **any** host/metric (incl. Proxmox guests once Phase 5 lands). Split out of the old Phase 5 (2026-05-29) — alerting is a general feature, not Proxmox-specific.
 
-> 📋 **Implementation plan ready: [`docs/rfcs/0001-alerting.md`](docs/rfcs/0001-alerting.md)** — self-contained (migration 0008, `internal/hub/alerts` package, engine state machine, ntfy/discord/webhook channels, Alerts tab, verification). Milestone A is the first testable cut (ntfy-friendly). Tag v0.4.0 when Milestone A verified.
+> 📋 **Implementation plan: [`docs/rfcs/0001-alerting.md`](docs/rfcs/0001-alerting.md)** — Milestones A–D shipped. v0.4.0 tagged 2026-05-29.
 
 - [x] Alert engine v1: rules (threshold-based on metric + comparator + duration), evaluation loop over the in-memory store + history (Milestone A — `internal/hub/alerts/engine.go`, eval every `alerts.eval_interval`, default 15s; offline metric uses a 60s silence-detection floor, then `for_seconds` adds extra hold on top — `for_seconds=0` fires at ~60s after silence, not 120s)
 - [x] Alert state model: firing/resolved transitions, dedup, cooldown; persist alert events (per-(rule, host) in-memory state machine; persisted `alert_events` table; dedup via state — one firing row per breach until resolved)
-- [x] Notification channels: ntfy + Discord + Webhook (HTTP POST shared dispatcher in `notify.go`; Test action). Email/Telegram + HMAC signing + per-rule routing deferred to Milestone B+; webhook HMAC arrives with the Public API webhook unification.
-- [x] Alerts UI: rule CRUD + active/resolved alert list (new top-level Alerts tab with Active/History/Rules/Channels sub-tabs; `web/src/components/Alerts.tsx`)
-- [x] Docs: `configure/alerts.md` (`integrations/notifications.md` collapsed in — channel setup lives alongside the rule docs)
+- [x] Notification channels: ntfy + Discord + Webhook + **Telegram** (HTTP POST shared dispatcher in `notify.go`; Test action). Email channel deferred to v0.4.2; webhook HMAC arrives with the Public API webhook unification.
+- [x] Per-rule channel routing + per-channel `min_severity` floor (Milestone B).
+- [x] Host tag inventory + label selectors (Milestone C): controlled `tags` + `tag_values` vocabulary (migration 0012), Alerts → Tags tab does inventory CRUD **and** host assignment, rule selector picker = per-key dropdowns, delete-tag cascades through `host_tags` + rewrites every rule selector via `Selector.DropKey`/`DropPair` after a confirm dialog with impact preview.
+- [x] Persisted notification delivery queue (Milestone D): `notification_deliveries` table (migration 0011), background worker pool with per-channel serialisation, severity-aware retry (critical fails fast in ~5 min; warning/info back off to ~4 h), Deliveries sub-tab with filters + retry-now.
+- [x] Alerts UI: rule CRUD + active/resolved list + deliveries + tag inventory (`web/src/components/Alerts.tsx`, `AlertTags.tsx`; Active / History / Rules / Channels / Deliveries / Tags sub-tabs).
+- [x] Docs: `configure/alerts.md` (`integrations/notifications.md` collapsed in — channel setup lives alongside the rule docs).
 
-**Definition of done**: Create a CPU>90%-for-5m rule, get a Discord/ntfy notification when a host (or Proxmox guest) breaches it, and see it resolve.
+**Definition of done**: Create a CPU>90%-for-5m rule, get a Discord/ntfy notification when a host (or Proxmox guest) breaches it, and see it resolve. ✅
+
+---
+
+### Phase 6.x — v0.4.1+: Alerting follow-ups + server-test bugfixes
+
+> Picked up *after* the user's server-test feedback on v0.4.0 lands. Order below is the current priority — retention is #1 because today neither `alert_events` nor `notification_deliveries` get pruned, only `snapshots` does, so the tables grow unbounded under real traffic and that will bite within days. Reassess if real usage surfaces a different #1 pain.
+
+#### v0.4.1 — Retention sweep for alerts + deliveries  *(highest priority)*
+- [ ] New `retention.delete_alerts_after` setting (default `30d`?) — reuse the existing retention loop pattern from `internal/hub/retention/retention.go` (heartbeat + cutoff query).
+- [ ] Sweep `alert_events` older than the cutoff (only `resolved` rows; never delete a still-firing event).
+- [ ] Sweep `notification_deliveries` older than the cutoff (any terminal status: `sent`/`failed`/`dropped`).
+- [ ] Docs: extend `configure/alerts.md` "What's not in v0.4.0" → now ships in v0.4.1.
+- [ ] Server-test bugfix bucket: anything user surfaces from real traffic lands in this same patch.
+
+#### v0.4.2 — Email (SMTP) channel
+- [ ] Add `email` to `ChannelType`; reuse the dispatcher pattern from `notify.go`.
+- [ ] Channel config: `smtp_host`, `smtp_port`, `username`, `password` (masked on read like Telegram bot token), `from`, `to` (one address; multi-address can come later).
+- [ ] Test-send action sends a real email; same UX as the current ntfy/Discord test.
+- [ ] Docs section + UI form fields + i18n.
+
+#### v0.4.3 — Flap suppression + tag key rename
+- [ ] Flap suppression: per-rule cooldown / "fire at most N times per window" (today only `for_seconds` exists, which doesn't stop a rule that flaps every few minutes from spamming the channel).
+- [ ] Tag key rename: atomic three-table swap (`tags` + `tag_values` + `host_tags`) + rewrite every affected `host_selector`. Currently the recommended workaround is delete-and-recreate; rename is a quality-of-life add once the user shows it matters in practice.
+
+**Still deferred past v0.4.x (no slot yet):** derived/rate metrics ("RAM grew >10%/min"); webhook HMAC (waits for Public API webhook unification).
 
 ---
 
