@@ -9,8 +9,8 @@ Lumen alerts you when a host goes off-spec. Rules evaluate every ~15s
 against the in-memory snapshot store; transitions persist to SQLite and
 fan out to every enabled notification channel.
 
-This page covers Milestones A + B of [RFC 0001](https://github.com/quanla93/lumen/blob/main/docs/rfcs/0001-alerting.md):
-**ntfy + Discord + Telegram + generic webhook**, **threshold rules + offline rule**, **host glob patterns**, **per-rule channel routing**, and **per-channel severity floor**. Email channel, HMAC signing on webhooks, and cooldown/flap suppression remain in Milestone C+.
+This page covers all of v0.4.0 / [RFC 0001](https://github.com/quanla93/lumen/blob/main/docs/rfcs/0001-alerting.md) Milestones A–D:
+**ntfy + Discord + Telegram + generic webhook**, **threshold rules + offline rule**, **host name/glob patterns**, **host tag inventory + label selectors** (Alerts → Tags tab), **per-rule channel routing**, **per-channel severity floor**, and a **persisted delivery queue** with severity-aware retry (Active / History / Rules / Channels / Deliveries / Tags sub-tabs). Email channel, HMAC on webhooks, retention sweep, and cooldown/flap suppression are deferred (see "What's not in v0.4.0" below).
 
 ## What you can alert on
 
@@ -24,8 +24,11 @@ This page covers Milestones A + B of [RFC 0001](https://github.com/quanla93/lume
 | `offline` | agent stopped reporting | — | — |
 
 The `offline` metric ignores comparator/threshold and fires when no
-ingest has landed in at least `max(for_seconds, 60s)`. The 60-second
-floor prevents a single missed tick from waking you up.
+ingest has landed in at least 60 seconds. The 60-second floor is the
+only "ignore blips" guard (≈12 missed 5-second heartbeats) — `for_seconds`
+adds extra hold **on top** of that floor, not under it. So `for_seconds=0`
+fires the moment a host has been silent for 60s; `for_seconds=120` waits
+60s (detect) + 120s (hold) = 3 minutes total.
 
 ## Rule fields
 
@@ -94,17 +97,42 @@ Best when host naming is disciplined (`<role>-<env>` or similar).
 
 When the fleet is large *and* naming is heterogeneous, neither idiom
 above scales: every host needs a per-rule line, and globs can't express
-"hosts the ops team owns regardless of name." Lumen now supports
-Kubernetes-style **host tags** and **label selectors** on rules.
+"hosts the ops team owns regardless of name." Lumen supports
+Kubernetes-style **host tags** and **label selectors** on rules, backed
+by a controlled tag inventory so operators can't typo themselves into a
+broken selector.
 
-**Tag a host**: Settings → Hosts → click *edit* in the **Tags** column.
-Type `key=value` (or just `key` for a bare tag) and hit `Add`, then
-`Save`. Each host can carry up to 32 tags; each key appears at most
-once per host.
+#### Step 1 — define the tag inventory
 
-**Select by tag**: in the rule form, **Host selector (wins over name)**
-accepts `key=value` pairs separated by commas. All pairs must match
-(AND):
+Go to **Alerts → Tags**. Each tag is a `key` plus a fixed list of
+allowed `value`s, e.g. `tier` → `{critical, important, normal}`.
+
+- *New tag*: click **New tag**, type the key (letters/digits/`-`/`_`/`.`,
+  ≤ 64 chars) and one value per line in the initial values box. Description
+  is optional.
+- *Add / remove values later*: click **Edit tag** in the table row. Adding
+  a value is instant; removing one shows a confirm dialog with the impact
+  ("removes from N hosts, drops from M rule selectors") before it cascades.
+- *Delete the whole tag*: same flow, same impact preview. Every reference
+  in `host_tags` is removed and every affected `host_selector` is rewritten
+  to drop that key.
+
+The inventory is the source of truth — hosts and rules can only pick
+from it.
+
+#### Step 2 — assign tags to hosts (in the same tab)
+
+The right pane of **Alerts → Tags** lists every host. Click **Edit** on
+a row, then for each tag key in the inventory pick a value from the
+dropdown (or `— none —` to leave that key unassigned for this host).
+Settings → Hosts still shows each host's tags as chips read-only — the
+"Manage in Alerts → Tags" link points back here.
+
+#### Step 3 — write a rule selector
+
+In the rule form, **Host selector (wins over name)** renders one
+dropdown per inventory key. Pick a value per key you want to constrain
+on — the selector is the AND of every picked pair, e.g. `tier=critical,env=prod`.
 
 | Rule | Selector | Target |
 |---|---|---|
@@ -115,7 +143,15 @@ accepts `key=value` pairs separated by commas. All pairs must match
 When the selector field is non-empty it **wins** over the name field
 (the UI greys out names so you can see which is active). Empty selector
 falls back to the name field (which itself accepts exact, comma list,
-or glob — see idioms 1 + 2 above).
+or glob — see idioms 1 + 2 above). A free-text textarea is available
+under the dropdowns for power users / scripted edits.
+
+If you previously typed a tag pair that no longer exists in the
+inventory (e.g. a value got deleted), the rule editor shows it as a
+**red strike-through pill** so you can spot and remove it. New `host_tags`
+writes via `PUT /api/hosts/{id}/tags` are validated against the
+inventory and rejected with `ErrTagNotInInventory` if the pair isn't
+registered — same guarantee for scripted callers.
 
 **Multi-select shortcut**: even without tags, the rule form's name
 input lets you tick agents from a checklist. Lumen stores the result as
@@ -125,6 +161,11 @@ also be hand-typed or generated by an external script.
 Tags + selectors are also the planned grounding for Public API
 `host_scope` (a key can only see hosts matching a selector) — building
 both on the same primitive keeps alerting and RBAC consistent.
+
+> **Rename / migrate a tag key**: not supported in v0.4.0. To rename
+> `tier` → `level`, create `level` with the same values, re-assign hosts
+> to the new key in the right pane, then delete the old `tier` (cascade
+> rewrites the rule selectors automatically).
 
 ## Notification channels
 
@@ -316,14 +357,18 @@ the operator knows throughput is the bottleneck. Tunable knobs (worker
 count, poll interval, backoff schedule) live in the dispatcher config
 today; they'll be exposed in Settings → Runtime in a follow-up.
 
-## What's not in Milestones A + B
+## What's not in v0.4.0
 
 - **Email (SMTP)** channel.
 - **HMAC signing** on the webhook channel — lands with the
   [Public API module](../../reference/api/) webhook unification.
-- **Alert history retention sweep** (rows accumulate; expect a
-  `retention.delete_alerts_after` setting in Milestone C+).
+- **Alert / delivery history retention sweep** — `alert_events` and
+  `notification_deliveries` rows accumulate; expect a
+  `retention.delete_alerts_after` setting in a follow-up.
 - **Cool-down / flap suppression** beyond the per-rule `for_seconds`.
+- **Derived / rate metrics** (e.g. "RAM grew >10%/min").
+- **Tag key rename** — recreate with the new name + re-assign + delete
+  the old one (cascade rewrites rule selectors automatically).
 
 Watch [RFC 0001](https://github.com/quanla93/lumen/blob/main/docs/rfcs/0001-alerting.md)
 for the next milestone.
