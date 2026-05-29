@@ -21,6 +21,12 @@ linters:
       - linters: [errcheck]
         source: '\.Close\(\)$'
 
+      # `defer tx.Rollback()` is the standard Go SQL idiom — if Commit
+      # already ran, Rollback returns sql.ErrTxDone and there's nothing
+      # the caller can usefully do with it. Same justification as Close.
+      - linters: [errcheck]
+        source: '\.Rollback\(\)$'
+
       # QF1001 = "could apply De Morgan's law". Stylistic — the
       # negated-positive form is often more readable when the positive
       # case is the obvious thing being checked (e.g. allowlist

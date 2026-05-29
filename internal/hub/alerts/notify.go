@@ -34,10 +34,11 @@ var dispatchClient = &http.Client{Timeout: 8 * time.Second}
 
 // Dispatch is the single entry point the engine uses. Returns an error
 // the caller logs at Warn; never panics on a misconfigured channel.
-func Dispatch(ctx context.Context, ch Channel, n Notification, logger *slog.Logger) error {
-	if logger == nil {
-		logger = slog.Default()
-	}
+// The logger parameter is retained for API compatibility with callers
+// that pass d.cfg.Logger / h.Logger / e.cfg.Logger, but Dispatch itself
+// has no log statements — errors propagate to the caller, which decides
+// at what level (and with what context fields) to log them.
+func Dispatch(ctx context.Context, ch Channel, n Notification, _ *slog.Logger) error {
 	cfg, err := ch.ParsedConfig()
 	if err != nil {
 		return err
