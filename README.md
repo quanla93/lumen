@@ -4,16 +4,18 @@
 
 **Proxmox-native monitoring for homelabs. HTTPS-only, HDD-friendly, mobile-ready.**
 
-Lightweight self-hosted server monitoring with realtime dashboards, historical metrics,
-and alerts — designed to run comfortably on a Raspberry Pi.
+Lightweight self-hosted server monitoring with realtime dashboards and historical
+metrics — designed to run comfortably on a Raspberry Pi.
 
 [Quickstart](docs/src/content/docs/getting-started/quickstart.md) ·
+[Documentation](docs/src/content/docs/getting-started/overview.md) ·
 [Roadmap](ACTION_PLAN.md)
 
-> ⚠️ **Pre-1.0 / pre-launch.** The project is being staged at
-> [`quanla93/lumen`](https://github.com/quanla93/lumen) (private) until
-> v0.1.0; the `quanla.org` site, Discord, and installer URLs below are
-> placeholders and don't exist yet.
+> ⚠️ **Pre-1.0.** Latest tag is **v0.2.0**. Breaking changes are allowed in
+> minor releases until v1.0. The project is staged at
+> [`quanla93/lumen`](https://github.com/quanla93/lumen); the `quanla.org`
+> site, Discord, and any hosted installer URLs are placeholders and don't
+> exist yet.
 
 </div>
 
@@ -27,15 +29,20 @@ They eat RAM, hammer your HDD, and need three services just to start.
 
 ### What makes Lumen different
 
-- **Proxmox / LXC first-class** — Read Proxmox API directly (no agent needed on the host).
-  See cluster topology, ZFS pools, PBS backups, LXC vs QEMU at a glance.
-- **HDD-friendly storage** — Batched writes, WAL-tuned SQLite, hot/cold tiering with Parquet.
-  Designed to keep your spinning rust quiet.
-- **HTTPS-only push transport** — Agents push out via HTTPS/WebSocket.
-  Works behind any NAT, Cloudflare Tunnel, Tailscale Funnel — no SSH key infrastructure required.
-- **Built-in public status page** — Share a read-only URL of your homelab health, no extra tool needed.
-- **Mobile-first PWA** — Install on your phone, get Web Push notifications natively.
-- **Bilingual docs** — English and Vietnamese, first-class.
+The three wedges below are Lumen's north star — every feature serves at least one.
+Each line is tagged **✅ shipped** or **🛣️ roadmap** so you know what works today
+(see the [roadmap](ACTION_PLAN.md) for phase-by-phase detail).
+
+- **HTTPS-only push transport** ✅ — Agents push out via HTTPS/WebSocket.
+  Works behind any NAT, Cloudflare Tunnel, or Tailscale Funnel — no SSH key infrastructure required.
+- **HDD-friendly storage** ✅ — Batched writes (60s flush ring) and WAL-tuned SQLite cut fsync
+  pressure ~100× at fleet scale. Parquet hot/cold tiering is on the roadmap.
+- **Mobile-ready PWA** ✅ — Installable to your phone's homescreen; app shell paints instantly
+  on cold start. Web Push notifications are roadmap.
+- **Bilingual UI + docs** ✅ — Both the web app and the docs ship in English and Vietnamese.
+- **Proxmox / LXC first-class** 🛣️ — Read the Proxmox API directly (agentless), see cluster
+  topology, ZFS pools, PBS backups, and LXC vs QEMU. Planned for v0.4.
+- **Built-in public status page** 🛣️ — Share a read-only URL of your homelab health. Planned for v0.6.
 
 ### What Lumen is NOT
 
@@ -53,42 +60,67 @@ If those are dealbreakers, look at [Grafana + Prometheus](https://grafana.com) o
 
 ## Feature highlights
 
-| | Lumen |
-|---|---|
-| Hub footprint | ~60 MB RAM, single binary |
-| Agent footprint | ~10 MB RAM, single binary |
-| Storage | SQLite (hot) + Parquet (cold), ZSTD compressed |
-| Transport | HTTPS / WebSocket (push from agent) |
-| Realtime | WebSocket fan-out, sub-second update |
-| Auto-discovery | Docker, LXC, Proxmox VMs |
-| Alerts | Discord, Telegram, ntfy, Email, Webhook |
-| Deploy | Docker, Compose, single binary, LXC helper script |
-| Auth | Username/password, JWT, optional TOTP, per-host tokens |
+| | Lumen | Status |
+|---|---|---|
+| Hub footprint | Single Go binary, embedded web UI | ✅ |
+| Agent footprint | Single Go binary | ✅ |
+| Metrics | CPU (+ per-core), RAM, swap, disk, disk I/O, network, load, temperature | ✅ |
+| Storage | SQLite (hot), WAL-tuned, batched writes; Parquet cold tier planned | ✅ / 🛣️ |
+| Transport | HTTPS / WebSocket (agent pushes outbound) | ✅ |
+| Realtime | WebSocket fan-out with per-host subscribe filtering | ✅ |
+| Containers | Docker container CPU / memory / state (live) | ✅ |
+| Auth | First-admin register, JWT (HS256), Argon2id, per-host bearer tokens | ✅ |
+| Settings | Runtime agent interval, retention window/interval, downsample policy | ✅ |
+| UI | Dashboard, host detail charts (uPlot), dark/light, EN + VI | ✅ |
+| Deploy | Docker Compose (primary), single binary + systemd, install script | ✅ |
+| Auto-discovery | LXC, Proxmox VMs | 🛣️ |
+| Alerts | Discord, Telegram, ntfy, Email, Webhook | 🛣️ |
+| TOTP 2FA / multi-user | Optional second factor, read-only viewer role | 🛣️ |
 
 ---
 
 ## Quickstart
 
-The Docker Compose and `quanla.org/lumen/install` installer flow shown below is the
-target UX for v0.1.0. Today (pre-v0.1) you build from source:
+Docker Compose is the primary install path:
 
 ```bash
 git clone https://github.com/quanla93/lumen
 cd lumen
-cp .env.example .env
-make dev-hub      # terminal 1
-make dev-agent    # terminal 2
+docker compose -f deploy/docker/docker-compose.yml up --build -d
 ```
 
-Future v0.1+ flow (not live yet):
+Then open `http://localhost:8090`, create/sign in to the admin account, and go to
+**Settings → Hosts**. Create a host, download/copy the generated per-agent
+`docker-compose.yml`, place it on the target machine at `/opt/lumen-agent`, and
+run `docker compose up -d` there.
 
-```bash
-curl -fsSL https://quanla.org/lumen/install/compose > docker-compose.yml
-docker compose up -d
-# then add a host in the UI to copy the agent install command.
-```
-
+For development from source, see [Run from source](docs/src/content/docs/how-to/run-from-source.md).
 Full setup: see [Quickstart](docs/src/content/docs/getting-started/quickstart.md).
+
+---
+
+## Tech stack
+
+- **Hub & agent** — Go 1.25+ (single binary each). [chi](https://github.com/go-chi/chi) router,
+  [gopsutil/v4](https://github.com/shirou/gopsutil) metrics, [gorilla/websocket](https://github.com/gorilla/websocket),
+  [modernc.org/sqlite](https://gitlab.com/cznic/sqlite) (pure-Go, no cgo) with [goose](https://github.com/pressly/goose)
+  migrations, Argon2id + JWT auth, [bbolt](https://github.com/etcd-io/bbolt) agent offline buffer.
+- **Web** — React 18 + Vite + TypeScript + Tailwind, [uPlot](https://github.com/leeoniya/uPlot) charts,
+  runtime i18n (EN/VI), PWA shell. Built and embedded into the hub binary via `embed.FS`.
+- **Docs** — [Starlight](https://starlight.astro.build) (Astro), bilingual.
+
+## Project layout
+
+```
+cmd/lumen-hub      Hub server entrypoint
+cmd/lumen-agent    Agent entrypoint
+internal/hub       Auth, hosts, ingest, storage (SQLite/goose), stream (WS), settings, retention
+internal/agent     Collectors, sender, bbolt buffer, YAML/env config
+web/               React + Vite SPA (embedded into the hub binary)
+docs/              Starlight documentation site (EN/VI)
+deploy/            Docker (Dockerfiles + compose) and systemd units
+api/               OpenAPI 3.1 spec + .http REST Client examples
+```
 
 ---
 
@@ -98,10 +130,13 @@ Lumen is **pre-1.0**. Expect breaking changes until v1.0. We aim for stable APIs
 
 | Version | State | Notes |
 |---|---|---|
-| v0.1 | 🚧 In development | MVP: hub + agent, Docker, realtime dashboard |
-| v0.2 | Planned | LXC + Proxmox integration, alerts |
-| v0.3 | Planned | Cold tier Parquet, multi-user, retention config |
-| v1.0 | Planned | Stable API, plugin SDK |
+| v0.1 | ✅ Released | MVP: hub + agent, auth, Docker collector, realtime dashboard, history API, PWA |
+| v0.2 | ✅ Released | Runtime settings, downsample policy, UI polish, bilingual (EN/VI) UI |
+| v0.3 | 🚧 In progress | Docker Compose agent lifecycle: generated per-agent compose, version awareness |
+| v0.4 | Planned | Proxmox / LXC / ZFS / PBS integration + alert engine and notification channels |
+| v0.5 | Planned | Parquet cold tier, retention compaction, multi-user, TOTP 2FA |
+| v0.6 | Planned | Self-hosted SSO (OIDC), public status page, Web Push |
+| v1.0 | Planned | API freeze (`/api/v1`), plugin SDK, Beszel migration tool |
 
 See the full [roadmap](ACTION_PLAN.md) (phase-by-phase plan, decisions log, anti-features).
 
@@ -109,16 +144,29 @@ See the full [roadmap](ACTION_PLAN.md) (phase-by-phase plan, decisions log, anti
 
 ## Documentation
 
-Currently available:
+Docs are a Starlight site under [docs/](docs/) (English + Vietnamese).
 
+**Getting started**
 - **[Overview](docs/src/content/docs/getting-started/overview.md)** — What Lumen is and isn't
 - **[Quickstart](docs/src/content/docs/getting-started/quickstart.md)** — Up and running locally
 - **[Concepts](docs/src/content/docs/getting-started/concepts.md)** — Hub, agent, host, metric
-- **[ADR-0001: Storage architecture](docs/adr/0001-storage-architecture.md)** — SQLite hot + Parquet cold
-- **[Contributing](CONTRIBUTING.md)** — Dev setup, commit style, PR workflow
 
-Install guide, configuration reference, integrations (Proxmox/LXC/ZFS/PBS),
-and the API reference land in phases v0.1 → v0.3 — see the [roadmap](ACTION_PLAN.md).
+**Install & operate**
+- **[Hub (Docker Compose)](docs/src/content/docs/install/hub-compose.md)** · **[Hub (binary)](docs/src/content/docs/install/hub-binary.md)** · **[Hub on Proxmox LXC](docs/src/content/docs/install/hub-lxc.md)**
+- **[Agent (Docker)](docs/src/content/docs/install/agent-docker.md)** · **[Agent (Linux)](docs/src/content/docs/install/agent-linux.md)**
+- **[Add agents](docs/src/content/docs/how-to/add-agents.md)** · **[Update agents](docs/src/content/docs/how-to/update-agents.md)** · **[Use the web UI](docs/src/content/docs/how-to/use-the-web-ui.md)**
+
+**Configure**
+- **[Hosts & tokens](docs/src/content/docs/configure/hosts-and-tokens.md)** · **[Runtime settings](docs/src/content/docs/configure/runtime-settings.md)** · **[Retention](docs/src/content/docs/configure/retention.md)** · **[Reliability](docs/src/content/docs/configure/reliability.md)**
+
+**Reference**
+- **[Architecture](docs/src/content/docs/reference/architecture.md)** · **[API](docs/src/content/docs/reference/api.md)** · **[Metrics catalog](docs/src/content/docs/reference/metrics-catalog.md)** · **[FAQ](docs/src/content/docs/faq.md)**
+- **[ADR-0001: Storage](docs/adr/0001-storage-architecture.md)** · **[ADR-0002: Transport](docs/adr/0002-transport-choice.md)** · **[ADR-0003: Language](docs/adr/0003-language-choice.md)**
+
+**Develop**
+- **[Run from source](docs/src/content/docs/how-to/run-from-source.md)** · **[CI/CD](docs/src/content/docs/contributing/ci-cd.md)** · **[Contributing](CONTRIBUTING.md)**
+
+Proxmox/LXC/ZFS/PBS integration guides land with the v0.4 Proxmox wedge — see the [roadmap](ACTION_PLAN.md).
 
 ---
 
@@ -130,8 +178,9 @@ We welcome contributions of every kind: code, docs, bug reports, ideas, and help
 - 💡 **Idea?** [Start a discussion](https://github.com/quanla93/lumen/discussions)
 - 🛠️ **Code?** Read [CONTRIBUTING.md](CONTRIBUTING.md) first
 
-A translation guide and a formal Code of Conduct land before v0.1.0 (see
-the [roadmap](ACTION_PLAN.md) Phase 0 deferred items).
+By participating you agree to our [Code of Conduct](CODE_OF_CONDUCT.md). See also
+[GOVERNANCE.md](GOVERNANCE.md), [SECURITY.md](SECURITY.md), and [SUPPORT.md](SUPPORT.md).
+A dedicated UI-translation contribution guide is still on the [roadmap](ACTION_PLAN.md).
 
 ---
 
