@@ -64,9 +64,9 @@ func main() {
 }
 
 func printUsage() {
-	fmt.Fprintln(os.Stdout, "Usage:")
-	fmt.Fprintln(os.Stdout, "  lumen-agent [run]")
-	fmt.Fprintln(os.Stdout, "  lumen-agent update-docker --container <name> [--image <image>] [--apply]")
+	_, _ = fmt.Fprintln(os.Stdout, "Usage:")
+	_, _ = fmt.Fprintln(os.Stdout, "  lumen-agent [run]")
+	_, _ = fmt.Fprintln(os.Stdout, "  lumen-agent update-docker --container <name> [--image <image>] [--apply]")
 }
 
 func runDockerUpdate(args []string) {
@@ -89,15 +89,15 @@ func runDockerUpdate(args []string) {
 	if *apply {
 		mode = "applied"
 	}
-	fmt.Fprintf(os.Stdout, "docker update %s\n", mode)
-	fmt.Fprintf(os.Stdout, "container: %s\n", plan.Container)
-	fmt.Fprintf(os.Stdout, "replacement: %s\n", plan.Replacement)
-	fmt.Fprintf(os.Stdout, "image: %s\n", plan.Image)
-	fmt.Fprintf(os.Stdout, "restart: %s\n", plan.RestartPolicy)
-	fmt.Fprintf(os.Stdout, "user: %s\n", plan.User)
-	fmt.Fprintf(os.Stdout, "env: %d LUMEN_* vars preserved\n", len(plan.Env))
-	fmt.Fprintf(os.Stdout, "mounts: %d binds preserved\n", len(plan.Binds))
-	fmt.Fprintf(os.Stdout, "networks: %v\n", plan.Networks)
+	_, _ = fmt.Fprintf(os.Stdout, "docker update %s\n", mode)
+	_, _ = fmt.Fprintf(os.Stdout, "container: %s\n", plan.Container)
+	_, _ = fmt.Fprintf(os.Stdout, "replacement: %s\n", plan.Replacement)
+	_, _ = fmt.Fprintf(os.Stdout, "image: %s\n", plan.Image)
+	_, _ = fmt.Fprintf(os.Stdout, "restart: %s\n", plan.RestartPolicy)
+	_, _ = fmt.Fprintf(os.Stdout, "user: %s\n", plan.User)
+	_, _ = fmt.Fprintf(os.Stdout, "env: %d LUMEN_* vars preserved\n", len(plan.Env))
+	_, _ = fmt.Fprintf(os.Stdout, "mounts: %d binds preserved\n", len(plan.Binds))
+	_, _ = fmt.Fprintf(os.Stdout, "networks: %v\n", plan.Networks)
 }
 
 func runAgent() {
