@@ -135,31 +135,55 @@ function SubTabButton({
 
 // ---------------- events ----------------
 
+// Page size matches the server cap step: every "Load more" click bumps
+// the LIMIT by this many rows, up to PAGE_LIMIT_MAX. Auto-refresh keeps
+// using the current page size so the newest rows stay live without
+// resetting the user's scrollback.
+const EVENT_PAGE_STEP = 200;
+const EVENT_PAGE_MAX = 2000;
+
 function EventsList({ state }: { state: "firing" | "resolved" | "all" }) {
   const { t, locale } = useI18n();
   const [events, setEvents] = useState<AlertEvent[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [now, setNow] = useState(Date.now());
+  const [limit, setLimit] = useState(EVENT_PAGE_STEP);
+  const [loadingMore, setLoadingMore] = useState(false);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (nextLimit: number = limit) => {
     try {
-      const evs = await alertsApi.events(state, 200);
+      const evs = await alertsApi.events(state, nextLimit);
       setEvents(evs);
       setError(null);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : String(err));
     }
-  }, [state]);
+  }, [state, limit]);
 
   useEffect(() => {
-    refresh();
-    const evId = window.setInterval(refresh, EVENT_POLL_MS);
+    refresh(limit);
+    const evId = window.setInterval(() => refresh(limit), EVENT_POLL_MS);
     const nowId = window.setInterval(() => setNow(Date.now()), 5_000);
     return () => {
       window.clearInterval(evId);
       window.clearInterval(nowId);
     };
-  }, [refresh]);
+  }, [refresh, limit]);
+
+  // Reset the page when the user switches state (Active ↔ History).
+  useEffect(() => {
+    setLimit(EVENT_PAGE_STEP);
+  }, [state]);
+
+  async function loadMore() {
+    const next = Math.min(limit + EVENT_PAGE_STEP, EVENT_PAGE_MAX);
+    if (next === limit) return;
+    setLoadingMore(true);
+    setLimit(next);
+    // The useEffect on `limit` re-fires refresh; release the busy state
+    // on the next tick so the button feedback feels instant.
+    setTimeout(() => setLoadingMore(false), 0);
+  }
 
   if (error) return <ErrorText message={t("alerts.listError", { error: error })} />;
   if (events === null) return <p className="text-sm text-[color:var(--color-muted)]">{t("alerts.listLoading")}</p>;
@@ -172,6 +196,11 @@ function EventsList({ state }: { state: "firing" | "resolved" | "all" }) {
       />
     );
   }
+
+  // "Maybe more" = the server returned a full page. Hide the button once
+  // we know the tail is in view or we already hit the ceiling.
+  const maybeMore = events.length >= limit && limit < EVENT_PAGE_MAX;
+  const atCeiling = limit >= EVENT_PAGE_MAX;
 
   return (
     <Surface padded={false}>
@@ -197,6 +226,21 @@ function EventsList({ state }: { state: "firing" | "resolved" | "all" }) {
           </li>
         ))}
       </ul>
+      <div className="flex items-center justify-between gap-3 border-t border-[color:var(--color-border)] px-5 py-3 text-xs text-[color:var(--color-muted)]">
+        <span>{t("alerts.loadedCount", { count: events.length })}</span>
+        {maybeMore ? (
+          <button
+            type="button"
+            onClick={loadMore}
+            disabled={loadingMore}
+            className="rounded-md border border-[color:var(--color-border)] px-3 py-1 text-xs hover:bg-[color:var(--color-bg-muted)] disabled:opacity-60"
+          >
+            {loadingMore ? t("common.loading") : t("alerts.loadMore", { step: EVENT_PAGE_STEP })}
+          </button>
+        ) : atCeiling ? (
+          <span>{t("alerts.loadMoreCeiling", { max: EVENT_PAGE_MAX })}</span>
+        ) : null}
+      </div>
     </Surface>
   );
 }
@@ -223,6 +267,9 @@ function statusTone(s: DeliveryStatus): "ok" | "warn" | "danger" | "muted" {
   }
 }
 
+const DELIVERY_PAGE_STEP = 200;
+const DELIVERY_PAGE_MAX = 2000;
+
 function DeliveriesPanel() {
   const { t, locale } = useI18n();
   const [rows, setRows] = useState<DeliveryView[] | null>(null);
@@ -231,10 +278,12 @@ function DeliveriesPanel() {
   const [severityFilter, setSeverityFilter] = useState<AlertSeverity | "">("");
   const [now, setNow] = useState(Date.now());
   const [retryBusy, setRetryBusy] = useState<number | null>(null);
+  const [limit, setLimit] = useState(DELIVERY_PAGE_STEP);
+  const [loadingMore, setLoadingMore] = useState(false);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (nextLimit: number = limit) => {
     try {
-      const filter: { status?: DeliveryStatus; severity?: AlertSeverity; limit: number } = { limit: 200 };
+      const filter: { status?: DeliveryStatus; severity?: AlertSeverity; limit: number } = { limit: nextLimit };
       if (statusFilter) filter.status = statusFilter;
       if (severityFilter) filter.severity = severityFilter;
       const data = await alertsApi.deliveries(filter);
@@ -243,17 +292,32 @@ function DeliveriesPanel() {
     } catch (err) {
       setError(err instanceof ApiError ? err.message : String(err));
     }
-  }, [statusFilter, severityFilter]);
+  }, [statusFilter, severityFilter, limit]);
 
   useEffect(() => {
-    void refresh();
-    const id = window.setInterval(refresh, DELIVERY_POLL_MS);
+    void refresh(limit);
+    const id = window.setInterval(() => refresh(limit), DELIVERY_POLL_MS);
     const nowId = window.setInterval(() => setNow(Date.now()), 5_000);
     return () => {
       window.clearInterval(id);
       window.clearInterval(nowId);
     };
-  }, [refresh]);
+  }, [refresh, limit]);
+
+  // Filter change collapses the page back to the first step — keeps the
+  // scrollback intuitive (otherwise switching from "any" to "failed" with
+  // limit=1000 would show 1000 failed rows, far more than the user asked).
+  useEffect(() => {
+    setLimit(DELIVERY_PAGE_STEP);
+  }, [statusFilter, severityFilter]);
+
+  async function loadMore() {
+    const next = Math.min(limit + DELIVERY_PAGE_STEP, DELIVERY_PAGE_MAX);
+    if (next === limit) return;
+    setLoadingMore(true);
+    setLimit(next);
+    setTimeout(() => setLoadingMore(false), 0);
+  }
 
   async function retry(id: number) {
     setRetryBusy(id);
@@ -391,6 +455,21 @@ function DeliveriesPanel() {
               );
             })}
           </ul>
+          <div className="flex items-center justify-between gap-3 border-t border-[color:var(--color-border)] px-5 py-3 text-xs text-[color:var(--color-muted)]">
+            <span>{t("alerts.loadedCount", { count: rows.length })}</span>
+            {rows.length >= limit && limit < DELIVERY_PAGE_MAX ? (
+              <button
+                type="button"
+                onClick={loadMore}
+                disabled={loadingMore}
+                className="rounded-md border border-[color:var(--color-border)] px-3 py-1 text-xs hover:bg-[color:var(--color-bg-muted)] disabled:opacity-60"
+              >
+                {loadingMore ? t("common.loading") : t("alerts.loadMore", { step: DELIVERY_PAGE_STEP })}
+              </button>
+            ) : limit >= DELIVERY_PAGE_MAX ? (
+              <span>{t("alerts.loadMoreCeiling", { max: DELIVERY_PAGE_MAX })}</span>
+            ) : null}
+          </div>
         </Surface>
       )}
     </div>

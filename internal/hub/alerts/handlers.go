@@ -492,7 +492,11 @@ func (h *Handlers) ListEvents(w http.ResponseWriter, r *http.Request) {
 		state = "all"
 	}
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-	if limit <= 0 || limit > 500 {
+	// Cap at 2000 — the UI's "Load more" button steps in 200-row pages and
+	// settles around a few hundred rows in practice. 2000 is the ceiling
+	// before a SELECT on a busy 100k-row table starts to feel slow to a
+	// homelab operator; cold-tier reads (Phase 7) take over above that.
+	if limit <= 0 || limit > 2000 {
 		limit = 100
 	}
 	var (
@@ -584,11 +588,13 @@ type deliveryView struct {
 // GET /api/alerts/deliveries?status=&channel_id=&severity=&limit=
 //
 // Filter combinations: anything blank = "no filter". Newest-first by
-// created_at. Limit defaults to 100, max 500.
+// created_at. Limit defaults to 100, max 2000 — same ceiling as
+// ListEvents so the Deliveries tab's "Load more" can scroll back
+// through the burst that produced a flood of rows.
 func (h *Handlers) ListDeliveries(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	limit, _ := strconv.Atoi(q.Get("limit"))
-	if limit <= 0 || limit > 500 {
+	if limit <= 0 || limit > 2000 {
 		limit = 100
 	}
 
