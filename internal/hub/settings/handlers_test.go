@@ -139,6 +139,56 @@ func TestSettingsPutRejectsInvalidDownsamplePolicy(t *testing.T) {
 	}
 }
 
+func TestSettingsPutUpdatesAlertsRetentionWindow(t *testing.T) {
+	db, err := storage.Open(filepath.Join(t.TempDir(), "lumen.db"))
+	if err != nil {
+		t.Fatalf("open storage: %v", err)
+	}
+	defer db.Close()
+	if err := EnsureDefaults(context.Background(), db, map[string]string{
+		KeyRetentionWindow:       "24h",
+		KeyRetentionInterval:     "1h",
+		KeyRetentionAlertsWindow: "720h",
+	}); err != nil {
+		t.Fatalf("ensure defaults: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPut, "/api/settings",
+		bytes.NewBufferString(`{"retention_alerts_window":"168h"}`))
+	rr := httptest.NewRecorder()
+
+	NewHandlers(db, nil).Put(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rr.Code, rr.Body.String())
+	}
+	assertSetting(t, db, KeyRetentionAlertsWindow, "168h")
+	if !strings.Contains(rr.Body.String(), `"retention_alerts_window":"168h"`) {
+		t.Fatalf("response body missing updated window: %s", rr.Body.String())
+	}
+}
+
+func TestSettingsPutRejectsTinyAlertsRetentionWindow(t *testing.T) {
+	db, err := storage.Open(filepath.Join(t.TempDir(), "lumen.db"))
+	if err != nil {
+		t.Fatalf("open storage: %v", err)
+	}
+	defer db.Close()
+
+	req := httptest.NewRequest(http.MethodPut, "/api/settings",
+		bytes.NewBufferString(`{"retention_alerts_window":"30s"}`))
+	rr := httptest.NewRecorder()
+
+	NewHandlers(db, nil).Put(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", rr.Code, http.StatusBadRequest)
+	}
+	if !strings.Contains(rr.Body.String(), "retention_alerts_window") {
+		t.Fatalf("response body missing field name: %s", rr.Body.String())
+	}
+}
+
 func assertSetting(t *testing.T, db *sql.DB, key, want string) {
 	t.Helper()
 	got, err := Get(context.Background(), db, key)

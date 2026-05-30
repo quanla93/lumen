@@ -40,6 +40,7 @@ type Config struct {
 	Secret                  []byte
 	RetentionWindow         time.Duration // snapshots older than now-Window are pruned; <=0 disables
 	RetentionInterval       time.Duration // sweep cadence; <=0 disables
+	RetentionAlertsWindow   time.Duration // resolved alerts + terminal deliveries older than now-Window are pruned; <=0 disables
 	AgentInterval           time.Duration // operator policy for agent collection cadence
 	DownsampleBucketSize    time.Duration // future cold-tier aggregate width
 	DownsampleHotWindow     time.Duration // how long raw SQLite snapshots stay hot before archive
@@ -77,6 +78,7 @@ func Run(ctx context.Context, cfg Config) error {
 	if err := settings.EnsureDefaults(ctx, db, map[string]string{
 		settings.KeyRetentionWindow:         cfg.RetentionWindow.String(),
 		settings.KeyRetentionInterval:       cfg.RetentionInterval.String(),
+		settings.KeyRetentionAlertsWindow:   cfg.RetentionAlertsWindow.String(),
 		settings.KeyAgentInterval:           cfg.AgentInterval.String(),
 		settings.KeyDownsampleBucketSize:    cfg.DownsampleBucketSize.String(),
 		settings.KeyDownsampleHotWindow:     cfg.DownsampleHotWindow.String(),
@@ -87,10 +89,11 @@ func Run(ctx context.Context, cfg Config) error {
 	}
 
 	go retention.Run(ctx, retention.Config{
-		DB:              db,
-		DefaultWindow:   cfg.RetentionWindow,
-		DefaultInterval: cfg.RetentionInterval,
-		Logger:          logger.With("subsys", "retention"),
+		DB:                  db,
+		DefaultWindow:       cfg.RetentionWindow,
+		DefaultInterval:     cfg.RetentionInterval,
+		DefaultAlertsWindow: cfg.RetentionAlertsWindow,
+		Logger:              logger.With("subsys", "retention"),
 	})
 
 	// Batch flush ring: ingest pushes snapshots into the channel here,

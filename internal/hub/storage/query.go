@@ -102,3 +102,50 @@ func DeleteSnapshotsBefore(ctx context.Context, db *sql.DB, cutoff time.Time) (i
 	}
 	return res.RowsAffected()
 }
+
+// DeleteResolvedAlertsBefore prunes alert_events older than cutoff that
+// are no longer firing. We never delete a still-firing row — operators
+// should always see active breaches in the History tab regardless of age.
+//
+// The notification_deliveries rows attached to a deleted event are reaped
+// by the ON DELETE CASCADE from migration 0011, so deliveries for old
+// resolved events come away on the same sweep without needing a join here.
+//
+// COALESCE(resolved_at, started_at) gives the row's "newest meaningful
+// timestamp": for resolved rows that's the resolution time; for ghost
+// rows that lost their resolved_at to a crash we fall back to started_at
+// so they still age out. datetime() normalises across the two formats
+// SQLite holds — CURRENT_TIMESTAMP writes 'YYYY-MM-DD HH:MM:SS', whereas
+// engine.markResolved bound a Go time.Time which the driver renders as
+// RFC3339Nano.
+func DeleteResolvedAlertsBefore(ctx context.Context, db *sql.DB, cutoff time.Time) (int64, error) {
+	res, err := db.ExecContext(ctx, `
+		DELETE FROM alert_events
+		WHERE state = 'resolved'
+		  AND datetime(COALESCE(resolved_at, started_at)) < datetime(?)`,
+		formatTS(cutoff),
+	)
+	if err != nil {
+		return 0, fmt.Errorf("delete alert events: %w", err)
+	}
+	return res.RowsAffected()
+}
+
+// DeleteTerminalDeliveriesBefore prunes notification_deliveries in a
+// terminal state (sent/failed/dropped) older than cutoff. Pending and
+// inflight rows are never touched — the dispatcher is still working on
+// them. This runs IN ADDITION to the ON DELETE CASCADE from the alerts
+// sweep so deliveries for still-firing events (a chronic problem with
+// weeks of `sent` rows) also get pruned.
+func DeleteTerminalDeliveriesBefore(ctx context.Context, db *sql.DB, cutoff time.Time) (int64, error) {
+	res, err := db.ExecContext(ctx, `
+		DELETE FROM notification_deliveries
+		WHERE status IN ('sent', 'failed', 'dropped')
+		  AND datetime(COALESCE(sent_at, created_at)) < datetime(?)`,
+		formatTS(cutoff),
+	)
+	if err != nil {
+		return 0, fmt.Errorf("delete notification deliveries: %w", err)
+	}
+	return res.RowsAffected()
+}

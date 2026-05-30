@@ -10,7 +10,7 @@ against the in-memory snapshot store; transitions persist to SQLite and
 fan out to every enabled notification channel.
 
 This page covers all of v0.4.0 / [RFC 0001](https://github.com/quanla93/lumen/blob/main/docs/rfcs/0001-alerting.md) Milestones A–D:
-**ntfy + Discord + Telegram + generic webhook**, **threshold rules + offline rule**, **host name/glob patterns**, **host tag inventory + label selectors** (Alerts → Tags tab), **per-rule channel routing**, **per-channel severity floor**, and a **persisted delivery queue** with severity-aware retry (Active / History / Rules / Channels / Deliveries / Tags sub-tabs). Email channel, HMAC on webhooks, retention sweep, and cooldown/flap suppression are deferred (see "What's not in v0.4.0" below).
+**ntfy + Discord + Telegram + generic webhook**, **threshold rules + offline rule**, **host name/glob patterns**, **host tag inventory + label selectors** (Alerts → Tags tab), **per-rule channel routing**, **per-channel severity floor**, and a **persisted delivery queue** with severity-aware retry (Active / History / Rules / Channels / Deliveries / Tags sub-tabs). v0.4.1 added the **alert history retention sweep** (see [Retention](#retention) below). Email channel, HMAC on webhooks, and cooldown/flap suppression are deferred (see "What's not in v0.4.x" below).
 
 ## What you can alert on
 
@@ -357,14 +357,30 @@ the operator knows throughput is the bottleneck. Tunable knobs (worker
 count, poll interval, backoff schedule) live in the dispatcher config
 today; they'll be exposed in Settings → Runtime in a follow-up.
 
-## What's not in v0.4.0
+## Retention
+
+`alert_events` and `notification_deliveries` would otherwise grow
+unbounded — a chronic flap can generate hundreds of rows per day. The
+retention loop (same heartbeat that prunes snapshots) sweeps both
+tables on the cadence configured in **Settings → Retention**:
+
+- **Resolved alerts** older than `retention.delete_alerts_after`
+  (default **30 days**) are deleted. **Still-firing events are kept
+  regardless of age** — operators always see active breaches in the
+  History tab.
+- **Terminal deliveries** (`sent`, `failed`, `dropped`) older than the
+  same window are deleted. `pending` and `inflight` rows are never
+  touched — the dispatcher is still working on them.
+
+Set the window to `0s` (or the env override `LUMEN_HUB_RETENTION_ALERTS_WINDOW=0`)
+to disable the sweep. Bounds: 1h ≤ window ≤ 365d. Sweep cadence is the
+same `retention.interval` knob that drives the snapshot prune.
+
+## What's not in v0.4.x
 
 - **Email (SMTP)** channel.
 - **HMAC signing** on the webhook channel — lands with the
   [Public API module](../../reference/api/) webhook unification.
-- **Alert / delivery history retention sweep** — `alert_events` and
-  `notification_deliveries` rows accumulate; expect a
-  `retention.delete_alerts_after` setting in a follow-up.
 - **Cool-down / flap suppression** beyond the per-rule `for_seconds`.
 - **Derived / rate metrics** (e.g. "RAM grew >10%/min").
 - **Tag key rename** — recreate with the new name + re-assign + delete

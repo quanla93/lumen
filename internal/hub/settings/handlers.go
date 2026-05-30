@@ -19,6 +19,8 @@ const (
 	MaxRetentionWindow         = 365 * 24 * time.Hour
 	MinRetentionInterval       = 1 * time.Minute
 	MaxRetentionInterval       = 24 * time.Hour
+	MinRetentionAlertsWindow   = 1 * time.Hour
+	MaxRetentionAlertsWindow   = 365 * 24 * time.Hour
 	MinAgentInterval           = 2 * time.Second
 	MaxAgentInterval           = 1 * time.Hour
 	MinDownsampleBucketSize    = 1 * time.Minute
@@ -44,6 +46,7 @@ func NewHandlers(db *sql.DB, logger *slog.Logger) *Handlers {
 type settingsView struct {
 	RetentionWindow         string `json:"retention_window"`
 	RetentionInterval       string `json:"retention_interval"`
+	RetentionAlertsWindow   string `json:"retention_alerts_window"`
 	AgentInterval           string `json:"agent_interval"`
 	DownsampleBucketSize    string `json:"downsample_bucket_size"`
 	DownsampleHotWindow     string `json:"downsample_hot_window"`
@@ -58,6 +61,11 @@ func (h *Handlers) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	itv, err := Get(r.Context(), h.DB, KeyRetentionInterval)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		writeJSONError(w, http.StatusInternalServerError, "read failed")
+		return
+	}
+	alertsWin, err := Get(r.Context(), h.DB, KeyRetentionAlertsWindow)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		writeJSONError(w, http.StatusInternalServerError, "read failed")
 		return
@@ -85,6 +93,7 @@ func (h *Handlers) Get(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, settingsView{
 		RetentionWindow:         win,
 		RetentionInterval:       itv,
+		RetentionAlertsWindow:   alertsWin,
 		AgentInterval:           agentInterval,
 		DownsampleBucketSize:    bucketSize,
 		DownsampleHotWindow:     hotWindow,
@@ -119,6 +128,14 @@ func (h *Handlers) Put(w http.ResponseWriter, r *http.Request) {
 			req.RetentionInterval, MinRetentionInterval, MaxRetentionInterval,
 		); err != nil {
 			writeJSONError(w, http.StatusBadRequest, "retention_interval: "+err.Error())
+			return
+		}
+	}
+	if req.RetentionAlertsWindow != "" {
+		if err := validateDurationBounds(
+			req.RetentionAlertsWindow, MinRetentionAlertsWindow, MaxRetentionAlertsWindow,
+		); err != nil {
+			writeJSONError(w, http.StatusBadRequest, "retention_alerts_window: "+err.Error())
 			return
 		}
 	}
@@ -165,6 +182,13 @@ func (h *Handlers) Put(w http.ResponseWriter, r *http.Request) {
 	if req.RetentionInterval != "" {
 		if err := Set(r.Context(), h.DB, KeyRetentionInterval, req.RetentionInterval); err != nil {
 			h.Logger.Error("settings set interval failed", "err", err)
+			writeJSONError(w, http.StatusInternalServerError, "write failed")
+			return
+		}
+	}
+	if req.RetentionAlertsWindow != "" {
+		if err := Set(r.Context(), h.DB, KeyRetentionAlertsWindow, req.RetentionAlertsWindow); err != nil {
+			h.Logger.Error("settings set alerts retention window failed", "err", err)
 			writeJSONError(w, http.StatusInternalServerError, "write failed")
 			return
 		}

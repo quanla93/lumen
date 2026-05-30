@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- v0.4.1 Phase 6 follow-up — **retention sweep for alert history**. `alert_events` (`state='resolved'`) and `notification_deliveries` (`status IN ('sent','failed','dropped')`) older than the new `retention.delete_alerts_after` window (default 30 days; env override `LUMEN_HUB_RETENTION_ALERTS_WINDOW`; bounds 1h–365d) are pruned on the same heartbeat as the snapshot sweep. Firing events and pending/inflight deliveries always survive regardless of age. The window is exposed in **Settings → Retention** as "Alert history window" so it can be tuned without a hub restart.
+
 ## [0.4.0] - 2026-05-29
 
 Phase 6 release: threshold-based alerting end-to-end. Operator-defined rules over any host metric, with state-machine evaluation, persisted history, a delivery queue with severity-aware retry, four notification channel types, per-channel severity floors, per-rule routing, host name/glob/tag selectors, and a first-class tag inventory shared by hosts and rules.

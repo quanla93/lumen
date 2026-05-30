@@ -22,6 +22,7 @@ import (
 const (
 	KeyRetentionWindow         = "retention.window"
 	KeyRetentionInterval       = "retention.interval"
+	KeyRetentionAlertsWindow   = "retention.delete_alerts_after"
 	KeyAgentInterval           = "agent.interval"
 	KeyDownsampleBucketSize    = "downsample.bucket_size"
 	KeyDownsampleHotWindow     = "downsample.hot_window"

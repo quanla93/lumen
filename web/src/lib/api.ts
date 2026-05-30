@@ -126,6 +126,7 @@ export const authApi = {
 export type SettingsResponse = {
   retention_window: string;
   retention_interval: string;
+  retention_alerts_window: string;
   agent_interval: string;
   downsample_bucket_size: string;
   downsample_hot_window: string;

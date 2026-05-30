@@ -776,6 +776,7 @@ function RetentionSettings() {
   const [settings, setSettings]       = useState<SettingsResponse | null>(null);
   const [window, setWindow]           = useState<DurationInput>({ value: "", unit: "h" });
   const [interval, setInterval]       = useState<DurationInput>({ value: "", unit: "h" });
+  const [alertsWindow, setAlertsWindow] = useState<DurationInput>({ value: "", unit: "h" });
   const [busy, setBusy]               = useState(false);
   const [error, setError]             = useState<string | null>(null);
   const [savedAt, setSavedAt]         = useState<number | null>(null);
@@ -785,6 +786,7 @@ function RetentionSettings() {
       setSettings(s);
       setWindow(parseDurationInput(s.retention_window));
       setInterval(parseDurationInput(s.retention_interval));
+      setAlertsWindow(parseDurationInput(s.retention_alerts_window));
     }).catch((err) => {
       setError(err instanceof ApiError ? err.message : String(err));
     });
@@ -795,19 +797,22 @@ function RetentionSettings() {
     setError(null);
     const retentionWindow = formatDurationInput(window);
     const retentionInterval = formatDurationInput(interval);
-    if (!retentionWindow || !retentionInterval) {
+    const retentionAlertsWindow = formatDurationInput(alertsWindow);
+    if (!retentionWindow || !retentionInterval || !retentionAlertsWindow) {
       setError(t("settings.retentionInvalid"));
       return;
     }
     setBusy(true);
     try {
       const next = await settingsApi.put({
-        retention_window:   retentionWindow,
-        retention_interval: retentionInterval,
+        retention_window:        retentionWindow,
+        retention_interval:      retentionInterval,
+        retention_alerts_window: retentionAlertsWindow,
       });
       setSettings(next);
       setWindow(parseDurationInput(next.retention_window));
       setInterval(parseDurationInput(next.retention_interval));
+      setAlertsWindow(parseDurationInput(next.retention_alerts_window));
       setSavedAt(Date.now());
     } catch (err) {
       setError(err instanceof ApiError ? err.message : String(err));
@@ -818,9 +823,12 @@ function RetentionSettings() {
 
   const windowDuration = formatDurationInput(window);
   const intervalDuration = formatDurationInput(interval);
+  const alertsWindowDuration = formatDurationInput(alertsWindow);
   const dirty =
     !!settings &&
-    (windowDuration !== settings.retention_window || intervalDuration !== settings.retention_interval);
+    (windowDuration !== settings.retention_window
+      || intervalDuration !== settings.retention_interval
+      || alertsWindowDuration !== settings.retention_alerts_window);
 
   return (
     <div className="max-w-md space-y-4">
@@ -848,6 +856,14 @@ function RetentionSettings() {
             value={interval}
             onChange={setInterval}
           />
+          <DurationField
+            label={t("settings.retentionAlertsWindowLabel")}
+            value={alertsWindow}
+            onChange={setAlertsWindow}
+          />
+          <p className="text-xs text-[color:var(--color-muted)]">
+            {t("settings.retentionAlertsWindowHelp")}
+          </p>
           {error && <ErrorText message={error} />}
           {savedAt && !dirty && (
             <p role="status" className="text-sm text-[color:var(--color-accent)]">

@@ -11,6 +11,7 @@
 //	LUMEN_HUB_INSTALL_DIR         (default "")             - directory holding install.sh + agent binaries; empty disables /install.sh
 //	LUMEN_HUB_RETENTION_WINDOW    (default "24h")          - prune snapshots older than this; "0" disables
 //	LUMEN_HUB_RETENTION_INTERVAL  (default "1h")           - retention sweep cadence; "0" disables
+//	LUMEN_HUB_RETENTION_ALERTS_WINDOW (default "720h")     - prune resolved alert events + terminal deliveries older than this; "0" disables
 //	LUMEN_HUB_AGENT_INTERVAL      (default "5s")           - runtime policy for agent collection cadence
 //	LUMEN_HUB_BATCH_FLUSH_EVERY   (default "60s")          - coalesced snapshot-INSERT cadence (HDD-friendly)
 //	LUMEN_HUB_BATCH_FLUSH_SIZE    (default "5000")         - flush early once pending rows hit this count
@@ -56,6 +57,7 @@ func main() {
 	secretHex := envcfg.String("LUMEN_HUB_SECRET", "")
 	retentionWindow := envcfg.Duration("LUMEN_HUB_RETENTION_WINDOW", 24*time.Hour)
 	retentionInterval := envcfg.Duration("LUMEN_HUB_RETENTION_INTERVAL", 1*time.Hour)
+	retentionAlertsWindow := envcfg.Duration("LUMEN_HUB_RETENTION_ALERTS_WINDOW", 30*24*time.Hour)
 	agentInterval := envcfg.Duration("LUMEN_HUB_AGENT_INTERVAL", 5*time.Second)
 	downsampleBucketSize := envcfg.Duration("LUMEN_HUB_DOWNSAMPLE_BUCKET_SIZE", 5*time.Minute)
 	downsampleHotWindow := envcfg.Duration("LUMEN_HUB_DOWNSAMPLE_HOT_WINDOW", 24*time.Hour)
@@ -92,6 +94,7 @@ func main() {
 		Secret:                  secret,
 		RetentionWindow:         retentionWindow,
 		RetentionInterval:       retentionInterval,
+		RetentionAlertsWindow:   retentionAlertsWindow,
 		AgentInterval:           agentInterval,
 		DownsampleBucketSize:    downsampleBucketSize,
 		DownsampleHotWindow:     downsampleHotWindow,
