@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { GhostButton } from "@/components/CenterCard";
+import { copyToClipboard } from "@/lib/clipboard";
 import { useI18n } from "@/i18n/useI18n";
 
 function dockerReachableHubUrl(hubUrl: string): string {
@@ -69,12 +70,9 @@ sudo docker compose pull
 sudo docker compose up -d`;
 
   async function copy(text: string, which: "token" | "compose" | "commands") {
-    try {
-      await navigator.clipboard.writeText(text);
+    if (await copyToClipboard(text)) {
       setCopied(which);
       setTimeout(() => setCopied(null), 1500);
-    } catch {
-      // clipboard API may be unavailable on non-HTTPS — user can manually copy
     }
   }
 

@@ -13,6 +13,7 @@ import { UPlotChart } from "@/components/UPlotChart";
 import { EmptyState, Surface } from "@/components/ui";
 import type { Snapshot, ContainerInfo } from "@/components/HostCard";
 import { type StatusTone } from "@/lib/status";
+import { copyToClipboard } from "@/lib/clipboard";
 import { isStale, relativeTime } from "@/lib/time";
 import { useStreamConnection } from "@/lib/useStreamConnection";
 import { useI18n } from "@/i18n/useI18n";
@@ -447,12 +448,11 @@ function SystemMetaLine({
 }) {
   const [copied, setCopied] = useState(false);
   const copyUpdateCmd = () => {
-    void navigator.clipboard?.writeText(AGENT_UPDATE_CMD)
-      .then(() => {
-        setCopied(true);
-        window.setTimeout(() => setCopied(false), 1500);
-      })
-      .catch(() => {});
+    void copyToClipboard(AGENT_UPDATE_CMD).then((ok) => {
+      if (!ok) return;
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    });
   };
   const uptime = formatUptime(system?.uptime_seconds);
   const endpoint = system?.primary_ip ?? system?.hostname ?? null;
@@ -664,12 +664,11 @@ function UpdateAgentPanel({
 }) {
   const [copied, setCopied] = useState(false);
   const copy = () => {
-    void navigator.clipboard?.writeText(AGENT_UPDATE_CMD)
-      .then(() => {
-        setCopied(true);
-        window.setTimeout(() => setCopied(false), 1500);
-      })
-      .catch(() => {});
+    void copyToClipboard(AGENT_UPDATE_CMD).then((ok) => {
+      if (!ok) return;
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    });
   };
   const updateAvailable = agentUpdateAvailable(agentVersion, latestAgentVersion ?? undefined);
   const upToDate = !!agentVersion && agentVersion !== "dev"
