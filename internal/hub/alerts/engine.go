@@ -145,20 +145,60 @@ func (e *Engine) Run(ctx context.Context) {
 	logger.Info("alerts engine starting", "default_interval", e.cfg.DefaultInterval)
 
 	// One-shot cleanup at boot: resolve any 'firing' events whose rule
-	// no longer exists. These are ghosts from rules deleted before the
-	// auto-resolve path in DeleteRule (Milestone D) landed, or from a
-	// hub crash mid-delete. Without this sweep they stay firing forever
-	// because nothing evaluates them.
+	// no longer exists OR is currently disabled. The engine ticks only
+	// enabled rules, so a firing row whose rule was disabled (or deleted
+	// before the auto-resolve path in DeleteRule landed) has nothing
+	// generating its resolved transition — it would stay firing forever.
+	// We close them with a synthetic resolved_at = now so the UI can
+	// move on.
 	if e.cfg.DB != nil {
 		res, err := e.cfg.DB.ExecContext(ctx, `
 			UPDATE alert_events
 			SET state = 'resolved', resolved_at = CURRENT_TIMESTAMP
 			WHERE state = 'firing'
-			  AND rule_id NOT IN (SELECT id FROM alert_rules)`)
+			  AND (rule_id NOT IN (SELECT id FROM alert_rules)
+			       OR rule_id IN (SELECT id FROM alert_rules WHERE enabled = 0))`)
 		if err != nil {
 			logger.Warn("alerts: ghost sweep failed", "err", err)
 		} else if n, _ := res.RowsAffected(); n > 0 {
-			logger.Info("alerts: resolved orphan firing events at boot", "count", n)
+			logger.Info("alerts: resolved orphan/disabled firing events at boot", "count", n)
+		}
+	}
+
+	// Hydrate in-memory ruleState from any 'firing' rows still in the DB.
+	// Without this, after a restart the state map is empty: the next
+	// evaluation cycle that observes !breach skips the resolve transition
+	// (no st.eventID to point persistAndNotify at), so the row stays
+	// state='firing' in the DB forever even though the breach cleared.
+	// Each (rule_id, host) pair has at most one firing row by construction
+	// (insert only happens on the !firing→firing transition).
+	if e.cfg.DB != nil {
+		rows, err := e.cfg.DB.QueryContext(ctx, `
+			SELECT id, rule_id, host
+			FROM alert_events
+			WHERE state = 'firing'`)
+		if err != nil {
+			logger.Warn("alerts: hydrate firing state failed", "err", err)
+		} else {
+			e.mu.Lock()
+			hydrated := 0
+			for rows.Next() {
+				var id, ruleID int64
+				var host string
+				if err := rows.Scan(&id, &ruleID, &host); err != nil {
+					continue
+				}
+				e.state[stateKey{RuleID: ruleID, Host: host}] = &ruleState{
+					firing:  true,
+					eventID: id,
+				}
+				hydrated++
+			}
+			e.mu.Unlock()
+			rows.Close()
+			if hydrated > 0 {
+				logger.Info("alerts: hydrated firing state from DB", "count", hydrated)
+			}
 		}
 	}
 

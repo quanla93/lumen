@@ -204,7 +204,27 @@ func UpdateRule(ctx context.Context, db *sql.DB, r Rule) (Rule, error) {
 	if err := validateRule(&r); err != nil {
 		return Rule{}, err
 	}
-	res, err := db.ExecContext(ctx, `
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return Rule{}, err
+	}
+	defer tx.Rollback()
+
+	// Capture prior enabled so we can detect a true→false transition.
+	// Disabling a rule stops the engine from ticking it, so any of its
+	// currently-firing events would otherwise stay firing forever (same
+	// failure mode as a deleted rule, see DeleteRule).
+	var priorEnabled int
+	if err := tx.QueryRowContext(ctx,
+		`SELECT enabled FROM alert_rules WHERE id = ?`, r.ID,
+	).Scan(&priorEnabled); err != nil {
+		if err == sql.ErrNoRows {
+			return Rule{}, ErrRuleNotFound
+		}
+		return Rule{}, fmt.Errorf("read prior rule: %w", err)
+	}
+
+	res, err := tx.ExecContext(ctx, `
 		UPDATE alert_rules SET
 			name = ?, metric = ?, comparator = ?, threshold = ?,
 			for_seconds = ?, cooldown_seconds = ?, host = ?, host_selector = ?, severity = ?, enabled = ?,
@@ -223,6 +243,30 @@ func UpdateRule(ctx context.Context, db *sql.DB, r Rule) (Rule, error) {
 	}
 	if n == 0 {
 		return Rule{}, ErrRuleNotFound
+	}
+
+	// Enabled flipped from true→false — auto-resolve firing events and
+	// drop pending deliveries the same way DeleteRule does. Without this,
+	// disabling a noisy rule from the UI leaves perpetual "firing" rows
+	// the operator can't clear except by re-enabling.
+	if priorEnabled != 0 && !r.Enabled {
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE alert_events
+			SET state = 'resolved', resolved_at = CURRENT_TIMESTAMP
+			WHERE rule_id = ? AND state = 'firing'`, r.ID); err != nil {
+			return Rule{}, fmt.Errorf("auto-resolve on disable: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE notification_deliveries
+			SET status = 'dropped', error = 'rule disabled', next_retry_at = NULL
+			WHERE status IN ('pending', 'inflight')
+			  AND event_id IN (SELECT id FROM alert_events WHERE rule_id = ?)`, r.ID); err != nil {
+			return Rule{}, fmt.Errorf("drop deliveries on disable: %w", err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return Rule{}, err
 	}
 	return GetRule(ctx, db, r.ID)
 }
