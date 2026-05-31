@@ -38,6 +38,22 @@ var upgrader = websocket.Upgrader{
 	CheckOrigin: func(_ *http.Request) bool { return true },
 }
 
+// Server-driven keepalive. Two purposes:
+//   - Detect dead clients (browser killed, laptop slept, NAT mapping gone)
+//     within ~pongTimeout so the goroutine pair doesn't leak waiting on
+//     a socket that will never read again.
+//   - Keep the TCP/NAT mapping warm — without periodic traffic in BOTH
+//     directions, intermediate proxies (Cloudflare, corporate firewall,
+//     CGNAT) silently drop the connection after ~60s of one-way silence.
+//
+// pingInterval is set to half of pongTimeout so a single dropped ping
+// still leaves room for one more before the read deadline fires.
+const (
+	pongTimeout  = 60 * time.Second
+	pingInterval = 30 * time.Second
+	writeTimeout = 5 * time.Second
+)
+
 type Handler struct {
 	Store    *store.Store
 	Logger   *slog.Logger
@@ -109,6 +125,16 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	sub := &subscription{}
 
+	// Read deadline + pong handler form the dead-client detector. Browser
+	// auto-replies pong to every server ping (built-in WS behavior, no FE
+	// code needed); the handler extends the deadline so a healthy client
+	// keeps the conn alive. No pong within pongTimeout → ReadMessage
+	// errors → reader goroutine returns → main loop unblocks via `closed`.
+	conn.SetReadDeadline(time.Now().Add(pongTimeout))
+	conn.SetPongHandler(func(string) error {
+		return conn.SetReadDeadline(time.Now().Add(pongTimeout))
+	})
+
 	// Reader goroutine surfaces close/ping AND parses control frames.
 	// We accept text frames as JSON; binary frames are ignored.
 	closed := make(chan struct{})
@@ -119,6 +145,11 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				return
 			}
+			// Any frame from the client counts as proof-of-life; extend
+			// the deadline so an active subscribe-spamming client doesn't
+			// get evicted just because pongs are slower than control
+			// frames.
+			conn.SetReadDeadline(time.Now().Add(pongTimeout))
 			if msgType != websocket.TextMessage {
 				continue
 			}
@@ -146,6 +177,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	t := time.NewTicker(h.Interval)
 	defer t.Stop()
+	pingT := time.NewTicker(pingInterval)
+	defer pingT.Stop()
 
 	for {
 		select {
@@ -155,6 +188,11 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		case <-t.C:
 			if err := writeSnapshot(conn, h.Store, sub); err != nil {
+				return
+			}
+		case <-pingT.C:
+			if err := conn.WriteControl(websocket.PingMessage, nil,
+				time.Now().Add(writeTimeout)); err != nil {
 				return
 			}
 		}
