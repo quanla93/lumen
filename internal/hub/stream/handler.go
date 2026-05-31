@@ -130,7 +130,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// code needed); the handler extends the deadline so a healthy client
 	// keeps the conn alive. No pong within pongTimeout → ReadMessage
 	// errors → reader goroutine returns → main loop unblocks via `closed`.
-	conn.SetReadDeadline(time.Now().Add(pongTimeout))
+	if err := conn.SetReadDeadline(time.Now().Add(pongTimeout)); err != nil {
+		return
+	}
 	conn.SetPongHandler(func(string) error {
 		return conn.SetReadDeadline(time.Now().Add(pongTimeout))
 	})
@@ -149,7 +151,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			// the deadline so an active subscribe-spamming client doesn't
 			// get evicted just because pongs are slower than control
 			// frames.
-			conn.SetReadDeadline(time.Now().Add(pongTimeout))
+			if err := conn.SetReadDeadline(time.Now().Add(pongTimeout)); err != nil {
+				return
+			}
 			if msgType != websocket.TextMessage {
 				continue
 			}
