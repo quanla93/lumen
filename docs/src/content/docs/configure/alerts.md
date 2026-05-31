@@ -9,8 +9,8 @@ Lumen alerts you when a host goes off-spec. Rules evaluate every ~15s
 against the in-memory snapshot store; transitions persist to SQLite and
 fan out to every enabled notification channel.
 
-This page covers all of v0.4.0 / [RFC 0001](https://github.com/quanla93/lumen/blob/main/docs/rfcs/0001-alerting.md) Milestones A–D:
-**ntfy + Discord + Telegram + generic webhook**, **threshold rules + offline rule**, **host name/glob patterns**, **host tag inventory + label selectors** (Alerts → Tags tab), **per-rule channel routing**, **per-channel severity floor**, and a **persisted delivery queue** with severity-aware retry (Active / History / Rules / Channels / Deliveries / Tags sub-tabs). v0.4.1 added the **alert history retention sweep** (see [Retention](#retention) below). Email channel, HMAC on webhooks, and cooldown/flap suppression are deferred (see "What's not in v0.4.x" below).
+This page covers all of v0.4.0 / [RFC 0001](https://github.com/quanla93/lumen/blob/main/docs/rfcs/0001-alerting.md) Milestones A–D plus v0.4.x follow-ups:
+**ntfy + Discord + Telegram + Email (SMTP) + generic webhook**, **threshold rules + offline rule**, **host name/glob patterns**, **host tag inventory + label selectors** (Alerts → Tags tab), **per-rule channel routing**, **per-channel severity floor**, and a **persisted delivery queue** with severity-aware retry (Active / History / Rules / Channels / Deliveries / Tags sub-tabs). v0.4.1 added the **alert history retention sweep** (see [Retention](#retention) below); v0.4.5 added the **Email (SMTP) channel** (see [Email](#email-smtp) below). HMAC on webhooks and cooldown/flap suppression are still deferred (see "What's not in v0.4.x" below).
 
 ## What you can alert on
 
@@ -243,6 +243,58 @@ https://api.telegram.org/bot<TOKEN>/sendMessage?chat_id=<CHAT_ID>&text=hello
 ```
 
 If it returns `"ok":true`, your bot/chat combo is healthy and the same values will work in Lumen.
+
+### Email (SMTP)
+
+Email channels send via plain SMTP — any provider that accepts
+`AUTH PLAIN` over TLS works (Gmail, Outlook, SendGrid, Mailgun, AWS SES,
+self-hosted Postfix). Subject and body are plain text, formatted the
+same way as the other channels.
+
+1. Pick the SMTP relay you want to send through. For personal accounts:
+   - **Gmail**: `smtp.gmail.com:587`. You **must** generate an
+     [App Password](https://myaccount.google.com/apppasswords) (your
+     normal account password will be rejected unless 2FA is off, which
+     you shouldn't do).
+   - **Outlook / Office 365**: `smtp.office365.com:587`. Also requires
+     an app password if MFA is enabled.
+   - **SendGrid / Mailgun / SES**: use the relay's SMTP endpoint + the
+     API key it issues as the password. Username is usually `apikey`
+     (SendGrid) or your access key id (SES).
+2. In Lumen, **Channels → New channel → Email (SMTP)** and fill:
+   - **SMTP host** — hostname only (`smtp.gmail.com`), no scheme.
+   - **SMTP port** — `587` for STARTTLS (recommended), `465` for
+     implicit TLS, or whatever the relay tells you.
+   - **From address** — what the recipient sees in the From header.
+     Some providers (Gmail, SES) require this to match the authenticated
+     account or a verified domain identity.
+   - **To address** — single recipient for now (multi-recipient lands
+     in a later patch).
+   - **SMTP username + password** — the relay credentials. Password is
+     **shown masked after save**; leave it untouched when editing other
+     fields to keep the stored value, or paste a new password to rotate.
+3. Click **Send test** to ship a synthetic event end-to-end.
+
+**Troubleshooting** — common SMTP errors surfaced by the **Send test** button:
+
+| Error | Meaning | Fix |
+|---|---|---|
+| `dial tcp …: connect: connection refused` | Wrong host or port; provider blocks the port (some ISPs block 25/587 outbound). | Confirm host/port in the provider's docs; try the alternate port (587 vs 465). |
+| `tls: first record does not look like a TLS handshake` | Configured port 465 against a STARTTLS-only server. | Switch to port 587 (the standard STARTTLS port). |
+| `535 5.7.8 Username and Password not accepted` | Wrong credentials, or Gmail/Outlook rejecting the account password. | Generate an app-specific password and use that. |
+| `550 5.7.1 Sender address rejected` | The relay requires `from_addr` to match the authenticated account or a verified domain. | Set From to the account address (or a verified identity for SES/Mailgun). |
+| `554 5.7.1 Relay access denied` | Trying to relay through a server that won't accept this account's outbound. | Use the relay your account is provisioned on, not an arbitrary SMTP. |
+
+Quick sanity check without Lumen using `swaks` (one-line install on
+Debian/Ubuntu: `apt install swaks`) —
+
+```bash
+swaks --to "$TO" --from "$FROM" \
+  --server "$SMTP_HOST:$SMTP_PORT" --tls \
+  --auth-user "$USER" --auth-password "$PASS"
+```
+
+If that delivers, the same values will work in Lumen.
 
 ### Generic webhook
 

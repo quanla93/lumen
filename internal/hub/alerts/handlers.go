@@ -231,25 +231,36 @@ type channelWrite struct {
 	MinSeverity string          `json:"min_severity"`
 }
 
-// maskedConfig redacts the telegram bot token before sending the channel
-// back to the UI. The token is the secret — the operator pastes it once;
-// the UI shows a fixed-length mask afterwards. Other channel types embed
-// the secret in the URL itself (ntfy topic, Discord webhook ID), which
-// can't be cleanly masked without losing edit-form usefulness; treat
-// those as the operator-managed channel-creation contract.
+// maskedConfig redacts channel-secret fields before sending the channel
+// back to the UI. Operators paste secrets once; the UI shows a fixed-
+// length mask afterwards. Channels that embed the secret in the URL
+// itself (ntfy topic, Discord webhook ID) can't be cleanly masked
+// without losing edit-form usefulness — treat those as the operator-
+// managed channel-creation contract.
+//
+// Currently masks:
+//   - telegram.bot_token
+//   - email.password
 func maskedConfig(c Channel) json.RawMessage {
 	if c.Config == "" {
 		return json.RawMessage("{}")
 	}
-	if c.Type != "telegram" {
+	if c.Type != "telegram" && c.Type != "email" {
 		return json.RawMessage(c.Config)
 	}
 	cfg, err := c.ParsedConfig()
 	if err != nil {
 		return json.RawMessage(c.Config)
 	}
-	if cfg.BotToken != "" {
-		cfg.BotToken = telegramTokenMask
+	switch c.Type {
+	case "telegram":
+		if cfg.BotToken != "" {
+			cfg.BotToken = secretMask
+		}
+	case "email":
+		if cfg.Password != "" {
+			cfg.Password = secretMask
+		}
 	}
 	b, err := json.Marshal(cfg)
 	if err != nil {
@@ -258,16 +269,19 @@ func maskedConfig(c Channel) json.RawMessage {
 	return b
 }
 
-// telegramTokenMask is the placeholder the UI sees in place of the
-// stored bot token. The PUT handler treats this exact value as "keep
-// existing" so the operator can edit ChatID without re-typing the token.
-const telegramTokenMask = "**********"
+// secretMask is the placeholder the UI sees in place of any stored
+// secret field (telegram bot_token, email password). The PUT handler
+// treats this exact value as "keep existing" so the operator can edit
+// other config fields without re-typing the secret. The FE references
+// the same literal via its own `TELEGRAM_TOKEN_MASK` constant.
+const secretMask = "**********"
 
-// preserveTelegramToken merges the existing stored bot token into the
-// incoming config when the incoming bot_token equals the mask. Returns
-// the original incoming bytes unchanged on any error or when the value
-// is a real token.
-func preserveTelegramToken(incoming json.RawMessage, existing Channel) json.RawMessage {
+// preserveSecrets merges existing stored secrets into the incoming
+// config when an incoming field equals the mask. Returns the original
+// incoming bytes unchanged on any error or when no field was masked.
+//
+// Covers telegram.bot_token and email.password.
+func preserveSecrets(incoming json.RawMessage, existing Channel) json.RawMessage {
 	if len(incoming) == 0 {
 		return incoming
 	}
@@ -275,14 +289,22 @@ func preserveTelegramToken(incoming json.RawMessage, existing Channel) json.RawM
 	if err := json.Unmarshal(incoming, &cfg); err != nil {
 		return incoming
 	}
-	if cfg.BotToken != telegramTokenMask && cfg.BotToken != "" {
-		return incoming
-	}
 	prev, err := existing.ParsedConfig()
-	if err != nil || prev.BotToken == "" {
+	if err != nil {
 		return incoming
 	}
-	cfg.BotToken = prev.BotToken
+	changed := false
+	if cfg.BotToken == secretMask && prev.BotToken != "" {
+		cfg.BotToken = prev.BotToken
+		changed = true
+	}
+	if cfg.Password == secretMask && prev.Password != "" {
+		cfg.Password = prev.Password
+		changed = true
+	}
+	if !changed {
+		return incoming
+	}
 	b, err := json.Marshal(cfg)
 	if err != nil {
 		return incoming
@@ -373,13 +395,15 @@ func (h *Handlers) UpdateChannel(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	// If the client sent the mask for the telegram bot token, splice in
-	// the stored value so the operator can edit other fields without
-	// having to re-paste the secret.
-	if req.Type == "telegram" {
+	// If the client sent the secret-mask placeholder for a masked field
+	// (telegram bot_token, email password), splice in the stored value
+	// so the operator can edit other fields without re-pasting the
+	// secret. Type must match the existing row — switching channel type
+	// shouldn't carry secrets across kinds.
+	if req.Type == "telegram" || req.Type == "email" {
 		existing, exErr := GetChannel(r.Context(), h.DB, id)
-		if exErr == nil && existing.Type == "telegram" {
-			req.Config = preserveTelegramToken(req.Config, existing)
+		if exErr == nil && existing.Type == req.Type {
+			req.Config = preserveSecrets(req.Config, existing)
 		}
 	}
 	ch, err := UpdateChannel(r.Context(), h.DB, req.toChannel(id))

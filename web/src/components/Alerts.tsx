@@ -46,7 +46,7 @@ const TABS: { id: AlertsTab; labelKey: TranslationKey }[] = [
 const METRICS: AlertMetric[] = ["cpu_pct", "ram_pct", "swap_pct", "disk_pct", "load1", "offline"];
 const COMPARATORS: AlertComparator[] = ["gt", "lt"];
 const SEVERITIES: AlertSeverity[] = ["info", "warning", "critical"];
-const CHANNEL_TYPES: ChannelType[] = ["ntfy", "discord", "webhook", "telegram"];
+const CHANNEL_TYPES: ChannelType[] = ["ntfy", "discord", "webhook", "telegram", "email"];
 
 const EVENT_POLL_MS = 15_000;
 
@@ -829,6 +829,12 @@ function channelToWrite(c: NotificationChannel): NotificationChannelWrite {
       bot_token: c.config.bot_token,
       chat_id: c.config.chat_id,
       parse_mode: c.config.parse_mode,
+      smtp_host: c.config.smtp_host,
+      smtp_port: c.config.smtp_port,
+      username: c.config.username,
+      password: c.config.password,
+      from_addr: c.config.from_addr,
+      to_addr: c.config.to_addr,
     },
     enabled: c.enabled,
     min_severity: c.min_severity,
@@ -937,7 +943,7 @@ function ChannelsPanel() {
                 options={CHANNEL_TYPES.map((c) => ({ value: c, label: t(`alerts.channelType.${c}` as TranslationKey) }))}
               />
             </Field>
-            {draft.type !== "telegram" && (
+            {draft.type !== "telegram" && draft.type !== "email" && (
               <Field label={t("alerts.fieldUrl")}>
                 <FieldInput
                   type="url"
@@ -956,6 +962,80 @@ function ChannelsPanel() {
                   {draft.type === "webhook" && t("alerts.webhookUrlHint")}
                 </p>
               </Field>
+            )}
+            {draft.type === "email" && (
+              <>
+                <Field label={t("alerts.fieldSmtpHost")}>
+                  <FieldInput
+                    type="text"
+                    value={draft.config.smtp_host ?? ""}
+                    onChange={(e) => setDraft({ ...draft, config: { ...draft.config, smtp_host: e.target.value } })}
+                    required
+                    placeholder="smtp.gmail.com"
+                    autoComplete="off"
+                  />
+                  <p className="mt-1 text-xs text-[color:var(--color-muted)]">{t("alerts.smtpHostHint")}</p>
+                </Field>
+                <Field label={t("alerts.fieldSmtpPort")}>
+                  <FieldInput
+                    type="number"
+                    value={draft.config.smtp_port ?? ""}
+                    onChange={(e) => setDraft({ ...draft, config: { ...draft.config, smtp_port: e.target.value ? Number(e.target.value) : undefined } })}
+                    required
+                    placeholder="587"
+                    min={1}
+                    max={65535}
+                  />
+                  <p className="mt-1 text-xs text-[color:var(--color-muted)]">{t("alerts.smtpPortHint")}</p>
+                </Field>
+                <Field label={t("alerts.fieldFromAddr")}>
+                  <FieldInput
+                    type="email"
+                    value={draft.config.from_addr ?? ""}
+                    onChange={(e) => setDraft({ ...draft, config: { ...draft.config, from_addr: e.target.value } })}
+                    required
+                    placeholder="alerts@example.com"
+                    autoComplete="off"
+                  />
+                </Field>
+                <Field label={t("alerts.fieldToAddr")}>
+                  <FieldInput
+                    type="email"
+                    value={draft.config.to_addr ?? ""}
+                    onChange={(e) => setDraft({ ...draft, config: { ...draft.config, to_addr: e.target.value } })}
+                    required
+                    placeholder="oncall@example.com"
+                    autoComplete="off"
+                  />
+                  <p className="mt-1 text-xs text-[color:var(--color-muted)]">{t("alerts.toAddrHint")}</p>
+                </Field>
+                <Field label={t("alerts.fieldSmtpUsername")}>
+                  <FieldInput
+                    type="text"
+                    value={draft.config.username ?? ""}
+                    onChange={(e) => setDraft({ ...draft, config: { ...draft.config, username: e.target.value } })}
+                    required
+                    placeholder="alerts@example.com"
+                    autoComplete="off"
+                  />
+                  <p className="mt-1 text-xs text-[color:var(--color-muted)]">{t("alerts.smtpUsernameHint")}</p>
+                </Field>
+                <Field label={t("alerts.fieldSmtpPassword")}>
+                  <FieldInput
+                    type="password"
+                    value={draft.config.password ?? ""}
+                    onChange={(e) => setDraft({ ...draft, config: { ...draft.config, password: e.target.value } })}
+                    required
+                    autoComplete="new-password"
+                  />
+                  <p className="mt-1 text-xs text-[color:var(--color-muted)]">
+                    {t("alerts.smtpPasswordHint")}
+                    {draft.config.password === TELEGRAM_TOKEN_MASK && (
+                      <> {" · "}{t("alerts.smtpPasswordKept")}</>
+                    )}
+                  </p>
+                </Field>
+              </>
             )}
             {draft.type === "telegram" && (
               <>
@@ -1061,6 +1141,8 @@ function ChannelsPanel() {
                     <p className="mt-1 break-all text-xs text-[color:var(--color-muted)]">
                       {c.type === "telegram"
                         ? t("alerts.telegramChannelSummary", { chat: c.config.chat_id ?? "" })
+                        : c.type === "email"
+                        ? t("alerts.emailChannelSummary", { to: c.config.to_addr ?? "", host: c.config.smtp_host ?? "" })
                         : c.config.url ?? ""}
                     </p>
                     {c.min_severity !== "info" && (

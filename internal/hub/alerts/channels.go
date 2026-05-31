@@ -11,8 +11,8 @@ import (
 	"time"
 )
 
-// Allowed channel types. Email lands in Milestone C.
-var AllowedChannelTypes = []string{"ntfy", "discord", "webhook", "telegram"}
+// Allowed channel types.
+var AllowedChannelTypes = []string{"ntfy", "discord", "webhook", "telegram", "email"}
 
 var (
 	ErrChannelNotFound       = errors.New("notification channel not found")
@@ -24,6 +24,12 @@ var (
 	ErrInvalidMinSeverity    = errors.New("invalid min_severity")
 	ErrTelegramBotRequired   = errors.New("config.bot_token required for telegram")
 	ErrTelegramChatRequired  = errors.New("config.chat_id required for telegram")
+	ErrEmailHostRequired     = errors.New("config.smtp_host required for email")
+	ErrEmailPortInvalid      = errors.New("config.smtp_port must be 1-65535")
+	ErrEmailCredsRequired    = errors.New("config.username and config.password required for email")
+	ErrEmailFromRequired     = errors.New("config.from_addr required for email")
+	ErrEmailToRequired       = errors.New("config.to_addr required for email")
+	ErrEmailAddrInvalid      = errors.New("invalid email address")
 )
 
 // Channel holds one notification_channels row. Config is the raw JSON
@@ -49,6 +55,10 @@ type Channel struct {
 //   - telegram: BotToken + ChatID (+ ParseMode optional). No URL needed —
 //               the dispatcher composes the Bot API endpoint from the
 //               token. BotToken is the secret; never log it.
+//   - email:    SmtpHost + SmtpPort + Username + Password + FromAddr + ToAddr.
+//               Password is the secret. Port 465 uses implicit TLS; other
+//               ports use STARTTLS via net/smtp. Single recipient for now
+//               (ACTION_PLAN v0.4.5 — multi-recipient is a later add).
 type ChannelConfig struct {
 	URL       string `json:"url,omitempty"`
 	Topic     string `json:"topic,omitempty"`     // ntfy: optional explicit topic header
@@ -56,6 +66,12 @@ type ChannelConfig struct {
 	BotToken  string `json:"bot_token,omitempty"` // telegram
 	ChatID    string `json:"chat_id,omitempty"`   // telegram (string lets users paste @channel or numeric id)
 	ParseMode string `json:"parse_mode,omitempty"` // telegram: HTML|Markdown|MarkdownV2 (default HTML)
+	SmtpHost  string `json:"smtp_host,omitempty"` // email: smtp.gmail.com etc
+	SmtpPort  int    `json:"smtp_port,omitempty"` // email: 587 (STARTTLS), 465 (implicit TLS)
+	Username  string `json:"username,omitempty"`  // email: SMTP login (typically the from address)
+	Password  string `json:"password,omitempty"`  // email: SMTP password / app token — secret, never log
+	FromAddr  string `json:"from_addr,omitempty"` // email: sender envelope + From header
+	ToAddr    string `json:"to_addr,omitempty"`   // email: single recipient
 }
 
 func (c *Channel) ParsedConfig() (ChannelConfig, error) {
@@ -117,6 +133,28 @@ func validateChannel(c *Channel) error {
 		if strings.TrimSpace(cc.ChatID) == "" {
 			return ErrTelegramChatRequired
 		}
+	case "email":
+		if strings.TrimSpace(cc.SmtpHost) == "" {
+			return ErrEmailHostRequired
+		}
+		if cc.SmtpPort < 1 || cc.SmtpPort > 65535 {
+			return ErrEmailPortInvalid
+		}
+		if strings.TrimSpace(cc.Username) == "" || strings.TrimSpace(cc.Password) == "" {
+			return ErrEmailCredsRequired
+		}
+		if !looksLikeEmail(cc.FromAddr) {
+			if strings.TrimSpace(cc.FromAddr) == "" {
+				return ErrEmailFromRequired
+			}
+			return fmt.Errorf("%w: from_addr=%q", ErrEmailAddrInvalid, cc.FromAddr)
+		}
+		if !looksLikeEmail(cc.ToAddr) {
+			if strings.TrimSpace(cc.ToAddr) == "" {
+				return ErrEmailToRequired
+			}
+			return fmt.Errorf("%w: to_addr=%q", ErrEmailAddrInvalid, cc.ToAddr)
+		}
 	default:
 		if strings.TrimSpace(cc.URL) == "" {
 			return ErrChannelURLRequired
@@ -127,6 +165,28 @@ func validateChannel(c *Channel) error {
 		}
 	}
 	return nil
+}
+
+// looksLikeEmail is a deliberately loose check — RFC 5322 is too permissive
+// to encode in a regex usefully, and the SMTP server will reject a bad
+// address at RCPT anyway. We just want to catch operator typos like
+// missing "@" or stray spaces before the message hits the wire.
+func looksLikeEmail(s string) bool {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return false
+	}
+	at := strings.LastIndex(s, "@")
+	if at < 1 || at == len(s)-1 {
+		return false
+	}
+	if strings.ContainsAny(s, " \t\r\n") {
+		return false
+	}
+	// Domain must have at least one dot or be a bare hostname accepted by
+	// the SMTP server (loopback dev). Don't enforce the dot — local test
+	// setups (mailhog at "mailhog") would break.
+	return true
 }
 
 func ListChannels(ctx context.Context, db *sql.DB) ([]Channel, error) {

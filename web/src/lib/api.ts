@@ -207,7 +207,7 @@ export type AlertRuleWrite = {
   channel_ids?: number[];
 };
 
-export type ChannelType = "ntfy" | "discord" | "webhook" | "telegram";
+export type ChannelType = "ntfy" | "discord" | "webhook" | "telegram" | "email";
 
 export type ChannelConfig = {
   url?: string;
@@ -216,6 +216,13 @@ export type ChannelConfig = {
   bot_token?: string;
   chat_id?: string;
   parse_mode?: string;
+  // email
+  smtp_host?: string;
+  smtp_port?: number;
+  username?: string;
+  password?: string;
+  from_addr?: string;
+  to_addr?: string;
 };
 
 export type NotificationChannel = {
@@ -238,10 +245,13 @@ export type NotificationChannelWrite = {
   min_severity?: AlertSeverity;
 };
 
-// Server-side placeholder for the telegram bot token. The UI keeps this
-// value in the form's bot_token field on edit; PUTting it back tells the
-// hub to preserve the stored token without retyping.
+// Server-side placeholder for any masked channel secret (telegram bot
+// token, email SMTP password). The UI keeps this value in the form's
+// matching field on edit; PUTting it back tells the hub to preserve the
+// stored secret without retyping. Named TELEGRAM_TOKEN_MASK for legacy
+// reasons — same literal handles email password too.
 export const TELEGRAM_TOKEN_MASK = "**********";
+export const SECRET_MASK = TELEGRAM_TOKEN_MASK;
 
 export type AlertEvent = {
   id: number;
