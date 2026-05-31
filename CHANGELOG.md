@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.4.4] - 2026-05-31
+
+### Fixed
+
+- **Copy buttons now work over plain HTTP.** The dashboard's "copy compose / copy token / copy update command" buttons silently no-op'd (or threw, in TokenReveal's case) when the operator loaded the UI at a LAN IP like `http://192.168.x.y:8090` — `navigator.clipboard.writeText()` requires a secure context (HTTPS or `localhost`) and is undefined elsewhere. The biggest hit was TokenReveal: the one-shot agent token was effectively unrecoverable from the UI on plain HTTP without manual text selection. New `copyToClipboard` helper tries the modern API first then falls back to the off-screen-textarea + `document.execCommand("copy")` legacy path that still ships in every browser as of 2026 (Grafana / Vault / Gitea use the same fallback for the same reason). When HTTPS is eventually put in front of the hub, the modern path transparently takes over.
+
 ## [0.4.3] - 2026-05-31
 
 Release-pipeline cleanup + lint follow-up. v0.4.2 was tagged but its
