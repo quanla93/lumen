@@ -6,9 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.4.3] - 2026-05-31
+
+Release-pipeline cleanup + lint follow-up. v0.4.2 was tagged but its
+multi-arch image build was cancelled mid-flight (~25 min into QEMU
+emulation) when the operator confirmed the fleet is 100% x86; the
+shipped images for the v0.4.2 stream-reliability work therefore land
+under v0.4.3 instead, on top of the simplified amd64-only pipeline.
+
+### Changed
+
+- **Release builds are now amd64-only.** arm64 + armv7 platforms removed from both image (`docker buildx`) and binary (`make`) targets. Operator fleet is 100% x86 (Proxmox + VPS); QEMU emulation was costing ~40 min per tag (arm64 ~15 min, armv7 ~25 min) for zero consumers. amd64-only release should land in 3-5 min. `Dockerfile.hub` follows: the agent cross-build inside the hub image (which feeds the `/install` one-liner) drops arm64 + armv7 too, shaving ~30 MB from the hub image. Re-adding ARM later is two-file change documented inline; for arm64, switch to `ubuntu-24.04-arm` native runner to skip QEMU.
+
+### Fixed
+
+- **`SetReadDeadline` return value now checked.** golangci-lint `errcheck` flagged the two `conn.SetReadDeadline(...)` calls added in the v0.4.2 keepalive commit. Both now return on error (the only realistic cause is a conn that's already dead, in which case bailing is correct). Runtime behaviour is identical — only the CI lint status changes.
+
 ## [0.4.2] - 2026-05-31
 
-Stream reliability patch: dashboards no longer drift into a false "stale" state after the browser tab idles for a while, and dead WebSocket clients on the hub no longer pin goroutines indefinitely.
+Stream reliability patch: dashboards no longer drift into a false "stale" state after the browser tab idles for a while, and dead WebSocket clients on the hub no longer pin goroutines indefinitely. **Image build cancelled and re-shipped under v0.4.3** — git tag exists but no container image was pushed for v0.4.2; pull `v0.4.3` to get both the stream-reliability fixes and the new amd64-only pipeline.
 
 ### Fixed
 
