@@ -6,9 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-05-31
+
+Phase 6 follow-up patch: alert history bounded by a real retention sweep, paginated scrollback in the Alerts UI, a discrete-fleet KPI rework on the dashboard, and a unified stale/offline threshold so notifications no longer fire before the UI marks the host yellow.
+
 ### Added
 
-- v0.4.1 Phase 6 follow-up — **retention sweep for alert history**. `alert_events` (`state='resolved'`) and `notification_deliveries` (`status IN ('sent','failed','dropped')`) older than the new `retention.delete_alerts_after` window (default 30 days; env override `LUMEN_HUB_RETENTION_ALERTS_WINDOW`; bounds 1h–365d) are pruned on the same heartbeat as the snapshot sweep. Firing events and pending/inflight deliveries always survive regardless of age. The window is exposed in **Settings → Retention** as "Alert history window" so it can be tuned without a hub restart.
+- **Retention sweep for alert history.** `alert_events` (`state='resolved'`) and `notification_deliveries` (`status IN ('sent','failed','dropped')`) older than the new `retention.delete_alerts_after` window (default 30 days; env override `LUMEN_HUB_RETENTION_ALERTS_WINDOW`; bounds 1h–365d) are pruned on the same heartbeat as the snapshot sweep. Firing events and pending/inflight deliveries always survive regardless of age. The window is exposed in **Settings → Retention** as "Alert history window" so it can be tuned without a hub restart.
+- **"Load more" pagination for History + Deliveries.** Both tabs previously hardcoded a single 200-row page with no way to scroll back. Server limit cap raised from 500 → 2000 on `/api/alerts/events` and `/api/alerts/deliveries` (default still 100). The UI footer shows the row count and a "Load more" button that steps in 200-row pages up to the 2000 ceiling. Filter/state changes reset the page back to 200 so a "failed-only" switch doesn't suddenly show 1000 failed rows; auto-refresh keeps the current page size so the newest rows stay live without losing the scrollback. New i18n: `alerts.loadedCount` / `loadMore` / `loadMoreCeiling` (en + vi).
+
+### Changed
+
+- **Dashboard KPI bar: fleet averages replaced with hottest host per metric.** "Avg CPU" / "Avg RAM" were a borrowed cluster KPI that's misleading for a discrete fleet (homelab + VPSes) — an 85% hot host gets diluted by idle peers and the green card hides the only signal that matters. The bar now shows **Hottest CPU / Hottest RAM / Hottest Disk** with the worst host's name underneath each value, computed only over live (non-stale) snapshots so a dead agent's last reading doesn't leak into the headline number. Disk also gets a slot now, matching the per-host card. New i18n: `dashboard.hottestCpu` / `hottestRam` / `hottestDisk` / `noLiveHost`; removed `dashboard.avgCpu` / `avgRam` / `fleetAverage`.
+
+### Fixed
+
+- **Offline alert threshold now derives from `agent_interval` instead of hardcoded 60s.** Pre-fix, with `agent_interval ≥ 60s` the alert fired BEFORE the dashboard marked the host stale (the UI scaled to `max(2*interval, 30s)`, alerts didn't) — operators got a push and then loaded a still-green dashboard. The engine now refreshes `offlineAfter = max(2 * max(2*interval, 30s), 60s)` each `runOnce` from the `agent.interval` setting; UI yellow always precedes alert red regardless of how the interval is tuned. Default `agent_interval=5s` keeps the same 60s offline threshold so existing rule timing is unchanged.
 
 ## [0.4.0] - 2026-05-29
 
