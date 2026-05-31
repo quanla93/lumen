@@ -388,26 +388,37 @@ Mỗi quyết định ghi 1 dòng. Không xóa, không sửa — nếu đổi ý
 
 > Picked up *after* the user's server-test feedback on v0.4.0 lands. Order below is the current priority — retention is #1 because today neither `alert_events` nor `notification_deliveries` get pruned, only `snapshots` does, so the tables grow unbounded under real traffic and that will bite within days. Reassess if real usage surfaces a different #1 pain.
 
-#### v0.4.1 — Retention sweep for alerts + deliveries  *(highest priority — code complete, awaiting server-test validation)*
-- [x] New `retention.delete_alerts_after` setting (default `30d` / `720h`) — reuses the existing retention loop pattern from `internal/hub/retention/retention.go` (heartbeat + cutoff query). Env override: `LUMEN_HUB_RETENTION_ALERTS_WINDOW`.
-- [x] Sweep `alert_events` older than the cutoff (`state='resolved'`, `COALESCE(resolved_at, started_at) < cutoff`; firing events always survive).
-- [x] Sweep `notification_deliveries` older than the cutoff (`status IN ('sent','failed','dropped')`, `COALESCE(sent_at, created_at) < cutoff`; pending/inflight always survive).
-- [x] Settings UI + i18n field wired through `RetentionSettings` (DurationField with help text).
-- [x] Tests: `storage/retention_alerts_test.go` covers helper semantics; `retention/retention_test.go` covers end-to-end sweep behaviour; `settings/handlers_test.go` covers the new validation path.
-- [x] Docs: `configure/alerts.md` adds the **Retention** section; removed from the "What's not in" list.
-- [ ] Server-test bugfix bucket: anything user surfaces from real traffic lands in this same patch.
+#### v0.4.1 — Retention sweep + scrollback + dashboard KPI rework + stale/offline unification  *(shipped 2026-05-31)*
 
-#### v0.4.2 — Email (SMTP) channel
+Slot grew beyond the original "retention only" plan because server-test feedback surfaced three other pain points in the same window; bundled them rather than minting four micro-tags.
+
+- [x] **Retention sweep** — new `retention.delete_alerts_after` setting (default `30d` / `720h`) reusing `internal/hub/retention/retention.go` (heartbeat + cutoff query). Env override `LUMEN_HUB_RETENTION_ALERTS_WINDOW`. Sweeps `alert_events` (`state='resolved'`, `COALESCE(resolved_at, started_at) < cutoff`) and `notification_deliveries` (`status IN ('sent','failed','dropped')`, `COALESCE(sent_at, created_at) < cutoff`); firing events + pending/inflight deliveries always survive. Settings UI + i18n via `RetentionSettings` DurationField. Tests: `storage/retention_alerts_test.go`, `retention/retention_test.go`, `settings/handlers_test.go`. Docs: `configure/alerts.md` Retention section.
+- [x] **"Load more" pagination** for Alerts History + Deliveries — server limit cap raised 500→2000 on `/api/alerts/events` + `/api/alerts/deliveries`; UI footer with row count + 200-row stepping; filter/state change resets to 200; auto-refresh keeps current page size. New i18n keys `alerts.loadedCount` / `loadMore` / `loadMoreCeiling`.
+- [x] **Dashboard KPI rework** — replaced "Avg CPU / Avg RAM" with "Hottest CPU / Hottest RAM / Hottest Disk" + host name, computed over live (non-stale) snapshots only. Fleet-average was a borrowed cluster KPI that diluted hot hosts in a discrete fleet (homelab + VPSes); hottest-host-per-metric matches the actual operator workflow ("which box is on fire?"). New i18n `dashboard.hottestCpu/Ram/Disk/noLiveHost`; removed `avgCpu/avgRam/fleetAverage`.
+- [x] **Stale/offline threshold unified.** Pre-fix, `MinOfflineFor` was hardcoded 60s while the UI stale window scaled with `agent_interval`. For `agent_interval ≥ 60s` the alert fired BEFORE the dashboard marked the host yellow ("I got a push but the dashboard is still green"). New `OfflineAfter(interval) = max(2 × max(2*interval, 30s), 60s)` derived per-tick from the `agent.interval` setting; default 5s interval keeps the 60s threshold so existing rule timing is unchanged. UI stale yellow now strictly precedes alert red at every interval.
+
+#### v0.4.2 / v0.4.3 / v0.4.4 — Stream reliability + clipboard fallback  *(shipped 2026-05-31, ate three patch slots)*
+
+Numbered slots for Email/Flap/tag-rename got reassigned in-flight because dashboard-stale-while-idle and broken copy buttons turned up as bigger pain in real use. Original backlog moves to v0.4.5+ (below).
+
+- [x] **v0.4.2 (git tag only, image cancelled)** — Dashboard / HostDetail WebSocket auto-reconnect (`useStreamConnection` hook with exponential backoff 1s→30s + `visibilitychange` force-reconnect; `onOpen` callback re-sends subscribe frame on every reconnect). Server-side `/api/stream` keepalive (ping every 30s, `SetReadDeadline 60s`, `PongHandler` + control-frame extends deadline). Image build was cancelled at ~25 min QEMU emulation when the operator confirmed the fleet is 100% x86 — the WS + keepalive code shipped under v0.4.3 instead.
+- [x] **v0.4.3** — bundles v0.4.2's WS work + drops arm64 + armv7 from `release.yml` and `Dockerfile.hub` cross-build (operator fleet is 100% x86; QEMU emulation was costing ~40 min/tag for zero consumers — amd64-only lands in 2-3 min). Includes the `errcheck` fix for the two `SetReadDeadline` calls that the keepalive commit added without checking the return value.
+- [x] **v0.4.4** — copy buttons (`TokenReveal` token reveal, `HostDetail` agent update commands) work on plain HTTP via `document.execCommand("copy")` fallback in `web/src/lib/clipboard.ts`. `navigator.clipboard.writeText` requires a secure context and silently no-op'd (or threw) when the dashboard was loaded over a LAN IP. Modern API takes over transparently when HTTPS lands.
+
+#### v0.4.5 — Email (SMTP) channel  *(was v0.4.2)*
 - [ ] Add `email` to `ChannelType`; reuse the dispatcher pattern from `notify.go`.
 - [ ] Channel config: `smtp_host`, `smtp_port`, `username`, `password` (masked on read like Telegram bot token), `from`, `to` (one address; multi-address can come later).
 - [ ] Test-send action sends a real email; same UX as the current ntfy/Discord test.
 - [ ] Docs section + UI form fields + i18n.
 
-#### v0.4.3 — Flap suppression + tag key rename
+#### v0.4.6 — Flap suppression + tag key rename  *(was v0.4.3)*
 - [ ] Flap suppression: per-rule cooldown / "fire at most N times per window" (today only `for_seconds` exists, which doesn't stop a rule that flaps every few minutes from spamming the channel).
 - [ ] Tag key rename: atomic three-table swap (`tags` + `tag_values` + `host_tags`) + rewrite every affected `host_selector`. Currently the recommended workaround is delete-and-recreate; rename is a quality-of-life add once the user shows it matters in practice.
 
-**Still deferred past v0.4.x (no slot yet):** derived/rate metrics ("RAM grew >10%/min"); webhook HMAC (waits for Public API webhook unification).
+#### v0.4.7? — Maintenance window for alerts  *(surfaced 2026-05-31, not yet slotted)*
+- [ ] Suppress `offline` rule firing while operator is intentionally restarting agents (`docker compose pull && docker compose up -d` can briefly cross the offline threshold and generate noisy "offline → resolved" pairs). Options under consideration: per-host maintenance toggle in UI, time-bounded silence schedule, or auto-detection via "rule fires + resolves within N seconds of each other → suppress next K occurrences." Pick once the operator confirms how often they hit this.
+
+**Still deferred past v0.4.x (no slot yet):** derived/rate metrics ("RAM grew >10%/min"); webhook HMAC (waits for Public API webhook unification); pre-aggregated fleet summary on the WS frame (currently FE aggregates raw snapshots — fine for <50 hosts).
 
 ---
 
