@@ -2,24 +2,22 @@ name: Release
 
 # Runs on every annotated `v*` tag (e.g. v0.1.0, v0.2.0-rc1).
 #
-# What it produces:
-#   • Hub tarballs (amd64 / arm64 / armv7) attached to the GitHub Release
-#   • lumen-agent binaries (amd64 / arm64 / armv7) attached to the Release
-#   • ghcr.io/lumenhq/lumen-hub:<version> + :latest  (multi-arch image)
-#   • ghcr.io/lumenhq/lumen-agent:<version> + :latest (multi-arch image)
+# What it produces (amd64 only — see "ARM removed" note below):
+#   • Hub tarball (linux-amd64) attached to the GitHub Release
+#   • lumen-agent binary (linux-amd64) attached to the Release
+#   • ghcr.io/<owner>/lumen-hub:<version> + :latest
+#   • ghcr.io/<owner>/lumen-agent:<version> + :latest
 #
 # Permissions:
 #   contents: write   — needed to create the GitHub Release
 #   packages: write   — needed to push to ghcr.io as ${{ github.actor }}
 #
-# Notes:
-#   - Multi-arch images are built via QEMU + Buildx. amd64 is native;
-#     arm64 + armv7 are emulated. Build is slow (~6–10 min on free
-#     runners) but produces real cross-arch manifests.
-#   - GoReleaser was tried earlier but it duplicated the existing Make
-#     targets; we already have HUB_TARBALL_RECIPE that bundles binary +
-#     install.sh + unit file. Calling `make release-hub-tarballs`
-#     keeps "what the release contains" defined in one place.
+# ARM removed: arm64 + armv7 builds were dropped because the operator
+# fleet is 100% x86 (Proxmox + VPS). QEMU emulation for armv7 took
+# 25+ min and arm64 ~15 min on free runners — total release was ~40min.
+# amd64-only release is ~3-5 min. To bring ARM back: re-add platforms
+# to the buildx steps (and switch arm64 to ubuntu-24.04-arm native
+# runner to avoid QEMU). See git log for the removal commit.
 
 on:
   push:
@@ -64,18 +62,18 @@ jobs:
       - name: Build web bundle (embedded into the hub binary)
         run: make build-web
 
-      - name: Cross-build hub + agent for all archs
-        run: make build-all
+      - name: Build hub + agent (linux/amd64)
+        run: make build-linux-amd64
 
-      - name: Stage hub tarballs (binary + install.sh + unit file)
-        run: make release-hub-tarballs
+      - name: Stage hub tarball (binary + install.sh + unit file)
+        run: make release-hub-tarball-amd64
 
       - uses: actions/upload-artifact@v4
         with:
           name: release-assets
           path: |
-            dist/lumen-hub-linux-*.tar.gz
-            dist/lumen-agent-linux-*
+            dist/lumen-hub-linux-amd64.tar.gz
+            dist/lumen-agent-linux-amd64
           retention-days: 7
 
   # ─── 2. Build + push multi-arch container images to ghcr.io ─────────────────
@@ -88,7 +86,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: docker/setup-qemu-action@v3
+      # No QEMU needed — amd64-only build runs native on ubuntu-latest.
       - uses: docker/setup-buildx-action@v3
 
       - name: Log in to ghcr.io
@@ -102,12 +100,12 @@ jobs:
         id: ver
         run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
-      - name: Build + push hub image (amd64 + arm64)
+      - name: Build + push hub image (amd64)
         uses: docker/build-push-action@v6
         with:
           context: .
           file: deploy/docker/Dockerfile.hub
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/amd64
           push: true
           build-args: |
             VERSION=${{ steps.ver.outputs.VERSION }}
@@ -115,12 +113,12 @@ jobs:
             ghcr.io/${{ github.repository_owner }}/lumen-hub:${{ steps.ver.outputs.VERSION }}
             ghcr.io/${{ github.repository_owner }}/lumen-hub:latest
 
-      - name: Build + push agent image (amd64 + arm64 + armv7)
+      - name: Build + push agent image (amd64)
         uses: docker/build-push-action@v6
         with:
           context: .
           file: deploy/docker/Dockerfile.agent
-          platforms: linux/amd64,linux/arm64,linux/arm/v7
+          platforms: linux/amd64
           push: true
           build-args: |
             VERSION=${{ steps.ver.outputs.VERSION }}
@@ -170,8 +168,8 @@ jobs:
           name: ${{ github.ref_name }}
           body_path: /tmp/notes.md
           files: |
-            dist/lumen-hub-linux-*.tar.gz
-            dist/lumen-agent-linux-*
+            dist/lumen-hub-linux-amd64.tar.gz
+            dist/lumen-agent-linux-amd64
           fail_on_unmatched_files: true
           # Tag may be a pre-release if it has a -rc/-alpha/-beta suffix.
           prerelease: ${{ contains(github.ref_name, '-') }}
