@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-05-31
+
+Stream reliability patch: dashboards no longer drift into a false "stale" state after the browser tab idles for a while, and dead WebSocket clients on the hub no longer pin goroutines indefinitely.
+
+### Fixed
+
+- **Dashboard / HostDetail WebSocket now auto-reconnects.** Before, a bare `new WebSocket(...)` had no reconnect path; any transient close (browser throttle on background tab, NAT timeout, laptop sleep, server restart) froze the snapshots state while the `now` ticker kept advancing — every host drifted into "stale" within ~30s even though the hub was still healthy. Clicking into a host card "fixed" it only by remounting the component and creating a fresh WS, not by fixing the agent. New `useStreamConnection` hook centralises the WS lifecycle with exponential backoff (1s→2s→4s→8s→16s→30s) on close, plus a `visibilitychange` listener that force-reconnects the moment the tab regains focus (browser `setTimeout` throttling in background tabs can otherwise stretch reconnect attempts to 60s+). HostDetail re-sends its `subscribe` frame on each (re)connect via the hook's `onOpen` callback so the per-host filter survives the round-trip.
+
+### Added
+
+- **Server-side WebSocket keepalive on `/api/stream`.** Hub now pings clients every 30s and enforces a 60s read deadline (extended by every pong or control frame). Without keepalive, a vanished client (browser killed, laptop slept, NAT mapping reaped by CGNAT/proxy) left the goroutine pair pinned waiting on `ReadMessage`; one-way silence from the client direction also tripped NAT idle reapers at ~60s and silently killed otherwise-healthy connections. Browser auto-replies pong with zero FE code change.
+
 ## [0.4.1] - 2026-05-31
 
 Phase 6 follow-up patch: alert history bounded by a real retention sweep, paginated scrollback in the Alerts UI, a discrete-fleet KPI rework on the dashboard, and a unified stale/offline threshold so notifications no longer fire before the UI marks the host yellow.
