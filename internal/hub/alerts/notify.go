@@ -282,12 +282,14 @@ func dispatchEmail(ctx context.Context, cfg ChannelConfig, n Notification) error
 	}
 	defer conn.Close()
 
+	encrypted := false
 	if cfg.SmtpPort == 465 {
 		tlsConn := tls.Client(conn, &tls.Config{ServerName: cfg.SmtpHost})
 		if err := tlsConn.HandshakeContext(ctx); err != nil {
 			return fmt.Errorf("email: tls handshake: %w", err)
 		}
 		conn = tlsConn
+		encrypted = true
 	}
 
 	c, err := smtp.NewClient(conn, cfg.SmtpHost)
@@ -297,17 +299,29 @@ func dispatchEmail(ctx context.Context, cfg ChannelConfig, n Notification) error
 	defer c.Close()
 
 	// STARTTLS for non-465 ports. Skip silently if the server doesn't
-	// advertise it — local mailhog setups typically don't.
+	// advertise it — local mailhog / unencrypted internal relays
+	// typically don't.
 	if cfg.SmtpPort != 465 {
 		if ok, _ := c.Extension("STARTTLS"); ok {
 			if err := c.StartTLS(&tls.Config{ServerName: cfg.SmtpHost}); err != nil {
 				return fmt.Errorf("email: starttls: %w", err)
 			}
+			encrypted = true
 		}
 	}
-	if ok, _ := c.Extension("AUTH"); ok {
-		if err := c.Auth(auth); err != nil {
-			return fmt.Errorf("email: auth: %w", err)
+	// Only AUTH on an encrypted connection. net/smtp.PlainAuth refuses
+	// to send credentials over plaintext anyway (returns "unencrypted
+	// connection") — gating here gives a cleaner UX for MailHog and
+	// other test relays that ADVERTISE AUTH but don't actually need it.
+	// The narrow loss is "internal SMTP relay that requires AUTH but
+	// doesn't offer TLS" — rare and arguably misconfigured; the server
+	// will reject MAIL FROM with 530 5.7.0 in that case, which surfaces
+	// as a clear dispatcher error to the operator.
+	if encrypted {
+		if ok, _ := c.Extension("AUTH"); ok {
+			if err := c.Auth(auth); err != nil {
+				return fmt.Errorf("email: auth: %w", err)
+			}
 		}
 	}
 	if err := c.Mail(cfg.FromAddr); err != nil {
