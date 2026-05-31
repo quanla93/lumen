@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.4.5] - 2026-05-31
+
+Phase 6 wrap-up. Email (SMTP) joins the channel lineup and two cooperating alert-noise levers land together: per-rule flap cooldown (rule-level, "this rule itself flaps") and per-host maintenance silence (operator-level, "I'm about to restart the agent — please be quiet"). With these, Phase 6.x is closed; remaining items (template polish, tag rename, derived metrics, webhook HMAC, fleet-summary pre-agg) move to a "post-Phase-6 backlog" pending real user demand.
+
+### Added
+
+- **Email (SMTP) notification channel.** Fifth channel type alongside ntfy/Discord/webhook/Telegram. Config: `smtp_host`, `smtp_port`, `username`, `password` (masked on read like the Telegram bot token), `from_addr`, `to_addr` (single recipient; multi-recipient deferred). Dispatcher uses `net/smtp` over a context-aware `net.Dialer` so the engine's dispatch timeout / cancellation propagates; PLAIN auth runs over STARTTLS (port 587) or implicit TLS (port 465). No new dependency — `net/smtp` + `crypto/tls` are stdlib. Docs: `configure/alerts.md` gets a full Email section with Gmail / Outlook / SendGrid / SES setup recipes, troubleshooting table for SMTP errors the Send-test button surfaces, and a swaks one-liner for credential sanity-check outside Lumen.
+- **Per-rule flap cooldown.** New `alert_rules.cooldown_seconds` column (migration 0013, default 0 = preserves pre-cooldown behaviour). Engine tracks `ruleState.lastFiredAt`; firing transitions inside the cooldown window flip `firing=true` (so the next resolve still emits a notification) but skip both the `alert_events` insert and the delivery queue insert — flap-prone rules stay out of both the channel AND the history table. Rule form gains a "Cooldown (seconds)" field next to "For (seconds)".
+- **Per-host maintenance silence.** New `hosts.silenced_until` column (migration 0014, nullable unix epoch). Engine refreshes silence map each `runOnce` (SQL pre-filters past values); evaluate skips firing + resolved transitions for silenced hosts AND leaves `firing=false` so the rule re-evaluates from scratch after silence expires. New `POST /api/hosts/{id}/silence` (body `{seconds}`, max 7 days) + `DELETE /api/hosts/{id}/silence`; HostDetail page gets a SilencePanel with 15m / 1h / 4h / 24h presets and a "Lift silence" button while a silence is active. Covers planned-maintenance workflows like `docker compose pull && docker compose up -d` that briefly trip the offline rule.
+
+### Fixed
+
+- **Email dispatcher: only AUTH on encrypted connection.** Initial dispatcher blindly called `c.Auth(...)` whenever the server advertised the AUTH extension. MailHog (and similar dev relays) advertise AUTH PLAIN but don't actually require it — and Go's `net/smtp.PlainAuth` refuses to send credentials over plaintext (`unencrypted connection` error). Now AUTH only runs after a confirmed encrypted connection (implicit TLS on 465 OR a successful STARTTLS upgrade). MailHog / unencrypted dev relays work transparently; real production relays (Gmail, SES, SendGrid) keep authenticating exactly as before because they all have TLS. The narrow loss is "internal relay that requires AUTH but doesn't offer TLS" — that misconfiguration now surfaces as the relay's own `530 5.7.0` at `MAIL FROM`, which is a clearer signal than swallowing the operator's creds.
+
 ## [0.4.4] - 2026-05-31
 
 ### Fixed

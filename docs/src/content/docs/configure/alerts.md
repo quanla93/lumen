@@ -38,6 +38,13 @@ fires the moment a host has been silent for 60s; `for_seconds=120` waits
 - **Threshold** – numeric value the metric is compared against.
 - **For (seconds)** – the breach must persist this long before the rule
   fires. `0` means "fire immediately when the breach is observed".
+- **Cooldown (seconds)** – flap suppression. Minimum gap between two
+  firing notifications for the same `(rule, host)` pair. `0` (default)
+  preserves the legacy "fire every breach" behaviour. Suppressed
+  firings still flip the engine's `firing` state (so the next resolve
+  notification still ships) but skip both the `alert_events` insert
+  AND the delivery queue insert — flap-prone rules stay out of both
+  the channel and the history table. See [Noise control](#noise-control) below.
 - **Host** – three modes:
   - Empty → matches every host (registered + ever-seen).
   - Exact name (e.g. `webA`) → that one host only.
@@ -409,6 +416,64 @@ the operator knows throughput is the bottleneck. Tunable knobs (worker
 count, poll interval, backoff schedule) live in the dispatcher config
 today; they'll be exposed in Settings → Runtime in a follow-up.
 
+## Noise control
+
+Two cooperating levers ship in v0.4.5. Pick by the cause of the spam:
+
+### Per-rule cooldown (rule-level)
+
+Use when **the rule itself flaps** — a CPU sits at 79% / 81% / 80% /
+82% and crosses an 80% threshold five times an hour. The right answer
+is "don't notify me about the same alarm five times" — i.e. a per-rule
+cooldown.
+
+- Edit the rule, set **Cooldown (seconds)** to e.g. `300` (5 min).
+- First firing → notification sent + `alert_events` row written.
+- Subsequent firings of the same `(rule, host)` within 5 min →
+  silently dropped (no event, no notification).
+- Resolve transitions always emit — operators still get closure when
+  the breach clears.
+
+Engine state: `ruleState.lastFiredAt` is the only persistent piece;
+it lives in memory and resets on hub restart, so a rebooted hub
+re-fires the next breach (acceptable for a homelab tool — the
+breach itself is still live in the in-memory snapshot).
+
+### Per-host silence (operator-driven, time-bounded)
+
+Use when **the operator knows alerts are about to be noisy** —
+typically when planning to restart an agent (`docker compose pull &&
+docker compose up -d` will briefly trip the offline rule). Cooldown
+doesn't help because the offline rule isn't flapping; it's about to
+correctly fire on a known maintenance event.
+
+- Open the host detail page → **Alert silence** panel.
+- Pick a preset: 15 min / 1 hour / 4 hours / 24 hours.
+- Click **Silence** → `silenced_until` stored on the host row.
+- While active, the engine skips firing AND resolved transitions for
+  this host across every rule. State machine doesn't advance either —
+  if the breach is still live when silence expires, the rule re-fires
+  cleanly from scratch.
+- Click **Lift silence** to clear early. Maximum window is 7 days
+  (server-enforced — past that, "forgot to unsilence" beats "wanted
+  off for two weeks" as the failure mode).
+
+Silence is also exposed via REST: `POST /api/hosts/{id}/silence`
+body `{"seconds": 3600}` to set, `DELETE /api/hosts/{id}/silence` to
+clear. Useful for automating "pre-deploy silence" in a CD pipeline.
+
+### Which lever to pick
+
+| Symptom | Tool |
+|---|---|
+| Same rule firing 5–10× / hour on a hot host | Per-rule cooldown |
+| Planned restart / OS update / agent upgrade | Per-host silence |
+| Genuine repeated incident worth seeing each time | Neither — leave noise on |
+
+The two levers compose: a rule with cooldown set on a silenced host
+just means double-suppression. Silence wins (it short-circuits
+evaluate before cooldown is even checked).
+
 ## Retention
 
 `alert_events` and `notification_deliveries` would otherwise grow
@@ -428,12 +493,19 @@ Set the window to `0s` (or the env override `LUMEN_HUB_RETENTION_ALERTS_WINDOW=0
 to disable the sweep. Bounds: 1h ≤ window ≤ 365d. Sweep cadence is the
 same `retention.interval` knob that drives the snapshot prune.
 
-## What's not in v0.4.x
+## What's not in v0.4.x (post-Phase-6 backlog)
 
-- **Email (SMTP)** channel.
 - **HMAC signing** on the webhook channel — lands with the
   [Public API module](../../reference/api/) webhook unification.
-- **Cool-down / flap suppression** beyond the per-rule `for_seconds`.
+- **Custom subject / body templates** for the Email channel — hardcoded
+  format for now (same shape as the other channel types). Operator
+  override via Go `text/template` is the most-likely first ask.
+- **HTML email body** — current Email channel ships plain text only.
+- **Multi-recipient email** — single `to_addr` for now; comma-split
+  recipients land in a later patch.
+- **Maintenance auto-detect** — engine watches for "rule fires +
+  resolves within N seconds" and auto-suppresses. Alternative to the
+  operator-driven per-host silence.
 - **Derived / rate metrics** (e.g. "RAM grew >10%/min").
 - **Tag key rename** — recreate with the new name + re-assign + delete
   the old one (cascade rewrites rule selectors automatically).

@@ -365,22 +365,23 @@ Mỗi quyết định ghi 1 dòng. Không xóa, không sửa — nếu đổi ý
 
 ---
 
-### Phase 6 — v0.4: Alerting & notifications ✅ (released v0.4.0 — 2026-05-29)
+### Phase 6 — v0.4: Alerting & notifications ✅ CLOSED (released v0.4.0 — 2026-05-29; wrapped v0.4.5 — 2026-05-31)
 
 **Goal**: Threshold-based alerting for **any** host/metric (incl. Proxmox guests once Phase 5 lands). Split out of the old Phase 5 (2026-05-29) — alerting is a general feature, not Proxmox-specific.
 
-> 📋 **Implementation plan: [`docs/rfcs/0001-alerting.md`](docs/rfcs/0001-alerting.md)** — Milestones A–D shipped. v0.4.0 tagged 2026-05-29.
+> 📋 **Implementation plan: [`docs/rfcs/0001-alerting.md`](docs/rfcs/0001-alerting.md)** — Milestones A–D shipped v0.4.0, follow-ups across v0.4.1 → v0.4.5.
 
 - [x] Alert engine v1: rules (threshold-based on metric + comparator + duration), evaluation loop over the in-memory store + history (Milestone A — `internal/hub/alerts/engine.go`, eval every `alerts.eval_interval`, default 15s; offline metric uses a 60s silence-detection floor, then `for_seconds` adds extra hold on top — `for_seconds=0` fires at ~60s after silence, not 120s)
 - [x] Alert state model: firing/resolved transitions, dedup, cooldown; persist alert events (per-(rule, host) in-memory state machine; persisted `alert_events` table; dedup via state — one firing row per breach until resolved)
-- [x] Notification channels: ntfy + Discord + Webhook + **Telegram** (HTTP POST shared dispatcher in `notify.go`; Test action). Email channel deferred to v0.4.2; webhook HMAC arrives with the Public API webhook unification.
+- [x] Notification channels: ntfy + Discord + Webhook + **Telegram** + **Email (SMTP)** (HTTP POST shared dispatcher in `notify.go`; Test action). Webhook HMAC arrives with the Public API webhook unification.
 - [x] Per-rule channel routing + per-channel `min_severity` floor (Milestone B).
 - [x] Host tag inventory + label selectors (Milestone C): controlled `tags` + `tag_values` vocabulary (migration 0012), Alerts → Tags tab does inventory CRUD **and** host assignment, rule selector picker = per-key dropdowns, delete-tag cascades through `host_tags` + rewrites every rule selector via `Selector.DropKey`/`DropPair` after a confirm dialog with impact preview.
 - [x] Persisted notification delivery queue (Milestone D): `notification_deliveries` table (migration 0011), background worker pool with per-channel serialisation, severity-aware retry (critical fails fast in ~5 min; warning/info back off to ~4 h), Deliveries sub-tab with filters + retry-now.
 - [x] Alerts UI: rule CRUD + active/resolved list + deliveries + tag inventory (`web/src/components/Alerts.tsx`, `AlertTags.tsx`; Active / History / Rules / Channels / Deliveries / Tags sub-tabs).
+- [x] **Noise-reduction levers (v0.4.5)**: per-rule `cooldown_seconds` (flap suppression) + per-host `silenced_until` (maintenance window). Operator picks per-rule cooldown for "this rule itself flaps" or per-host silence for "I'm about to restart the agent — please be quiet."
 - [x] Docs: `configure/alerts.md` (`integrations/notifications.md` collapsed in — channel setup lives alongside the rule docs).
 
-**Definition of done**: Create a CPU>90%-for-5m rule, get a Discord/ntfy notification when a host (or Proxmox guest) breaches it, and see it resolve. ✅
+**Definition of done**: Create a CPU>90%-for-5m rule, get an Email/Discord/Telegram/ntfy notification when a host (or Proxmox guest) breaches it, and see it resolve. ✅
 
 ---
 
@@ -405,32 +406,34 @@ Numbered slots for Email/Flap/tag-rename got reassigned in-flight because dashbo
 - [x] **v0.4.3** — bundles v0.4.2's WS work + drops arm64 + armv7 from `release.yml` and `Dockerfile.hub` cross-build (operator fleet is 100% x86; QEMU emulation was costing ~40 min/tag for zero consumers — amd64-only lands in 2-3 min). Includes the `errcheck` fix for the two `SetReadDeadline` calls that the keepalive commit added without checking the return value.
 - [x] **v0.4.4** — copy buttons (`TokenReveal` token reveal, `HostDetail` agent update commands) work on plain HTTP via `document.execCommand("copy")` fallback in `web/src/lib/clipboard.ts`. `navigator.clipboard.writeText` requires a secure context and silently no-op'd (or threw) when the dashboard was loaded over a LAN IP. Modern API takes over transparently when HTTPS lands.
 
-#### v0.4.5 — Email (SMTP) channel  *(was v0.4.2)*
-- [ ] Add `email` to `ChannelType`; reuse the dispatcher pattern from `notify.go`.
-- [ ] Channel config: `smtp_host`, `smtp_port`, `username`, `password` (masked on read like Telegram bot token), `from`, `to` (one address; multi-address can come later).
-- [ ] Test-send action sends a real email; same UX as the current ntfy/Discord test.
-- [ ] Docs section + UI form fields + i18n.
+#### v0.4.5 — Email (SMTP) channel + flap cooldown + per-host silence  *(shipped 2026-05-31, closes Phase 6.x)*
 
-**Post-MVP follow-ups (deferred — Email ships hardcoded subject/body first):**
-- Customizable **subject template** per channel — operator overrides default `[{{.Severity}}] {{.RuleName}} · {{.Host}}` with Go `text/template` syntax. ~20 lines + 1 UI field. Most-likely first ask.
-- Customizable **body template** per channel — full plain-text body override. ~50 lines + textarea + preview button. Useful for embedding runbook URL / dashboard deep-link.
-- **HTML body option** — `Content-Type: text/html` switch with template helpers (escape, link). Matches Alertmanager / Grafana / PagerDuty. Higher edge-case surface (escaping, multipart alternative); only pursue if operators explicitly ask after the plain-text ship.
-- Multi-recipient `to_addr` — split on comma, RCPT TO each. Trivial after the single-recipient base ships.
+Wrap-up patch. Originally planned as Email-only (was v0.4.2 slot); absorbed Flap (was v0.4.6) and Maintenance window (surfaced as v0.4.7?) because all three are "alert noise reduction" and the engine evaluate() change touches them together — splitting would have left it half-instrumented.
 
-#### v0.4.6 — Flap suppression + tag key rename  *(was v0.4.3)*
-- [ ] Flap suppression: per-rule cooldown / "fire at most N times per window" (today only `for_seconds` exists, which doesn't stop a rule that flaps every few minutes from spamming the channel).
-- [ ] Tag key rename: atomic three-table swap (`tags` + `tag_values` + `host_tags`) + rewrite every affected `host_selector`. Currently the recommended workaround is delete-and-recreate; rename is a quality-of-life add once the user shows it matters in practice.
+- [x] **Email (SMTP) channel.** New `email` type alongside ntfy/Discord/webhook/Telegram. Config: `smtp_host`, `smtp_port`, `username`, `password` (masked on read), `from_addr`, `to_addr` (single recipient — multi recipient deferred). Dispatcher uses `net/smtp` over a context-aware `net.Dialer`, with PLAIN auth over STARTTLS (port 587) or implicit TLS (port 465). AUTH is gated on an encrypted connection — bare-plaintext relays like MailHog that advertise AUTH but don't require it now work transparently (stdlib's `PlainAuth` would otherwise refuse with "unencrypted connection"). Docs: `configure/alerts.md` Email section with Gmail/Outlook/SendGrid/SES setup recipes, troubleshooting table, swaks one-liner for credential sanity-check.
+- [x] **Per-rule flap cooldown.** New `alert_rules.cooldown_seconds` column (migration 0013, default 0 = preserves pre-cooldown behavior). Engine tracks `ruleState.lastFiredAt`; firing transitions inside the cooldown window flip `firing=true` (so the next resolve still emits) but skip both `alert_events` insert and delivery queue insert — flap-prone rules stay out of both the channel AND the history table.
+- [x] **Per-host maintenance silence.** New `hosts.silenced_until` column (migration 0014, nullable unix epoch). Engine refreshes silence map each `runOnce`; evaluate skips firing + resolved transitions for silenced hosts AND leaves `firing=false` so the rule re-evaluates from scratch after silence expires. New `POST /api/hosts/{id}/silence` (body `{seconds}`, max 7 days) + `DELETE /api/hosts/{id}/silence`; HostDetail page gets a SilencePanel with 15m / 1h / 4h / 24h presets and a "Lift silence" button while active.
 
-#### v0.4.7? — Maintenance window for alerts  *(surfaced 2026-05-31, not yet slotted)*
-- [ ] Suppress `offline` rule firing while operator is intentionally restarting agents (`docker compose pull && docker compose up -d` can briefly cross the offline threshold and generate noisy "offline → resolved" pairs). Options under consideration: per-host maintenance toggle in UI, time-bounded silence schedule, or auto-detection via "rule fires + resolves within N seconds of each other → suppress next K occurrences." Pick once the operator confirms how often they hit this.
-
-**Still deferred past v0.4.x (no slot yet):** derived/rate metrics ("RAM grew >10%/min"); webhook HMAC (waits for Public API webhook unification); pre-aggregated fleet summary on the WS frame (currently FE aggregates raw snapshots — fine for <50 hosts).
+**Phase 6 backlog (descoped from v0.4.x — pick up when user demand surfaces):**
+- **Tag key rename** — atomic three-table swap (`tags` + `tag_values` + `host_tags`) + rewrite every affected `host_selector`. Workaround today is delete-and-recreate; rename only matters once a fleet rename touches dozens of rules.
+- **Email subject template** — operator overrides default `[{{.Severity}}] {{.RuleName}} · {{.Host}}` with Go `text/template`. ~20 lines + 1 UI field. Most-likely first ask once the channel sees real production traffic.
+- **Email body template** — full plain-text override; textarea + preview button. Useful for embedding runbook URL / dashboard deep-link.
+- **HTML body option** — `Content-Type: text/html` with escape helpers, multipart/alternative fallback. Matches Alertmanager / Grafana / PagerDuty; higher edge-case surface — only pursue after operator asks for it.
+- **Multi-recipient email** — split `to_addr` on comma, RCPT TO each. Trivial after single-recipient ships.
+- **Maintenance auto-detect** — engine watches for "rule fires + resolves within N seconds" and auto-suppresses next K occurrences. Alternative to per-host silence for "I forgot to silence before restarting" scenarios.
+- **Derived / rate metrics** — "RAM grew >10%/min" etc. Discrete fleets rarely need this; defer.
+- **Webhook HMAC signing** — blocked by Public API webhook unification (Decisions 2026-05-29).
+- **Pre-aggregated fleet summary on WS frame** — FE currently aggregates raw snapshots in `summarizeSnapshots`; cheap for <50 hosts. Backend `fleet_summary` field needed when fleet size + browser count make raw-firehose impractical.
 
 ---
 
-### Phase 7 — v0.6: Cold tier + retention
+### Phase 7 — v0.6: Cold tier + retention ▶ NEXT (Phase 6 closed v0.4.5)
 
+**Goal**: Make Lumen viable for fleets that want >24h history without ballooning SQLite, plus the multi-user / 2FA basics that gate self-hosting at a small team. Cold tier is the centerpiece — everything else clusters around it (retention compaction reads/writes the same Parquet files; external API serves them; multi-user/2FA are gating UX changes that pair naturally with the storage rewrite). DuckDB spike comes first because the answer ("yes/no/defer") shapes the query-layer design.
+
+- [ ] **DuckDB feasibility spike + ADR** (do this first): validate practicality, packaging (cgo or native distro pkg), memory footprint on a Pi, query latency vs raw SQLite, and whether DuckDB should be default-on / optional / off-by-default for homelab installs.
 - [ ] Parquet writer (parquet-go)
+- [ ] Compaction job: SQLite > configurable hot window → Parquet using configurable downsample bucket/policy
 - [ ] Compaction job: SQLite > configurable hot window → Parquet using configurable downsample bucket/policy
 - [ ] Query layer transparent over SQLite + Parquet
 - [ ] DuckDB feasibility spike + ADR before implementation: validate practicality, packaging, memory footprint, query latency, and whether DuckDB should be optional/default/off by default
