@@ -16,13 +16,42 @@ import (
 	"github.com/quanla93/lumen/internal/shared/api"
 )
 
-// MinOfflineFor is the silence window before a host is considered
-// offline. The agent ships every ~5s by default; 60s is roughly 12
-// missed ticks — comfortably past transient network blips. This is the
-// only "ignore blips" floor; we do NOT also clamp the rule's
-// for_seconds on top, so for_seconds=0 means "fire as soon as breach
-// is detected" (i.e. at T=60s after silence).
+// MinStaleAfter is the floor for the UI "stale" window. Mirrors
+// web/src/lib/time.ts:staleAfterForIntervalMs so dashboard and alerts
+// stay in phase across agent_interval changes.
+const MinStaleAfter = 30 * time.Second
+
+// MinOfflineFor is the floor (not the absolute threshold) for the alert
+// "offline" window. Actual threshold is derived per-tick from
+// agent_interval via OfflineAfter; this floor only matters when the
+// derived value would otherwise be smaller than 60s (i.e. agent_interval
+// ≤ 15s). Kept so transient network blips at default interval still get
+// the same ~12-missed-ticks tolerance as before unification.
 const MinOfflineFor = 60 * time.Second
+
+// OfflineAfter returns the silence window before a host is considered
+// offline, derived from the configured agent interval. Two-step formula
+// keeps the UI's "yellow stale" warning strictly ahead of the alert's
+// "red offline" notification regardless of how operators tune
+// agent_interval:
+//
+//	stale   = max(2 * interval, MinStaleAfter)   // mirrors FE
+//	offline = max(2 * stale,    MinOfflineFor)   // this function
+//
+// Pre-unification this was a hardcoded 60s; with agent_interval ≥ 60s
+// the alert would fire BEFORE the UI marked the host stale, which broke
+// user trust ("I got a push but the dashboard is still green").
+func OfflineAfter(agentInterval time.Duration) time.Duration {
+	stale := 2 * agentInterval
+	if stale < MinStaleAfter {
+		stale = MinStaleAfter
+	}
+	offline := 2 * stale
+	if offline < MinOfflineFor {
+		offline = MinOfflineFor
+	}
+	return offline
+}
 
 // SnapshotProvider is what the engine reads each tick. Implemented by
 // *hub/store.Store; the test substitutes a fake.
@@ -82,13 +111,21 @@ type Engine struct {
 	cfg   Config
 	mu    sync.Mutex
 	state map[stateKey]*ruleState
+	// offlineAfter is refreshed each runOnce from the agent_interval
+	// setting via OfflineAfter. Default = MinOfflineFor so tests that
+	// drive Tick without a DB behave as before unification.
+	offlineAfter time.Duration
 }
 
 func NewEngine(cfg Config) *Engine {
 	if cfg.Logger == nil {
 		cfg.Logger = slog.Default()
 	}
-	return &Engine{cfg: cfg, state: make(map[stateKey]*ruleState)}
+	return &Engine{
+		cfg:          cfg,
+		state:        make(map[stateKey]*ruleState),
+		offlineAfter: MinOfflineFor,
+	}
 }
 
 // Run is the long-lived ticker. Reads eval interval from settings every
@@ -155,6 +192,16 @@ func (e *Engine) readInterval(ctx context.Context) time.Duration {
 
 // runOnce performs one evaluation cycle. Exposed via Tick for tests.
 func (e *Engine) runOnce(ctx context.Context) {
+	// Refresh offlineAfter from current agent_interval so the alert
+	// "offline" threshold stays in phase with the UI stale window.
+	// Read errors leave the previous value in place (last good).
+	if interval, err := settings.GetDuration(ctx, e.cfg.DB,
+		settings.KeyAgentInterval, 5*time.Second); err == nil {
+		e.mu.Lock()
+		e.offlineAfter = OfflineAfter(interval)
+		e.mu.Unlock()
+	}
+
 	rules, err := ListEnabledRules(ctx, e.cfg.DB)
 	if err != nil {
 		e.cfg.Logger.Error("alerts: list rules failed", "err", err)
@@ -234,6 +281,8 @@ func (e *Engine) evaluate(now time.Time, rules []Rule, snap []api.HostSnapshot, 
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
+	offlineAfter := e.offlineAfter
+
 	byHost := map[string]api.HostSnapshot{}
 	for _, s := range snap {
 		byHost[s.Host] = s
@@ -250,7 +299,7 @@ func (e *Engine) evaluate(now time.Time, rules []Rule, snap []api.HostSnapshot, 
 				e.state[key] = st
 			}
 
-			breach, value := evaluateOne(r, host, byHost, now)
+			breach, value := evaluateOne(r, host, byHost, now, offlineAfter)
 			forDur := time.Duration(r.ForSeconds) * time.Second
 
 			switch {
@@ -365,14 +414,16 @@ func unionHosts(byHost map[string]api.HostSnapshot, registered []string) []strin
 
 // evaluateOne returns (breach, value). For 'offline' the value is the
 // "seconds since last seen" so it's still meaningful in the message.
-func evaluateOne(r Rule, host string, byHost map[string]api.HostSnapshot, now time.Time) (bool, float64) {
+// offlineAfter is the threshold (derived from agent_interval in runOnce,
+// or default MinOfflineFor in tests that bypass runOnce).
+func evaluateOne(r Rule, host string, byHost map[string]api.HostSnapshot, now time.Time, offlineAfter time.Duration) (bool, float64) {
 	snap, present := byHost[host]
 	if r.Metric == "offline" {
 		if !present {
 			return true, -1
 		}
 		age := now.Sub(snap.Ts).Seconds()
-		return age >= MinOfflineFor.Seconds(), age
+		return age >= offlineAfter.Seconds(), age
 	}
 	if !present {
 		// Can't evaluate a metric rule for a host we have no snapshot of —
