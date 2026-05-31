@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Plus, Pencil, Trash2, Tag as TagIcon, Server } from "lucide-react";
 import {
   ApiError,
   hostsApi,
@@ -13,7 +14,7 @@ import {
   GhostButton,
   PrimaryButton,
 } from "@/components/CenterCard";
-import { AppButton, EmptyState, Surface } from "@/components/ui";
+import { EmptyState, IconButton, Surface } from "@/components/ui";
 import { useI18n } from "@/i18n/useI18n";
 
 // AlertTags is the Tags tab inside Alerts. Two panes:
@@ -82,18 +83,20 @@ function TagInventory({
 
   return (
     <Surface>
-      <div className="flex items-center justify-between">
+      <div className="flex items-start justify-between gap-3">
         <div>
-          <h2 className="text-base font-semibold tracking-tight">
+          <h2 className="flex items-center gap-2 text-base font-semibold tracking-tight">
+            <TagIcon size={16} strokeWidth={1.75} className="text-[color:var(--lumen-teal)]" />
             {t("alerts.tagsTab.title")}
           </h2>
           <p className="mt-1 text-sm text-[color:var(--color-muted)]">
             {t("alerts.tagsTab.description")}
           </p>
         </div>
-        <PrimaryButton onClick={() => setCreating(true)}>
+        <GhostButton onClick={() => setCreating(true)} disabled={creating} className="inline-flex items-center gap-1">
+          <Plus size={14} strokeWidth={2} />
           {t("alerts.tagsTab.newTag")}
-        </PrimaryButton>
+        </GhostButton>
       </div>
 
       {creating && (
@@ -200,12 +203,12 @@ function TagRow({
 
   return (
     <>
-      <tr className="border-t border-[color:var(--color-border)] align-top">
-        <td className="px-2 py-2 font-mono">{tag.key}</td>
-        <td className="px-2 py-2 text-[color:var(--color-muted)]">
+      <tr className={`group border-t border-[color:var(--color-border)] align-top transition-colors ${expanded ? "bg-[color:var(--color-bg)]" : "hover:bg-[color:var(--color-bg)]/60"}`}>
+        <td className="px-2 py-2.5 font-mono text-[color:var(--color-fg)]">{tag.key}</td>
+        <td className="px-2 py-2.5 text-[color:var(--color-muted)]">
           {tag.description || "—"}
         </td>
-        <td className="px-2 py-2">
+        <td className="px-2 py-2.5">
           <div className="flex flex-wrap gap-1">
             {tag.values.length === 0 ? (
               <span className="text-xs text-[color:var(--color-muted)]">—</span>
@@ -213,7 +216,7 @@ function TagRow({
               tag.values.map((v) => (
                 <span
                   key={v}
-                  className="rounded-full border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2 py-0.5 text-xs"
+                  className="rounded-full border border-[color:var(--color-border)] bg-[color:var(--color-card)] px-2 py-0.5 text-xs lumen-num text-[color:var(--color-fg)]"
                 >
                   {v === "" ? "(empty)" : v}
                 </span>
@@ -221,19 +224,31 @@ function TagRow({
             )}
           </div>
         </td>
-        <td className="px-2 py-2 text-right tabular-nums text-[color:var(--color-muted)]">
+        <td className="px-2 py-2.5 text-right lumen-num text-[color:var(--color-muted)]">
           {tag.host_count}
         </td>
-        <td className="px-2 py-2 text-right tabular-nums text-[color:var(--color-muted)]">
+        <td className="px-2 py-2.5 text-right lumen-num text-[color:var(--color-muted)]">
           {tag.rule_count}
         </td>
-        <td className="px-2 py-2 text-right space-x-2 whitespace-nowrap">
-          <GhostButton onClick={onToggle} disabled={busy}>
-            {expanded ? t("alerts.cancel") : t("alerts.tagsTab.editTag")}
-          </GhostButton>
-          <AppButton variant="danger" onClick={deleteTag} disabled={busy}>
-            {t("alerts.delete")}
-          </AppButton>
+        <td className="px-2 py-2.5 text-right whitespace-nowrap">
+          <div className="inline-flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+            <IconButton
+              onClick={onToggle}
+              disabled={busy}
+              label={expanded ? t("alerts.cancel") : t("alerts.tagsTab.editTag")}
+              className="h-8 w-8"
+            >
+              <Pencil size={14} strokeWidth={1.75} />
+            </IconButton>
+            <IconButton
+              onClick={deleteTag}
+              disabled={busy}
+              label={t("alerts.delete")}
+              className="h-8 w-8 hover:text-[color:var(--color-danger)]"
+            >
+              <Trash2 size={14} strokeWidth={1.75} />
+            </IconButton>
+          </div>
         </td>
       </tr>
       {error && (
@@ -485,7 +500,8 @@ function HostAssignments({
   return (
     <Surface>
       <div>
-        <h2 className="text-base font-semibold tracking-tight">
+        <h2 className="flex items-center gap-2 text-base font-semibold tracking-tight">
+          <Server size={16} strokeWidth={1.75} className="text-[color:var(--lumen-teal)]" />
           {t("alerts.tagsTab.hostsPaneTitle")}
         </h2>
         <p className="mt-1 text-sm text-[color:var(--color-muted)]">
@@ -585,9 +601,9 @@ function HostAssignmentRow({
 
   if (!editing) {
     return (
-      <tr className="border-t border-[color:var(--color-border)]">
-        <td className="px-2 py-2 font-mono align-top">{host.name}</td>
-        <td className="px-2 py-2 align-top">
+      <tr className="group border-t border-[color:var(--color-border)] transition-colors hover:bg-[color:var(--color-bg)]/60">
+        <td className="px-2 py-2.5 font-mono align-top text-[color:var(--color-fg)]">{host.name}</td>
+        <td className="px-2 py-2.5 align-top">
           <div className="flex flex-wrap gap-1">
             {chips.length === 0 ? (
               <span className="text-xs text-[color:var(--color-muted)]">
@@ -597,7 +613,7 @@ function HostAssignmentRow({
               chips.map(([k, v]) => (
                 <span
                   key={k}
-                  className="rounded-full border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2 py-0.5 text-xs"
+                  className="rounded-full border border-[color:var(--color-border)] bg-[color:var(--color-card)] px-2 py-0.5 text-xs lumen-num text-[color:var(--color-fg)]"
                 >
                   {v ? `${k}=${v}` : k}
                 </span>
@@ -605,8 +621,14 @@ function HostAssignmentRow({
             )}
           </div>
         </td>
-        <td className="px-2 py-2 text-right align-top">
-          <GhostButton onClick={onStartEdit}>{t("alerts.tagsTab.hostEdit")}</GhostButton>
+        <td className="px-2 py-2.5 text-right align-top whitespace-nowrap">
+          <IconButton
+            onClick={onStartEdit}
+            label={t("alerts.tagsTab.hostEdit")}
+            className="h-8 w-8 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100"
+          >
+            <Pencil size={14} strokeWidth={1.75} />
+          </IconButton>
         </td>
       </tr>
     );

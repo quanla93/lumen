@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
-import { BellRing, History, Send, ShieldAlert, Cable, Tag as TagIcon } from "lucide-react";
+import {
+  BellRing, History, Send, ShieldAlert, Cable, Tag as TagIcon,
+  Cpu, MemoryStick, HardDrive, Activity, ServerOff,
+  Pencil, Trash2, Megaphone, MessagesSquare, Webhook, Mail,
+  CheckCircle2, XCircle, Clock, Loader2, MinusCircle, Zap,
+  VolumeX,
+} from "lucide-react";
 import {
   alertsApi,
   ApiError,
@@ -28,7 +34,7 @@ import {
   GhostButton,
   PrimaryButton,
 } from "@/components/CenterCard";
-import { EmptyState, StatusPill, Surface } from "@/components/ui";
+import { EmptyState, IconButton, Popover, SegmentedControl, StatusPill, Surface, Switch } from "@/components/ui";
 import { AlertTags } from "@/components/AlertTags";
 import { useI18n } from "@/i18n/useI18n";
 import type { TranslationKey } from "@/i18n/types";
@@ -50,6 +56,15 @@ const SEVERITIES: AlertSeverity[] = ["info", "warning", "critical"];
 const CHANNEL_TYPES: ChannelType[] = ["ntfy", "discord", "webhook", "telegram", "email"];
 
 const EVENT_POLL_MS = 15_000;
+
+// Per-row "silence this host" Popover presets. Seconds map to backend
+// silence durations; clicking auto-resolves the firing event on the next
+// engine tick (silence suppresses future fires).
+const SILENCE_PRESETS: { seconds: number; labelKey: TranslationKey }[] = [
+  { seconds: 15 * 60,     labelKey: "alerts.silenceFor15m" },
+  { seconds: 60 * 60,     labelKey: "alerts.silenceFor1h"  },
+  { seconds: 4 * 60 * 60, labelKey: "alerts.silenceFor4h"  },
+];
 
 export function Alerts() {
   const { t, locale } = useI18n();
@@ -136,15 +151,23 @@ const EVENT_PAGE_MAX = 2000;
 function EventsList({ state }: { state: "firing" | "resolved" | "all" }) {
   const { t, locale } = useI18n();
   const [events, setEvents] = useState<AlertEvent[] | null>(null);
+  const [hostIndex, setHostIndex] = useState<Map<string, Host>>(new Map());
   const [error, setError] = useState<string | null>(null);
   const [now, setNow] = useState(Date.now());
   const [limit, setLimit] = useState(EVENT_PAGE_STEP);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [silenceBusy, setSilenceBusy] = useState<number | null>(null);
 
   const refresh = useCallback(async (nextLimit: number = limit) => {
     try {
-      const evs = await alertsApi.events(state, nextLimit);
+      // Pull events + hosts together so we always have a fresh name→id map
+      // for the per-row silence action (event payload only carries host name).
+      const [evs, hs] = await Promise.all([
+        alertsApi.events(state, nextLimit),
+        hostsApi.list(),
+      ]);
       setEvents(evs);
+      setHostIndex(new Map(hs.map((h) => [h.name, h])));
       setError(null);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : String(err));
@@ -160,6 +183,18 @@ function EventsList({ state }: { state: "firing" | "resolved" | "all" }) {
       window.clearInterval(nowId);
     };
   }, [refresh, limit]);
+
+  async function silenceHost(host: Host, seconds: number) {
+    setSilenceBusy(host.id);
+    try {
+      await hostsApi.silence(host.id, seconds);
+      await refresh();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : String(err));
+    } finally {
+      setSilenceBusy(null);
+    }
+  }
 
   // Reset the page when the user switches state (Active ↔ History).
   useEffect(() => {
@@ -196,26 +231,88 @@ function EventsList({ state }: { state: "firing" | "resolved" | "all" }) {
   return (
     <Surface padded={false}>
       <ul className="divide-y divide-[color:var(--color-border)]">
-        {events.map((ev) => (
-          <li key={ev.id} className="flex flex-col gap-1 px-5 py-4 sm:flex-row sm:items-start sm:justify-between">
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <StatusPill tone={toneForSeverity(ev.severity, ev.state)}>
-                  {t(ev.state === "firing" ? "alerts.state.firing" : "alerts.state.resolved")}
-                </StatusPill>
-                <span className="text-sm font-medium">{ev.rule_name}</span>
-                <span className="text-xs text-[color:var(--color-muted)]">{ev.host}</span>
+        {events.map((ev) => {
+          const tone = toneForSeverity(ev.severity, ev.state);
+          const StateIcon = ev.state === "firing" ? BellRing : CheckCircle2;
+          const host = hostIndex.get(ev.host);
+          const isFiring = ev.state === "firing";
+          const isSilenced = !!host?.silenced_until;
+          return (
+            <li key={ev.id} className="group relative flex items-start gap-3 pl-4 pr-3 py-3.5 sm:items-center">
+              <span aria-hidden className={`absolute left-0 top-2 bottom-2 w-1 rounded-r ${severityStripeClass(tone)}`} />
+              <div
+                className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-md ${
+                  tone === "danger" ? "bg-[color:var(--color-danger)]/12 text-[color:var(--color-danger)]"
+                  : tone === "warn" ? "bg-[color:var(--color-warn)]/12 text-[color:var(--color-warn)]"
+                  : tone === "ok"   ? "bg-[color:var(--color-accent)]/12 text-[color:var(--color-accent)]"
+                                    : "bg-[color:var(--color-border)]/40 text-[color:var(--color-muted)]"
+                }`}
+              >
+                <StateIcon size={16} strokeWidth={1.75} />
               </div>
-              <p className="mt-1 text-sm text-[color:var(--color-muted)]">{ev.message}</p>
-            </div>
-            <div className="text-right text-xs text-[color:var(--color-muted)]">
-              <div>{t("alerts.sinceLabel", { time: relativeTime(ev.started_at, now, locale) })}</div>
-              {ev.resolved_at && (
-                <div>{t("alerts.resolvedAt", { time: relativeTime(ev.resolved_at, now, locale) })}</div>
-              )}
-            </div>
-          </li>
-        ))}
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-sm font-medium">{ev.rule_name}</span>
+                  <StatusPill tone={tone}>
+                    {t(`alerts.severity.${ev.severity}` as TranslationKey)}
+                  </StatusPill>
+                  <span className="text-xs text-[color:var(--color-muted)]">·</span>
+                  <span className="lumen-num text-xs text-[color:var(--color-muted)]">{ev.host}</span>
+                  {isSilenced && (
+                    <StatusPill tone="muted">
+                      <VolumeX size={10} strokeWidth={2} className="inline -mt-0.5 mr-0.5" />
+                      {t("alerts.silencedNow")}
+                    </StatusPill>
+                  )}
+                </div>
+                <p className="mt-0.5 text-sm text-[color:var(--color-muted)]">{ev.message}</p>
+              </div>
+              <div className="flex shrink-0 items-start gap-2 sm:items-center">
+                <div className="text-right text-xs text-[color:var(--color-muted)]">
+                  <div>{t("alerts.sinceLabel", { time: relativeTime(ev.started_at, now, locale) })}</div>
+                  {ev.resolved_at && (
+                    <div>{t("alerts.resolvedAt", { time: relativeTime(ev.resolved_at, now, locale) })}</div>
+                  )}
+                </div>
+                {isFiring && host && (
+                  <Popover
+                    trigger={
+                      <IconButton
+                        label={t("alerts.silenceHost")}
+                        disabled={silenceBusy === host.id}
+                        className="h-8 w-8 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100"
+                      >
+                        <VolumeX size={14} strokeWidth={1.75} />
+                      </IconButton>
+                    }
+                  >
+                    <div className="space-y-2">
+                      <div className="text-sm font-semibold text-[color:var(--color-fg)]">
+                        {t("alerts.silenceForLabel", { host: host.name })}
+                      </div>
+                      <p className="text-xs text-[color:var(--color-muted)]">
+                        {t("alerts.silenceHostHint")}
+                      </p>
+                      <div className="flex flex-wrap gap-1.5 pt-1">
+                        {SILENCE_PRESETS.map((p) => (
+                          <button
+                            key={p.seconds}
+                            type="button"
+                            onClick={() => void silenceHost(host, p.seconds)}
+                            disabled={silenceBusy === host.id}
+                            className="rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2.5 py-1 text-xs font-medium hover:border-[color:var(--lumen-teal)]/50 hover:bg-[color-mix(in_oklch,var(--lumen-teal)_8%,var(--color-card))] disabled:opacity-50"
+                          >
+                            {t(p.labelKey)}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </Popover>
+                )}
+              </div>
+            </li>
+          );
+        })}
       </ul>
       <div className="flex items-center justify-between gap-3 border-t border-[color:var(--color-border)] px-5 py-3 text-xs text-[color:var(--color-muted)]">
         <span>{t("alerts.loadedCount", { count: events.length })}</span>
@@ -394,54 +491,62 @@ function DeliveriesPanel() {
           <ul className="divide-y divide-[color:var(--color-border)]">
             {rows.map((d) => {
               const isRetryable = d.status === "failed" || d.status === "dropped";
+              const StatusIcon = deliveryStatusIcon(d.status);
+              const ChIcon = channelIcon(d.channel_type as ChannelType);
+              const sTone = statusTone(d.status);
+              const isInflight = d.status === "inflight";
+              const message = typeof (d.payload as { message?: string })?.message === "string"
+                ? (d.payload as { message: string }).message
+                : null;
+              // Single timestamp line — "sent X ago" wins over "queued" if
+              // both exist; pending/inflight show queued + next retry.
+              const timeAgo = d.sent_at
+                ? t("alerts.deliverySentAt", { time: relativeTime(d.sent_at, now, locale) })
+                : t("alerts.deliveryQueuedAt", { time: relativeTime(d.created_at, now, locale) });
               return (
-                <li key={d.id} className="flex flex-col gap-1 px-5 py-4 sm:flex-row sm:items-start sm:justify-between">
-                  <div className="min-w-0 space-y-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <StatusPill tone={statusTone(d.status)}>
-                        {t(`alerts.deliveryStatus.${d.status}` as TranslationKey)}
-                      </StatusPill>
+                <li key={d.id} className="group flex items-center gap-3 px-4 py-2.5">
+                  <div
+                    className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md ${
+                      sTone === "danger" ? "bg-[color:var(--color-danger)]/12 text-[color:var(--color-danger)]"
+                      : sTone === "warn" ? "bg-[color:var(--color-warn)]/12 text-[color:var(--color-warn)]"
+                      : sTone === "ok"   ? "bg-[color:var(--color-accent)]/12 text-[color:var(--color-accent)]"
+                                         : "bg-[color:var(--color-border)]/40 text-[color:var(--color-muted)]"
+                    }`}
+                  >
+                    <StatusIcon size={14} strokeWidth={1.75} className={isInflight ? "animate-spin" : ""} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <ChIcon size={13} strokeWidth={1.75} className="shrink-0 text-[color:var(--color-muted)]" />
+                      <span className="truncate text-sm font-medium">{d.channel_name}</span>
                       <StatusPill tone={toneForSeverity(d.severity, "firing")}>
                         {t(`alerts.severity.${d.severity}` as TranslationKey)}
                       </StatusPill>
-                      <span className="text-sm font-medium">{d.channel_name}</span>
-                      <span className="text-xs text-[color:var(--color-muted)]">
-                        ({t(`alerts.channelType.${d.channel_type}` as TranslationKey)})
-                      </span>
+                      {message && (
+                        <span className="truncate text-xs text-[color:var(--color-muted)]">
+                          · {message}
+                        </span>
+                      )}
                     </div>
-                    {typeof (d.payload as { message?: string })?.message === "string" && (
-                      <p className="text-sm text-[color:var(--color-muted)]">
-                        {(d.payload as { message: string }).message}
-                      </p>
-                    )}
-                    <p className="text-xs text-[color:var(--color-muted)]">
-                      {t("alerts.deliveryMeta", {
-                        attempts: d.attempts,
-                        httpStatus: d.http_status ?? "—",
-                      })}
+                    <p className="lumen-num text-xs text-[color:var(--color-muted)] truncate">
+                      <span className="uppercase tracking-wide">{t(`alerts.deliveryStatus.${d.status}` as TranslationKey)}</span>
+                      {" · "}{t("alerts.deliveryMeta", { attempts: d.attempts, httpStatus: d.http_status ?? "—" })}
+                      {" · "}{timeAgo}
+                      {d.next_retry_at && d.status === "pending" && (
+                        <> {" · "}{t("alerts.deliveryNextRetry", { time: relativeTime(d.next_retry_at, now, locale) })}</>
+                      )}
                     </p>
                     {d.error && (
                       <p className="text-xs text-[color:var(--color-danger)] break-words">
                         {d.error}
                       </p>
                     )}
-                    {d.next_retry_at && d.status === "pending" && (
-                      <p className="text-xs text-[color:var(--color-muted)]">
-                        {t("alerts.deliveryNextRetry", { time: relativeTime(d.next_retry_at, now, locale) })}
-                      </p>
-                    )}
                   </div>
-                  <div className="flex flex-col items-end gap-1 text-xs text-[color:var(--color-muted)]">
-                    <span>{t("alerts.deliveryQueuedAt", { time: relativeTime(d.created_at, now, locale) })}</span>
-                    {d.sent_at && (
-                      <span>{t("alerts.deliverySentAt", { time: relativeTime(d.sent_at, now, locale) })}</span>
-                    )}
-                    {isRetryable && (
-                      <GhostButton onClick={() => void retry(d.id)} disabled={retryBusy === d.id}>
-                        {retryBusy === d.id ? t("common.saving") : t("alerts.deliveryRetry")}
-                      </GhostButton>
-                    )}
-                  </div>
+                  {isRetryable && (
+                    <GhostButton onClick={() => void retry(d.id)} disabled={retryBusy === d.id} className="shrink-0">
+                      {retryBusy === d.id ? t("common.saving") : t("alerts.deliveryRetry")}
+                    </GhostButton>
+                  )}
                 </li>
               );
             })}
@@ -499,6 +604,69 @@ function ruleToWrite(r: AlertRule): AlertRuleWrite {
     enabled: r.enabled,
     channel_ids: r.channel_ids ?? [],
   };
+}
+
+// Preset rules covering the 80% case — CPU/RAM/Disk thresholds, host
+// offline, load. Clicking one opens the form prefilled so the operator
+// only has to confirm targeting and channels, instead of typing 11 fields.
+type RuleTemplate = {
+  key: string;
+  labelKey: TranslationKey;
+  icon: typeof Cpu;
+  preset: Partial<AlertRuleWrite>;
+};
+
+const RULE_TEMPLATES: RuleTemplate[] = [
+  { key: "cpu_high",  labelKey: "alerts.tplCpuHigh",  icon: Cpu,
+    preset: { name: "CPU high",     metric: "cpu_pct",  comparator: "gt", threshold: 80, for_seconds: 120, severity: "warning" } },
+  { key: "ram_high",  labelKey: "alerts.tplRamHigh",  icon: MemoryStick,
+    preset: { name: "RAM high",     metric: "ram_pct",  comparator: "gt", threshold: 90, for_seconds: 120, severity: "warning" } },
+  { key: "disk_full", labelKey: "alerts.tplDiskFull", icon: HardDrive,
+    preset: { name: "Disk full",    metric: "disk_pct", comparator: "gt", threshold: 85, for_seconds: 300, severity: "critical" } },
+  { key: "offline",   labelKey: "alerts.tplOffline",  icon: ServerOff,
+    preset: { name: "Host offline", metric: "offline",  comparator: "gt", threshold: 0,  for_seconds: 60,  severity: "critical" } },
+  { key: "load_high", labelKey: "alerts.tplLoadHigh", icon: Activity,
+    preset: { name: "Load high",    metric: "load1",    comparator: "gt", threshold: 4,  for_seconds: 120, severity: "warning" } },
+];
+
+function metricIcon(metric: AlertMetric): typeof Cpu {
+  switch (metric) {
+    case "cpu_pct":  return Cpu;
+    case "ram_pct":  return MemoryStick;
+    case "swap_pct": return MemoryStick;
+    case "disk_pct": return HardDrive;
+    case "load1":    return Activity;
+    case "offline":  return ServerOff;
+  }
+}
+
+function channelIcon(type: ChannelType): typeof Cpu {
+  switch (type) {
+    case "ntfy":     return Megaphone;
+    case "discord":  return MessagesSquare;
+    case "webhook":  return Webhook;
+    case "telegram": return Send;
+    case "email":    return Mail;
+  }
+}
+
+function deliveryStatusIcon(s: DeliveryStatus): typeof Cpu {
+  switch (s) {
+    case "sent":     return CheckCircle2;
+    case "pending":  return Clock;
+    case "inflight": return Loader2;
+    case "failed":   return XCircle;
+    case "dropped":  return MinusCircle;
+  }
+}
+
+function severityStripeClass(tone: "ok" | "warn" | "danger" | "muted"): string {
+  switch (tone) {
+    case "ok":     return "bg-[color:var(--color-accent)]";
+    case "warn":   return "bg-[color:var(--color-warn)]";
+    case "danger": return "bg-[color:var(--color-danger)]";
+    case "muted":  return "bg-[color:var(--color-muted)]";
+  }
 }
 
 function RulesPanel() {
@@ -563,6 +731,13 @@ function RulesPanel() {
     void refreshLatest();
   }
 
+  function startFromTemplate(tmpl: RuleTemplate) {
+    setEditingId("new");
+    setDraft({ ...blankRule(), ...tmpl.preset });
+    setFormError(null);
+    void refreshLatest();
+  }
+
   function startEdit(r: AlertRule) {
     setEditingId(r.id);
     setDraft(ruleToWrite(r));
@@ -573,6 +748,20 @@ function RulesPanel() {
   function cancel() {
     setEditingId(null);
     setFormError(null);
+  }
+
+  // Optimistic toggle — flip in UI immediately, PUT in background, revert
+  // if the server rejects. Operator sees instant feedback; no form roundtrip.
+  async function toggleEnabled(r: AlertRule) {
+    if (editingId !== null) return; // don't race a form save
+    const prev = rules;
+    setRules((cur) => (cur ?? []).map((x) => x.id === r.id ? { ...x, enabled: !r.enabled } : x));
+    try {
+      await alertsApi.rules.update(r.id, { ...ruleToWrite(r), enabled: !r.enabled });
+    } catch (err) {
+      setRules(prev);
+      setError(err instanceof ApiError ? err.message : String(err));
+    }
   }
 
   async function save(e: React.FormEvent) {
@@ -616,110 +805,166 @@ function RulesPanel() {
             {t("alerts.newRule")}
           </GhostButton>
         </div>
+
+        {editingId === null && (
+          <div className="mt-4 rounded-lg border border-[color:var(--color-border)] bg-[color:var(--color-bg)] p-3">
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <span className="text-xs font-semibold uppercase tracking-wide text-[color:var(--color-muted)]">
+                {t("alerts.quickTemplates")}
+              </span>
+              <span className="text-xs text-[color:var(--color-muted)]">
+                {t("alerts.quickTemplatesHint")}
+              </span>
+            </div>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {RULE_TEMPLATES.map((tmpl) => {
+                const Icon = tmpl.icon;
+                return (
+                  <button
+                    key={tmpl.key}
+                    type="button"
+                    onClick={() => startFromTemplate(tmpl)}
+                    className="group inline-flex items-center gap-1.5 rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-card)] px-2.5 py-1.5 text-xs font-medium text-[color:var(--color-fg)] transition-colors hover:border-[color:var(--lumen-teal)]/50 hover:bg-[color-mix(in_oklch,var(--lumen-teal)_8%,var(--color-card))]"
+                  >
+                    <Icon size={14} strokeWidth={1.75} className="text-[color:var(--color-muted)] group-hover:text-[color:var(--lumen-teal)]" />
+                    {t(tmpl.labelKey)}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {error && <div className="mt-3"><ErrorText message={t("alerts.listError", { error })} /></div>}
 
         {editingId !== null && (
-          <form onSubmit={save} className="mt-4 grid gap-3 sm:grid-cols-2">
+          <form onSubmit={save} className="mt-4 space-y-5">
+            {/* Header: name spans full width so the rule's identity reads first */}
             <Field label={t("alerts.fieldName")}>
               <FieldInput value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} required />
             </Field>
-            <Field label={t("alerts.fieldMetric")}>
-              <SelectInput
-                value={draft.metric}
-                onChange={(v) => setDraft({ ...draft, metric: v as AlertMetric })}
-                options={METRICS.map((m) => ({ value: m, label: t(`alerts.metric.${m}` as TranslationKey) }))}
-              />
-            </Field>
-            {draft.metric !== "offline" && (
-              <>
-                <Field label={t("alerts.fieldComparator")}>
+
+            {/* Section 1: Condition — what to alert on */}
+            <FormSection title={t("alerts.sectionCondition")} icon={ShieldAlert}>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Field label={t("alerts.fieldMetric")}>
                   <SelectInput
-                    value={draft.comparator}
-                    onChange={(v) => setDraft({ ...draft, comparator: v as AlertComparator })}
-                    options={COMPARATORS.map((c) => ({ value: c, label: t(`alerts.comparator.${c}` as TranslationKey) }))}
+                    value={draft.metric}
+                    onChange={(v) => setDraft({ ...draft, metric: v as AlertMetric })}
+                    options={METRICS.map((m) => ({ value: m, label: t(`alerts.metric.${m}` as TranslationKey) }))}
                   />
                 </Field>
-                <Field label={t("alerts.fieldThreshold")}>
+                {draft.metric !== "offline" && (
+                  <Field label={t("alerts.fieldComparator")}>
+                    <SegmentedControl
+                      value={draft.comparator}
+                      onChange={(v) => setDraft({ ...draft, comparator: v as AlertComparator })}
+                      options={COMPARATORS.map((c) => ({ value: c, label: t(`alerts.comparator.${c}` as TranslationKey) }))}
+                      ariaLabel={t("alerts.fieldComparator")}
+                    />
+                  </Field>
+                )}
+                {draft.metric !== "offline" && (
+                  <Field label={t("alerts.fieldThreshold")}>
+                    <FieldInput
+                      type="number"
+                      step="any"
+                      value={draft.threshold}
+                      onChange={(e) => setDraft({ ...draft, threshold: Number(e.target.value) })}
+                    />
+                  </Field>
+                )}
+                <Field label={t("alerts.fieldForSeconds")}>
                   <FieldInput
                     type="number"
-                    step="any"
-                    value={draft.threshold}
-                    onChange={(e) => setDraft({ ...draft, threshold: Number(e.target.value) })}
+                    min={0}
+                    value={draft.for_seconds}
+                    onChange={(e) => setDraft({ ...draft, for_seconds: Math.max(0, Number(e.target.value)) })}
+                  />
+                  <p className="mt-1 text-xs text-[color:var(--color-muted)]">{t("alerts.forSecondsHint")}</p>
+                </Field>
+                <Field label={t("alerts.fieldCooldownSeconds")}>
+                  <FieldInput
+                    type="number"
+                    min={0}
+                    value={draft.cooldown_seconds}
+                    onChange={(e) => setDraft({ ...draft, cooldown_seconds: Math.max(0, Number(e.target.value)) })}
+                  />
+                  <p className="mt-1 text-xs text-[color:var(--color-muted)]">{t("alerts.cooldownSecondsHint")}</p>
+                </Field>
+              </div>
+            </FormSection>
+
+            {/* Section 2: Targeting — which hosts */}
+            <FormSection title={t("alerts.sectionTargeting")} icon={TagIcon}>
+              <HostTargetingFields draft={draft} setDraft={setDraft} hosts={hosts} inventory={tagInventory} />
+            </FormSection>
+
+            {/* Section 3: Notification — severity + routing + enabled */}
+            <FormSection title={t("alerts.sectionNotification")} icon={Send}>
+              <div className="space-y-3">
+                <Field label={t("alerts.fieldSeverity")}>
+                  <SegmentedControl
+                    value={draft.severity}
+                    onChange={(v) => setDraft({ ...draft, severity: v as AlertSeverity })}
+                    options={SEVERITIES.map((s) => ({ value: s, label: t(`alerts.severity.${s}` as TranslationKey) }))}
+                    ariaLabel={t("alerts.fieldSeverity")}
                   />
                 </Field>
-              </>
-            )}
-            <Field label={t("alerts.fieldForSeconds")}>
-              <FieldInput
-                type="number"
-                min={0}
-                value={draft.for_seconds}
-                onChange={(e) => setDraft({ ...draft, for_seconds: Math.max(0, Number(e.target.value)) })}
-              />
-              <p className="mt-1 text-xs text-[color:var(--color-muted)]">{t("alerts.forSecondsHint")}</p>
-            </Field>
-            <Field label={t("alerts.fieldCooldownSeconds")}>
-              <FieldInput
-                type="number"
-                min={0}
-                value={draft.cooldown_seconds}
-                onChange={(e) => setDraft({ ...draft, cooldown_seconds: Math.max(0, Number(e.target.value)) })}
-              />
-              <p className="mt-1 text-xs text-[color:var(--color-muted)]">{t("alerts.cooldownSecondsHint")}</p>
-            </Field>
-            <div className="sm:col-span-2">
-              <HostTargetingFields draft={draft} setDraft={setDraft} hosts={hosts} inventory={tagInventory} />
-            </div>
-            <Field label={t("alerts.fieldSeverity")}>
-              <SelectInput
-                value={draft.severity}
-                onChange={(v) => setDraft({ ...draft, severity: v as AlertSeverity })}
-                options={SEVERITIES.map((s) => ({ value: s, label: t(`alerts.severity.${s}` as TranslationKey) }))}
-              />
-            </Field>
-            <label className="flex items-center gap-2 self-end pb-1 text-sm">
-              <input
-                type="checkbox"
-                checked={draft.enabled ?? true}
-                onChange={(e) => setDraft({ ...draft, enabled: e.target.checked })}
-              />
-              {t("alerts.fieldEnabled")}
-            </label>
-            <div className="sm:col-span-2">
-              <span className="block text-xs uppercase tracking-wide text-[color:var(--color-muted)] mb-1">
-                {t("alerts.fieldChannels")}
-              </span>
-              {channels.length === 0 ? (
-                <p className="text-xs text-[color:var(--color-muted)]">
-                  {t("alerts.fieldChannelsEmpty")}
-                </p>
-              ) : (
-                <div className="space-y-1 rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] p-2">
-                  {channels.map((ch) => {
-                    const checked = (draft.channel_ids ?? []).includes(ch.id);
-                    return (
-                      <label key={ch.id} className="flex items-center gap-2 text-sm">
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={() => toggleDraftChannel(ch.id)}
-                        />
-                        <span>{ch.name}</span>
-                        <span className="text-xs text-[color:var(--color-muted)]">
-                          ({t(`alerts.channelType.${ch.type}` as TranslationKey)}
-                          {ch.min_severity !== "info" ? ` · ≥ ${t(`alerts.severity.${ch.min_severity}` as TranslationKey)}` : ""}
-                          {!ch.enabled ? ` · ${t("alerts.disabledLabel")}` : ""})
-                        </span>
-                      </label>
-                    );
-                  })}
+                <div>
+                  <span className="block text-xs uppercase tracking-wide text-[color:var(--color-muted)] mb-1.5">
+                    {t("alerts.fieldChannels")}
+                  </span>
+                  {channels.length === 0 ? (
+                    <p className="text-xs text-[color:var(--color-muted)]">
+                      {t("alerts.fieldChannelsEmpty")}
+                    </p>
+                  ) : (
+                    <div className="grid gap-1.5 sm:grid-cols-2">
+                      {channels.map((ch) => {
+                        const checked = (draft.channel_ids ?? []).includes(ch.id);
+                        return (
+                          <label
+                            key={ch.id}
+                            className={`flex cursor-pointer items-center gap-2 rounded-md border px-2.5 py-1.5 text-sm transition-colors ${
+                              checked
+                                ? "border-[color:var(--lumen-teal)]/60 bg-[color-mix(in_oklch,var(--lumen-teal)_8%,var(--color-card))]"
+                                : "border-[color:var(--color-border)] hover:bg-[color:var(--color-bg)]/40"
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() => toggleDraftChannel(ch.id)}
+                            />
+                            <span className="font-medium">{ch.name}</span>
+                            <span className="text-xs text-[color:var(--color-muted)]">
+                              {t(`alerts.channelType.${ch.type}` as TranslationKey)}
+                              {ch.min_severity !== "info" ? ` · ≥ ${t(`alerts.severity.${ch.min_severity}` as TranslationKey)}` : ""}
+                              {!ch.enabled ? ` · ${t("alerts.disabledLabel")}` : ""}
+                            </span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  )}
+                  <p className="mt-1.5 text-xs text-[color:var(--color-muted)]">
+                    {t("alerts.fieldChannelsHint")}
+                  </p>
                 </div>
-              )}
-              <p className="mt-1 text-xs text-[color:var(--color-muted)]">
-                {t("alerts.fieldChannelsHint")}
-              </p>
-            </div>
-            <div className="sm:col-span-2 flex items-center gap-2">
+                <label className="flex items-center gap-2.5 rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-3 py-2 text-sm">
+                  <Switch
+                    checked={draft.enabled ?? true}
+                    onCheckedChange={(v) => setDraft({ ...draft, enabled: v })}
+                    ariaLabel={t("alerts.fieldEnabled")}
+                  />
+                  <span className="font-medium">{t("alerts.fieldEnabled")}</span>
+                </label>
+              </div>
+            </FormSection>
+
+            {/* Footer */}
+            <div className="flex items-center gap-2 border-t border-[color:var(--color-border)] pt-4">
               <PrimaryButton disabled={submitting}>{submitting ? t("common.saving") : t("alerts.save")}</PrimaryButton>
               <GhostButton type="button" onClick={cancel}>{t("alerts.cancel")}</GhostButton>
               {formError && <ErrorText message={t("alerts.formError", { error: formError })} />}
@@ -731,47 +976,74 @@ function RulesPanel() {
       {rules === null ? (
         <p className="text-sm text-[color:var(--color-muted)]">{t("alerts.listLoading")}</p>
       ) : rules.length === 0 ? (
-        <EmptyState title={t("alerts.rulesEmpty")} />
+        <EmptyState title={t("alerts.rulesEmpty")} detail={t("alerts.rulesEmptyHint")} />
       ) : (
         <Surface padded={false}>
           <ul className="divide-y divide-[color:var(--color-border)]">
             {rules.map((r) => {
               const isEditing = editingId === r.id;
               const otherEditing = editingId !== null && !isEditing;
+              const Icon = metricIcon(r.metric);
               return (
                 <li
                   key={r.id}
-                  className={`flex flex-col gap-2 px-5 py-4 sm:flex-row sm:items-center sm:justify-between ${
-                    isEditing ? "bg-[color:var(--color-bg)]" : otherEditing ? "opacity-50" : ""
-                  }`}
+                  className={`group flex items-center gap-3 px-4 py-3 transition-colors ${
+                    isEditing ? "bg-[color:var(--color-bg)]" : otherEditing ? "opacity-50" : "hover:bg-[color:var(--color-bg)]/60"
+                  } ${!r.enabled ? "opacity-70" : ""}`}
                 >
-                  <div className="min-w-0">
+                  <Switch
+                    checked={r.enabled}
+                    onCheckedChange={() => void toggleEnabled(r)}
+                    ariaLabel={r.enabled ? t("alerts.disableRule") : t("alerts.enableRule")}
+                    disabled={editingId !== null}
+                  />
+                  <div
+                    className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-md ${
+                      r.enabled
+                        ? "bg-[color-mix(in_oklch,var(--lumen-teal)_12%,var(--color-card))] text-[color:var(--lumen-teal)]"
+                        : "bg-[color:var(--color-border)]/40 text-[color:var(--color-muted)]"
+                    }`}
+                  >
+                    <Icon size={16} strokeWidth={1.75} />
+                  </div>
+                  <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-sm font-medium">{r.name}</span>
+                      <span className={`text-sm font-medium ${r.enabled ? "text-[color:var(--color-fg)]" : "text-[color:var(--color-muted)]"}`}>
+                        {r.name}
+                      </span>
                       <StatusPill tone={r.enabled ? toneForSeverity(r.severity, "firing") : "muted"}>
                         {t(`alerts.severity.${r.severity}` as TranslationKey)}
                       </StatusPill>
-                      {!r.enabled && <span className="text-xs text-[color:var(--color-muted)]">{t("alerts.disabledLabel")}</span>}
                       {isEditing && (
                         <span className="rounded-full bg-[color:var(--color-accent)]/15 px-2 py-0.5 text-xs text-[color:var(--color-accent)]">
                           {t("alerts.editingNow")}
                         </span>
                       )}
                     </div>
-                    <p className="mt-1 text-xs text-[color:var(--color-muted)]">
+                    <p className="mt-0.5 truncate text-xs text-[color:var(--color-muted)]">
                       {ruleDescription(r, t)}
                     </p>
-                    <p className="mt-1 text-xs text-[color:var(--color-muted)]">
+                    <p className="truncate text-xs text-[color:var(--color-muted)]">
                       {ruleRoutingDescription(r, channels, t)}
                     </p>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <GhostButton onClick={() => startEdit(r)} disabled={editingId !== null}>
-                      {t("alerts.editRule")}
-                    </GhostButton>
-                    <GhostButton onClick={() => void remove(r)} disabled={editingId !== null}>
-                      {t("alerts.delete")}
-                    </GhostButton>
+                  <div className="flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+                    <IconButton
+                      onClick={() => startEdit(r)}
+                      disabled={editingId !== null}
+                      label={t("alerts.editRule")}
+                      className="h-8 w-8"
+                    >
+                      <Pencil size={14} strokeWidth={1.75} />
+                    </IconButton>
+                    <IconButton
+                      onClick={() => void remove(r)}
+                      disabled={editingId !== null}
+                      label={t("alerts.delete")}
+                      className="h-8 w-8 hover:text-[color:var(--color-danger)]"
+                    >
+                      <Trash2 size={14} strokeWidth={1.75} />
+                    </IconButton>
                   </div>
                 </li>
               );
@@ -879,6 +1151,20 @@ function ChannelsPanel() {
     setFormError(null);
   }
 
+  // Optimistic enable/disable — flip in UI, PUT in background, revert on error.
+  // Mirrors RulesPanel.toggleEnabled.
+  async function toggleEnabled(c: NotificationChannel) {
+    if (editingId !== null) return;
+    const prev = channels;
+    setChannels((cur) => (cur ?? []).map((x) => x.id === c.id ? { ...x, enabled: !c.enabled } : x));
+    try {
+      await alertsApi.channels.update(c.id, { ...channelToWrite(c), enabled: !c.enabled });
+    } catch (err) {
+      setChannels(prev);
+      setError(err instanceof ApiError ? err.message : String(err));
+    }
+  }
+
   async function save(e: React.FormEvent) {
     e.preventDefault();
     setSubmitting(true);
@@ -934,174 +1220,196 @@ function ChannelsPanel() {
         {error && <div className="mt-3"><ErrorText message={t("alerts.listError", { error })} /></div>}
 
         {editingId !== null && (
-          <form onSubmit={save} className="mt-4 grid gap-3 sm:grid-cols-2">
-            <Field label={t("alerts.fieldName")}>
-              <FieldInput value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} required />
-            </Field>
-            <Field label={t("alerts.fieldChannelType")}>
-              <SelectInput
-                value={draft.type}
-                onChange={(v) => setDraft({ ...draft, type: v as ChannelType })}
-                options={CHANNEL_TYPES.map((c) => ({ value: c, label: t(`alerts.channelType.${c}` as TranslationKey) }))}
-              />
-            </Field>
-            {draft.type !== "telegram" && draft.type !== "email" && (
-              <Field label={t("alerts.fieldUrl")}>
-                <FieldInput
-                  type="url"
-                  value={draft.config.url ?? ""}
-                  onChange={(e) => setDraft({ ...draft, config: { ...draft.config, url: e.target.value } })}
-                  required
-                  placeholder={
-                    draft.type === "ntfy" ? "https://ntfy.sh/lumen-alerts"
-                    : draft.type === "discord" ? "https://discord.com/api/webhooks/…"
-                    : "https://example.com/hooks/lumen"
-                  }
-                />
-                <p className="mt-1 text-xs text-[color:var(--color-muted)]">
-                  {draft.type === "ntfy"    && t("alerts.ntfyUrlHint")}
-                  {draft.type === "discord" && t("alerts.discordUrlHint")}
-                  {draft.type === "webhook" && t("alerts.webhookUrlHint")}
-                </p>
-              </Field>
-            )}
-            {draft.type === "email" && (
-              <>
-                <Field label={t("alerts.fieldSmtpHost")}>
-                  <FieldInput
-                    type="text"
-                    value={draft.config.smtp_host ?? ""}
-                    onChange={(e) => setDraft({ ...draft, config: { ...draft.config, smtp_host: e.target.value } })}
-                    required
-                    placeholder="smtp.gmail.com"
-                    autoComplete="off"
-                  />
-                  <p className="mt-1 text-xs text-[color:var(--color-muted)]">{t("alerts.smtpHostHint")}</p>
+          <form onSubmit={save} className="mt-4 space-y-5">
+            {/* Section 1: Identity — name + type. Type drives which config
+                fields render below, so it lives at the top with the name. */}
+            <FormSection title={t("alerts.sectionIdentity")} icon={TagIcon}>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Field label={t("alerts.fieldName")}>
+                  <FieldInput value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} required />
                 </Field>
-                <Field label={t("alerts.fieldSmtpPort")}>
-                  <FieldInput
-                    type="number"
-                    value={draft.config.smtp_port ?? ""}
-                    onChange={(e) => setDraft({ ...draft, config: { ...draft.config, smtp_port: e.target.value ? Number(e.target.value) : undefined } })}
-                    required
-                    placeholder="587"
-                    min={1}
-                    max={65535}
-                  />
-                  <p className="mt-1 text-xs text-[color:var(--color-muted)]">{t("alerts.smtpPortHint")}</p>
-                </Field>
-                <Field label={t("alerts.fieldFromAddr")}>
-                  <FieldInput
-                    type="email"
-                    value={draft.config.from_addr ?? ""}
-                    onChange={(e) => setDraft({ ...draft, config: { ...draft.config, from_addr: e.target.value } })}
-                    required
-                    placeholder="alerts@example.com"
-                    autoComplete="off"
+                <Field label={t("alerts.fieldChannelType")}>
+                  <SelectInput
+                    value={draft.type}
+                    onChange={(v) => setDraft({ ...draft, type: v as ChannelType })}
+                    options={CHANNEL_TYPES.map((c) => ({ value: c, label: t(`alerts.channelType.${c}` as TranslationKey) }))}
                   />
                 </Field>
-                <Field label={t("alerts.fieldToAddr")}>
-                  <FieldInput
-                    type="email"
-                    value={draft.config.to_addr ?? ""}
-                    onChange={(e) => setDraft({ ...draft, config: { ...draft.config, to_addr: e.target.value } })}
-                    required
-                    placeholder="oncall@example.com"
-                    autoComplete="off"
+              </div>
+            </FormSection>
+
+            {/* Section 2: Config — type-specific fields. Hidden URL/SMTP/Telegram
+                blocks below all collapse into this section so the form length
+                stays predictable regardless of channel type. */}
+            <FormSection title={t("alerts.sectionConfig")} icon={channelIcon(draft.type)}>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {draft.type !== "telegram" && draft.type !== "email" && (
+                  <Field label={t("alerts.fieldUrl")} className="sm:col-span-2">
+                    <FieldInput
+                      type="url"
+                      value={draft.config.url ?? ""}
+                      onChange={(e) => setDraft({ ...draft, config: { ...draft.config, url: e.target.value } })}
+                      required
+                      placeholder={
+                        draft.type === "ntfy" ? "https://ntfy.sh/lumen-alerts"
+                        : draft.type === "discord" ? "https://discord.com/api/webhooks/…"
+                        : "https://example.com/hooks/lumen"
+                      }
+                    />
+                    <p className="mt-1 text-xs text-[color:var(--color-muted)]">
+                      {draft.type === "ntfy"    && t("alerts.ntfyUrlHint")}
+                      {draft.type === "discord" && t("alerts.discordUrlHint")}
+                      {draft.type === "webhook" && t("alerts.webhookUrlHint")}
+                    </p>
+                  </Field>
+                )}
+                {draft.type === "email" && (
+                  <>
+                    <Field label={t("alerts.fieldSmtpHost")}>
+                      <FieldInput
+                        type="text"
+                        value={draft.config.smtp_host ?? ""}
+                        onChange={(e) => setDraft({ ...draft, config: { ...draft.config, smtp_host: e.target.value } })}
+                        required
+                        placeholder="smtp.gmail.com"
+                        autoComplete="off"
+                      />
+                      <p className="mt-1 text-xs text-[color:var(--color-muted)]">{t("alerts.smtpHostHint")}</p>
+                    </Field>
+                    <Field label={t("alerts.fieldSmtpPort")}>
+                      <FieldInput
+                        type="number"
+                        value={draft.config.smtp_port ?? ""}
+                        onChange={(e) => setDraft({ ...draft, config: { ...draft.config, smtp_port: e.target.value ? Number(e.target.value) : undefined } })}
+                        required
+                        placeholder="587"
+                        min={1}
+                        max={65535}
+                      />
+                      <p className="mt-1 text-xs text-[color:var(--color-muted)]">{t("alerts.smtpPortHint")}</p>
+                    </Field>
+                    <Field label={t("alerts.fieldFromAddr")}>
+                      <FieldInput
+                        type="email"
+                        value={draft.config.from_addr ?? ""}
+                        onChange={(e) => setDraft({ ...draft, config: { ...draft.config, from_addr: e.target.value } })}
+                        required
+                        placeholder="alerts@example.com"
+                        autoComplete="off"
+                      />
+                    </Field>
+                    <Field label={t("alerts.fieldToAddr")}>
+                      <FieldInput
+                        type="email"
+                        value={draft.config.to_addr ?? ""}
+                        onChange={(e) => setDraft({ ...draft, config: { ...draft.config, to_addr: e.target.value } })}
+                        required
+                        placeholder="oncall@example.com"
+                        autoComplete="off"
+                      />
+                      <p className="mt-1 text-xs text-[color:var(--color-muted)]">{t("alerts.toAddrHint")}</p>
+                    </Field>
+                    <Field label={t("alerts.fieldSmtpUsername")}>
+                      <FieldInput
+                        type="text"
+                        value={draft.config.username ?? ""}
+                        onChange={(e) => setDraft({ ...draft, config: { ...draft.config, username: e.target.value } })}
+                        required
+                        placeholder="alerts@example.com"
+                        autoComplete="off"
+                      />
+                      <p className="mt-1 text-xs text-[color:var(--color-muted)]">{t("alerts.smtpUsernameHint")}</p>
+                    </Field>
+                    <Field label={t("alerts.fieldSmtpPassword")}>
+                      <FieldInput
+                        type="password"
+                        value={draft.config.password ?? ""}
+                        onChange={(e) => setDraft({ ...draft, config: { ...draft.config, password: e.target.value } })}
+                        required
+                        autoComplete="new-password"
+                      />
+                      <p className="mt-1 text-xs text-[color:var(--color-muted)]">
+                        {t("alerts.smtpPasswordHint")}
+                        {draft.config.password === TELEGRAM_TOKEN_MASK && (
+                          <> {" · "}{t("alerts.smtpPasswordKept")}</>
+                        )}
+                      </p>
+                    </Field>
+                  </>
+                )}
+                {draft.type === "telegram" && (
+                  <>
+                    <Field label={t("alerts.fieldBotToken")} className="sm:col-span-2">
+                      <FieldInput
+                        type="text"
+                        value={draft.config.bot_token ?? ""}
+                        onChange={(e) => setDraft({ ...draft, config: { ...draft.config, bot_token: e.target.value } })}
+                        required
+                        placeholder="123456:ABC-DEF…"
+                        autoComplete="off"
+                      />
+                      <p className="mt-1 text-xs text-[color:var(--color-muted)]">
+                        {t("alerts.telegramTokenHint")}
+                        {draft.config.bot_token === TELEGRAM_TOKEN_MASK && (
+                          <> {" · "}{t("alerts.telegramTokenKept")}</>
+                        )}
+                      </p>
+                    </Field>
+                    <Field label={t("alerts.fieldChatId")}>
+                      <FieldInput
+                        type="text"
+                        value={draft.config.chat_id ?? ""}
+                        onChange={(e) => setDraft({ ...draft, config: { ...draft.config, chat_id: e.target.value } })}
+                        required
+                        placeholder="-1001234567890"
+                      />
+                      <p className="mt-1 text-xs text-[color:var(--color-muted)]">{t("alerts.telegramChatHint")}</p>
+                    </Field>
+                  </>
+                )}
+                {draft.type === "ntfy" && (
+                  <Field label={t("alerts.fieldPriority")}>
+                    <SelectInput
+                      value={draft.config.priority ?? ""}
+                      onChange={(v) => setDraft({ ...draft, config: { ...draft.config, priority: v || undefined } })}
+                      options={[
+                        { value: "", label: "auto" },
+                        { value: "min", label: "min" },
+                        { value: "low", label: "low" },
+                        { value: "default", label: "default" },
+                        { value: "high", label: "high" },
+                        { value: "urgent", label: "urgent" },
+                      ]}
+                    />
+                  </Field>
+                )}
+              </div>
+            </FormSection>
+
+            {/* Section 3: Routing — min severity gate + enabled state */}
+            <FormSection title={t("alerts.sectionRouting")} icon={Send}>
+              <div className="space-y-3">
+                <Field label={t("alerts.fieldMinSeverity")}>
+                  <SegmentedControl
+                    value={draft.min_severity ?? "info"}
+                    onChange={(v) => setDraft({ ...draft, min_severity: v as AlertSeverity })}
+                    options={SEVERITIES.map((s) => ({ value: s, label: t(`alerts.severity.${s}` as TranslationKey) }))}
+                    ariaLabel={t("alerts.fieldMinSeverity")}
                   />
-                  <p className="mt-1 text-xs text-[color:var(--color-muted)]">{t("alerts.toAddrHint")}</p>
+                  <p className="mt-1 text-xs text-[color:var(--color-muted)]">{t("alerts.minSeverityHint")}</p>
                 </Field>
-                <Field label={t("alerts.fieldSmtpUsername")}>
-                  <FieldInput
-                    type="text"
-                    value={draft.config.username ?? ""}
-                    onChange={(e) => setDraft({ ...draft, config: { ...draft.config, username: e.target.value } })}
-                    required
-                    placeholder="alerts@example.com"
-                    autoComplete="off"
+                <label className="flex items-center gap-2.5 rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-3 py-2 text-sm">
+                  <Switch
+                    checked={draft.enabled ?? true}
+                    onCheckedChange={(v) => setDraft({ ...draft, enabled: v })}
+                    ariaLabel={t("alerts.fieldEnabled")}
                   />
-                  <p className="mt-1 text-xs text-[color:var(--color-muted)]">{t("alerts.smtpUsernameHint")}</p>
-                </Field>
-                <Field label={t("alerts.fieldSmtpPassword")}>
-                  <FieldInput
-                    type="password"
-                    value={draft.config.password ?? ""}
-                    onChange={(e) => setDraft({ ...draft, config: { ...draft.config, password: e.target.value } })}
-                    required
-                    autoComplete="new-password"
-                  />
-                  <p className="mt-1 text-xs text-[color:var(--color-muted)]">
-                    {t("alerts.smtpPasswordHint")}
-                    {draft.config.password === TELEGRAM_TOKEN_MASK && (
-                      <> {" · "}{t("alerts.smtpPasswordKept")}</>
-                    )}
-                  </p>
-                </Field>
-              </>
-            )}
-            {draft.type === "telegram" && (
-              <>
-                <Field label={t("alerts.fieldBotToken")}>
-                  <FieldInput
-                    type="text"
-                    value={draft.config.bot_token ?? ""}
-                    onChange={(e) => setDraft({ ...draft, config: { ...draft.config, bot_token: e.target.value } })}
-                    required
-                    placeholder="123456:ABC-DEF…"
-                    autoComplete="off"
-                  />
-                  <p className="mt-1 text-xs text-[color:var(--color-muted)]">
-                    {t("alerts.telegramTokenHint")}
-                    {draft.config.bot_token === TELEGRAM_TOKEN_MASK && (
-                      <> {" · "}{t("alerts.telegramTokenKept")}</>
-                    )}
-                  </p>
-                </Field>
-                <Field label={t("alerts.fieldChatId")}>
-                  <FieldInput
-                    type="text"
-                    value={draft.config.chat_id ?? ""}
-                    onChange={(e) => setDraft({ ...draft, config: { ...draft.config, chat_id: e.target.value } })}
-                    required
-                    placeholder="-1001234567890"
-                  />
-                  <p className="mt-1 text-xs text-[color:var(--color-muted)]">{t("alerts.telegramChatHint")}</p>
-                </Field>
-              </>
-            )}
-            {draft.type === "ntfy" && (
-              <Field label={t("alerts.fieldPriority")}>
-                <SelectInput
-                  value={draft.config.priority ?? ""}
-                  onChange={(v) => setDraft({ ...draft, config: { ...draft.config, priority: v || undefined } })}
-                  options={[
-                    { value: "", label: "auto" },
-                    { value: "min", label: "min" },
-                    { value: "low", label: "low" },
-                    { value: "default", label: "default" },
-                    { value: "high", label: "high" },
-                    { value: "urgent", label: "urgent" },
-                  ]}
-                />
-              </Field>
-            )}
-            <Field label={t("alerts.fieldMinSeverity")}>
-              <SelectInput
-                value={draft.min_severity ?? "info"}
-                onChange={(v) => setDraft({ ...draft, min_severity: v as AlertSeverity })}
-                options={SEVERITIES.map((s) => ({ value: s, label: t(`alerts.severity.${s}` as TranslationKey) }))}
-              />
-              <p className="mt-1 text-xs text-[color:var(--color-muted)]">{t("alerts.minSeverityHint")}</p>
-            </Field>
-            <label className="flex items-center gap-2 self-end pb-1 text-sm">
-              <input
-                type="checkbox"
-                checked={draft.enabled ?? true}
-                onChange={(e) => setDraft({ ...draft, enabled: e.target.checked })}
-              />
-              {t("alerts.fieldEnabled")}
-            </label>
-            <div className="sm:col-span-2 flex items-center gap-2">
+                  <span className="font-medium">{t("alerts.fieldEnabled")}</span>
+                </label>
+              </div>
+            </FormSection>
+
+            <div className="flex items-center gap-2 border-t border-[color:var(--color-border)] pt-4">
               <PrimaryButton disabled={submitting}>{submitting ? t("common.saving") : t("alerts.save")}</PrimaryButton>
               <GhostButton type="button" onClick={cancel}>{t("alerts.cancel")}</GhostButton>
               {formError && <ErrorText message={t("alerts.formError", { error: formError })} />}
@@ -1113,61 +1421,95 @@ function ChannelsPanel() {
       {channels === null ? (
         <p className="text-sm text-[color:var(--color-muted)]">{t("alerts.listLoading")}</p>
       ) : channels.length === 0 ? (
-        <EmptyState title={t("alerts.channelsEmpty")} />
+        <EmptyState title={t("alerts.channelsEmpty")} detail={t("alerts.channelsEmptyHint")} />
       ) : (
         <Surface padded={false}>
           <ul className="divide-y divide-[color:var(--color-border)]">
             {channels.map((c) => {
               const isEditing = editingId === c.id;
               const otherEditing = editingId !== null && !isEditing;
+              const Icon = channelIcon(c.type);
+              const summary =
+                c.type === "telegram"
+                  ? t("alerts.telegramChannelSummary", { chat: c.config.chat_id ?? "" })
+                  : c.type === "email"
+                  ? t("alerts.emailChannelSummary", { to: c.config.to_addr ?? "", host: c.config.smtp_host ?? "" })
+                  : c.config.url ?? "";
               return (
                 <li
                   key={c.id}
-                  className={`flex flex-col gap-2 px-5 py-4 sm:flex-row sm:items-center sm:justify-between ${
-                    isEditing ? "bg-[color:var(--color-bg)]" : otherEditing ? "opacity-50" : ""
-                  }`}
+                  className={`group flex items-center gap-3 px-4 py-3 transition-colors ${
+                    isEditing ? "bg-[color:var(--color-bg)]" : otherEditing ? "opacity-50" : "hover:bg-[color:var(--color-bg)]/60"
+                  } ${!c.enabled ? "opacity-70" : ""}`}
                 >
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium">{c.name}</span>
-                      <StatusPill tone={c.enabled ? "ok" : "muted"}>
+                  <Switch
+                    checked={c.enabled}
+                    onCheckedChange={() => void toggleEnabled(c)}
+                    ariaLabel={c.enabled ? t("alerts.disableChannel") : t("alerts.enableChannel")}
+                    disabled={editingId !== null}
+                  />
+                  <div
+                    className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-md ${
+                      c.enabled
+                        ? "bg-[color-mix(in_oklch,var(--lumen-teal)_12%,var(--color-card))] text-[color:var(--lumen-teal)]"
+                        : "bg-[color:var(--color-border)]/40 text-[color:var(--color-muted)]"
+                    }`}
+                  >
+                    <Icon size={16} strokeWidth={1.75} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className={`text-sm font-medium ${c.enabled ? "text-[color:var(--color-fg)]" : "text-[color:var(--color-muted)]"}`}>
+                        {c.name}
+                      </span>
+                      <span className="rounded-full bg-[color:var(--color-border)]/60 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-[color:var(--color-muted)]">
                         {t(`alerts.channelType.${c.type}` as TranslationKey)}
-                      </StatusPill>
-                      {!c.enabled && <span className="text-xs text-[color:var(--color-muted)]">{t("alerts.disabledLabel")}</span>}
+                      </span>
+                      {c.min_severity !== "info" && (
+                        <StatusPill tone={c.min_severity === "critical" ? "danger" : "warn"}>
+                          ≥ {t(`alerts.severity.${c.min_severity}` as TranslationKey)}
+                        </StatusPill>
+                      )}
                       {isEditing && (
                         <span className="rounded-full bg-[color:var(--color-accent)]/15 px-2 py-0.5 text-xs text-[color:var(--color-accent)]">
                           {t("alerts.editingNow")}
                         </span>
                       )}
                     </div>
-                    <p className="mt-1 break-all text-xs text-[color:var(--color-muted)]">
-                      {c.type === "telegram"
-                        ? t("alerts.telegramChannelSummary", { chat: c.config.chat_id ?? "" })
-                        : c.type === "email"
-                        ? t("alerts.emailChannelSummary", { to: c.config.to_addr ?? "", host: c.config.smtp_host ?? "" })
-                        : c.config.url ?? ""}
+                    <p className="mt-0.5 truncate break-all text-xs text-[color:var(--color-muted)]">
+                      {summary}
                     </p>
-                    {c.min_severity !== "info" && (
-                      <p className="text-xs text-[color:var(--color-muted)]">
-                        {t("alerts.minSeverityBadge", { severity: t(`alerts.severity.${c.min_severity}` as TranslationKey) })}
-                      </p>
-                    )}
                     {testResult?.id === c.id && (
-                      <p className={`mt-1 text-xs ${testResult.ok ? "text-[color:var(--color-fg)]" : "text-[color:var(--color-danger)]"}`}>
+                      <p className={`mt-0.5 text-xs ${testResult.ok ? "text-[color:var(--color-accent)]" : "text-[color:var(--color-danger)]"}`}>
                         {testResult.msg}
                       </p>
                     )}
                   </div>
-                  <div className="flex items-center gap-2">
-                    <GhostButton onClick={() => void sendTest(c)} disabled={editingId !== null}>
-                      {t("alerts.test")}
-                    </GhostButton>
-                    <GhostButton onClick={() => startEdit(c)} disabled={editingId !== null}>
-                      {t("alerts.editChannel")}
-                    </GhostButton>
-                    <GhostButton onClick={() => void remove(c)} disabled={editingId !== null}>
-                      {t("alerts.delete")}
-                    </GhostButton>
+                  <div className="flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+                    <IconButton
+                      onClick={() => void sendTest(c)}
+                      disabled={editingId !== null}
+                      label={t("alerts.test")}
+                      className="h-8 w-8"
+                    >
+                      <Zap size={14} strokeWidth={1.75} />
+                    </IconButton>
+                    <IconButton
+                      onClick={() => startEdit(c)}
+                      disabled={editingId !== null}
+                      label={t("alerts.editChannel")}
+                      className="h-8 w-8"
+                    >
+                      <Pencil size={14} strokeWidth={1.75} />
+                    </IconButton>
+                    <IconButton
+                      onClick={() => void remove(c)}
+                      disabled={editingId !== null}
+                      label={t("alerts.delete")}
+                      className="h-8 w-8 hover:text-[color:var(--color-danger)]"
+                    >
+                      <Trash2 size={14} strokeWidth={1.75} />
+                    </IconButton>
                   </div>
                 </li>
               );
@@ -1462,6 +1804,29 @@ function globMatch(pattern: string, name: string): boolean {
 }
 
 // ---------------- shared bits ----------------
+
+// FormSection wraps a labeled group inside the rule form. Just a small
+// header (icon + uppercase title) over its children — no inner border,
+// since the parent Surface already provides the card chrome.
+function FormSection({
+  title,
+  icon: Icon,
+  children,
+}: {
+  title: string;
+  icon: typeof Cpu;
+  children: React.ReactNode;
+}) {
+  return (
+    <div>
+      <div className="mb-2.5 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-[color:var(--color-muted)]">
+        <Icon size={12} strokeWidth={2.25} />
+        {title}
+      </div>
+      {children}
+    </div>
+  );
+}
 
 function SelectInput({
   value,
