@@ -27,31 +27,33 @@ func NewHandlers(db *sql.DB, logger *slog.Logger) *Handlers {
 }
 
 type ruleView struct {
-	ID           int64   `json:"id"`
-	Name         string  `json:"name"`
-	Metric       string  `json:"metric"`
-	Comparator   string  `json:"comparator"`
-	Threshold    float64 `json:"threshold"`
-	ForSeconds   int     `json:"for_seconds"`
-	Host         string  `json:"host"`
-	HostSelector string  `json:"host_selector"`
-	Severity     string  `json:"severity"`
-	Enabled      bool    `json:"enabled"`
-	ChannelIDs   []int64 `json:"channel_ids"`
-	CreatedAt    string  `json:"created_at"`
-	UpdatedAt    string  `json:"updated_at"`
+	ID              int64   `json:"id"`
+	Name            string  `json:"name"`
+	Metric          string  `json:"metric"`
+	Comparator      string  `json:"comparator"`
+	Threshold       float64 `json:"threshold"`
+	ForSeconds      int     `json:"for_seconds"`
+	CooldownSeconds int     `json:"cooldown_seconds"`
+	Host            string  `json:"host"`
+	HostSelector    string  `json:"host_selector"`
+	Severity        string  `json:"severity"`
+	Enabled         bool    `json:"enabled"`
+	ChannelIDs      []int64 `json:"channel_ids"`
+	CreatedAt       string  `json:"created_at"`
+	UpdatedAt       string  `json:"updated_at"`
 }
 
 type ruleWrite struct {
-	Name         string  `json:"name"`
-	Metric       string  `json:"metric"`
-	Comparator   string  `json:"comparator"`
-	Threshold    float64 `json:"threshold"`
-	ForSeconds   int     `json:"for_seconds"`
-	Host         string  `json:"host"`
-	HostSelector string  `json:"host_selector"`
-	Severity     string  `json:"severity"`
-	Enabled      *bool   `json:"enabled"`
+	Name            string  `json:"name"`
+	Metric          string  `json:"metric"`
+	Comparator      string  `json:"comparator"`
+	Threshold       float64 `json:"threshold"`
+	ForSeconds      int     `json:"for_seconds"`
+	CooldownSeconds int     `json:"cooldown_seconds"`
+	Host            string  `json:"host"`
+	HostSelector    string  `json:"host_selector"`
+	Severity        string  `json:"severity"`
+	Enabled         *bool   `json:"enabled"`
 	// ChannelIDs selects which notification_channels this rule fans out
 	// to. nil = unchanged on UPDATE; empty array = clear all links →
 	// fall back to broadcast (every enabled channel).
@@ -63,34 +65,36 @@ func ruleToView(r Rule, channelIDs []int64) ruleView {
 		channelIDs = []int64{}
 	}
 	return ruleView{
-		ID:           r.ID,
-		Name:         r.Name,
-		Metric:       r.Metric,
-		Comparator:   r.Comparator,
-		Threshold:    r.Threshold,
-		ForSeconds:   r.ForSeconds,
-		Host:         r.Host,
-		HostSelector: r.HostSelector,
-		Severity:     r.Severity,
-		Enabled:      r.Enabled,
-		ChannelIDs:   channelIDs,
-		CreatedAt:    r.CreatedAt.UTC().Format(time.RFC3339),
-		UpdatedAt:    r.UpdatedAt.UTC().Format(time.RFC3339),
+		ID:              r.ID,
+		Name:            r.Name,
+		Metric:          r.Metric,
+		Comparator:      r.Comparator,
+		Threshold:       r.Threshold,
+		ForSeconds:      r.ForSeconds,
+		CooldownSeconds: r.CooldownSeconds,
+		Host:            r.Host,
+		HostSelector:    r.HostSelector,
+		Severity:        r.Severity,
+		Enabled:         r.Enabled,
+		ChannelIDs:      channelIDs,
+		CreatedAt:       r.CreatedAt.UTC().Format(time.RFC3339),
+		UpdatedAt:       r.UpdatedAt.UTC().Format(time.RFC3339),
 	}
 }
 
 func (w ruleWrite) toRule(id int64) Rule {
 	r := Rule{
-		ID:           id,
-		Name:         w.Name,
-		Metric:       w.Metric,
-		Comparator:   w.Comparator,
-		Threshold:    w.Threshold,
-		ForSeconds:   w.ForSeconds,
-		Host:         w.Host,
-		HostSelector: w.HostSelector,
-		Severity:     w.Severity,
-		Enabled:      true,
+		ID:              id,
+		Name:            w.Name,
+		Metric:          w.Metric,
+		Comparator:      w.Comparator,
+		Threshold:       w.Threshold,
+		ForSeconds:      w.ForSeconds,
+		CooldownSeconds: w.CooldownSeconds,
+		Host:            w.Host,
+		HostSelector:    w.HostSelector,
+		Severity:        w.Severity,
+		Enabled:         true,
 	}
 	if w.Enabled != nil {
 		r.Enabled = *w.Enabled
@@ -769,6 +773,7 @@ func isValidationErr(err error) bool {
 		errors.Is(err, ErrInvalidComparator),
 		errors.Is(err, ErrInvalidSeverity),
 		errors.Is(err, ErrNegativeForSeconds),
+		errors.Is(err, ErrNegativeCooldown),
 		errors.Is(err, ErrChannelNameRequired),
 		errors.Is(err, ErrInvalidChannelType),
 		errors.Is(err, ErrChannelURLRequired),
@@ -776,7 +781,13 @@ func isValidationErr(err error) bool {
 		errors.Is(err, ErrChannelConfigInvalid),
 		errors.Is(err, ErrInvalidMinSeverity),
 		errors.Is(err, ErrTelegramBotRequired),
-		errors.Is(err, ErrTelegramChatRequired):
+		errors.Is(err, ErrTelegramChatRequired),
+		errors.Is(err, ErrEmailHostRequired),
+		errors.Is(err, ErrEmailPortInvalid),
+		errors.Is(err, ErrEmailCredsRequired),
+		errors.Is(err, ErrEmailFromRequired),
+		errors.Is(err, ErrEmailToRequired),
+		errors.Is(err, ErrEmailAddrInvalid):
 		return true
 	}
 	return false

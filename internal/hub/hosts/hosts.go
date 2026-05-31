@@ -49,6 +49,10 @@ type Host struct {
 	SystemUptimeSeconds sql.NullInt64
 	AgentVersion        sql.NullString
 	MetadataUpdatedAt   sql.NullTime
+	// SilencedUntil is a unix timestamp (seconds). NULL or past = not
+	// silenced; future = alerts engine skips event+notify for this host
+	// until the time passes. Set via /api/hosts/{id}/silence.
+	SilencedUntil sql.NullInt64
 }
 
 // newToken produces a fresh plaintext token + its SHA-256 hex hash.
@@ -88,7 +92,7 @@ func validateName(name string) error {
 const hostColumns = `id, name, created_at, last_seen_at,
 	system_os, system_hostname, system_primary_ip, system_kernel,
 	system_arch, system_cpu_model, system_uptime_seconds,
-	agent_version, metadata_updated_at`
+	agent_version, metadata_updated_at, silenced_until`
 
 func scanHost(scanner interface{ Scan(dest ...any) error }) (Host, error) {
 	var h Host
@@ -96,9 +100,32 @@ func scanHost(scanner interface{ Scan(dest ...any) error }) (Host, error) {
 		&h.ID, &h.Name, &h.CreatedAt, &h.LastSeenAt,
 		&h.SystemOS, &h.SystemHostname, &h.SystemPrimaryIP, &h.SystemKernel,
 		&h.SystemArch, &h.SystemCPUModel, &h.SystemUptimeSeconds,
-		&h.AgentVersion, &h.MetadataUpdatedAt,
+		&h.AgentVersion, &h.MetadataUpdatedAt, &h.SilencedUntil,
 	)
 	return h, err
+}
+
+// SetSilence stores silenced_until on the host. Pass a zero time to
+// clear the silence (UPDATE ... = NULL). Returns ErrNotFound if no row
+// matches the id.
+func SetSilence(ctx context.Context, db *sql.DB, id int64, until time.Time) error {
+	var v sql.NullInt64
+	if !until.IsZero() {
+		v = sql.NullInt64{Int64: until.Unix(), Valid: true}
+	}
+	res, err := db.ExecContext(ctx,
+		`UPDATE hosts SET silenced_until = ? WHERE id = ?`, v, id)
+	if err != nil {
+		return fmt.Errorf("update silence: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // List returns every host, ordered by name.

@@ -27,12 +27,13 @@ var (
 )
 
 var (
-	ErrRuleNotFound       = errors.New("alert rule not found")
-	ErrRuleNameRequired   = errors.New("name required")
-	ErrInvalidMetric      = errors.New("invalid metric")
-	ErrInvalidComparator  = errors.New("invalid comparator")
-	ErrInvalidSeverity    = errors.New("invalid severity")
-	ErrNegativeForSeconds = errors.New("for_seconds must be >= 0")
+	ErrRuleNotFound        = errors.New("alert rule not found")
+	ErrRuleNameRequired    = errors.New("name required")
+	ErrInvalidMetric       = errors.New("invalid metric")
+	ErrInvalidComparator   = errors.New("invalid comparator")
+	ErrInvalidSeverity     = errors.New("invalid severity")
+	ErrNegativeForSeconds  = errors.New("for_seconds must be >= 0")
+	ErrNegativeCooldown    = errors.New("cooldown_seconds must be >= 0")
 )
 
 // Rule mirrors one row of alert_rules.
@@ -51,6 +52,12 @@ type Rule struct {
 	Comparator   string
 	Threshold    float64
 	ForSeconds   int
+	// CooldownSeconds is the flap-suppression window: after a firing
+	// transition emits, further firing transitions for the same
+	// (rule, host) within this many seconds are silently suppressed
+	// (no event row, no delivery). 0 = no cooldown (default).
+	// Resolved transitions are always emitted regardless of cooldown.
+	CooldownSeconds int
 	Host         string
 	HostSelector string
 	Severity     string
@@ -59,7 +66,7 @@ type Rule struct {
 	UpdatedAt    time.Time
 }
 
-const ruleColumns = `id, name, metric, comparator, threshold, for_seconds,
+const ruleColumns = `id, name, metric, comparator, threshold, for_seconds, cooldown_seconds,
 	host, host_selector, severity, enabled, created_at, updated_at`
 
 func scanRule(scanner interface{ Scan(dest ...any) error }) (Rule, error) {
@@ -67,7 +74,7 @@ func scanRule(scanner interface{ Scan(dest ...any) error }) (Rule, error) {
 	var host sql.NullString
 	var enabled int
 	err := scanner.Scan(
-		&r.ID, &r.Name, &r.Metric, &r.Comparator, &r.Threshold, &r.ForSeconds,
+		&r.ID, &r.Name, &r.Metric, &r.Comparator, &r.Threshold, &r.ForSeconds, &r.CooldownSeconds,
 		&host, &r.HostSelector, &r.Severity, &enabled, &r.CreatedAt, &r.UpdatedAt,
 	)
 	if err != nil {
@@ -105,6 +112,9 @@ func validateRule(r *Rule) error {
 	}
 	if r.ForSeconds < 0 {
 		return ErrNegativeForSeconds
+	}
+	if r.CooldownSeconds < 0 {
+		return ErrNegativeCooldown
 	}
 	r.Host = strings.TrimSpace(r.Host)
 	r.HostSelector = strings.TrimSpace(r.HostSelector)
@@ -172,9 +182,9 @@ func CreateRule(ctx context.Context, db *sql.DB, r Rule) (Rule, error) {
 	}
 	res, err := db.ExecContext(ctx, `
 		INSERT INTO alert_rules
-			(name, metric, comparator, threshold, for_seconds, host, host_selector, severity, enabled)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		r.Name, r.Metric, r.Comparator, r.Threshold, r.ForSeconds,
+			(name, metric, comparator, threshold, for_seconds, cooldown_seconds, host, host_selector, severity, enabled)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		r.Name, r.Metric, r.Comparator, r.Threshold, r.ForSeconds, r.CooldownSeconds,
 		nullHost(r.Host), r.HostSelector, r.Severity, boolToInt(r.Enabled),
 	)
 	if err != nil {
@@ -197,10 +207,10 @@ func UpdateRule(ctx context.Context, db *sql.DB, r Rule) (Rule, error) {
 	res, err := db.ExecContext(ctx, `
 		UPDATE alert_rules SET
 			name = ?, metric = ?, comparator = ?, threshold = ?,
-			for_seconds = ?, host = ?, host_selector = ?, severity = ?, enabled = ?,
+			for_seconds = ?, cooldown_seconds = ?, host = ?, host_selector = ?, severity = ?, enabled = ?,
 			updated_at = CURRENT_TIMESTAMP
 		WHERE id = ?`,
-		r.Name, r.Metric, r.Comparator, r.Threshold, r.ForSeconds,
+		r.Name, r.Metric, r.Comparator, r.Threshold, r.ForSeconds, r.CooldownSeconds,
 		nullHost(r.Host), r.HostSelector, r.Severity, boolToInt(r.Enabled),
 		r.ID,
 	)

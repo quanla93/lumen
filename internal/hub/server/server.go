@@ -174,6 +174,8 @@ func Run(ctx context.Context, cfg Config) error {
 		r.Post("/api/hosts/{id}/rotate", hostsHandlers.Rotate)
 		r.Get("/api/hosts/{id}/metrics", hostsHandlers.Metrics)
 		r.Put("/api/hosts/{id}/tags", hostsHandlers.SetTags)
+		r.Post("/api/hosts/{id}/silence", hostsHandlers.Silence)
+		r.Delete("/api/hosts/{id}/silence", hostsHandlers.Unsilence)
 		r.Get("/api/host-tags", hostsHandlers.ListTagFacets)
 
 		r.Post("/api/account/password", authHandlers.ChangePassword)

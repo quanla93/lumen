@@ -309,6 +309,21 @@ export function HostDetail({
         <ContainersTable containers={live.containers} t={t} />
       )}
 
+      {host && (
+        <SilencePanel
+          host={host}
+          onChange={async () => {
+            // refetch the host to refresh silenced_until display
+            try {
+              const list = await hostsApi.list();
+              const match = list.find((x) => x.name === host.name);
+              if (match) setHost(match);
+            } catch { /* ignore — next page load will pick it up */ }
+          }}
+          t={t}
+        />
+      )}
+
       {(host || live) && (
         <UpdateAgentPanel
           agentVersion={live?.system?.agent_version ?? host?.system?.agent_version}
@@ -642,6 +657,103 @@ function ContainersTable({ containers, t }: { containers: ContainerInfo[]; t: Re
             ))}
           </tbody>
         </table>
+      </div>
+    </Surface>
+  );
+}
+
+// SilencePanel lets the operator suppress alerts for this host for a
+// bounded window — covers planned maintenance like `docker compose pull
+// && up -d` that briefly trips the offline rule. Backend stores
+// silenced_until as a unix timestamp; FE renders the absolute time and
+// offers a "Lift silence" button while it's active. Max window 7 days
+// (server-enforced — past that, "forgot to unsilence" beats "wanted off
+// for two weeks" as the failure mode).
+function SilencePanel({
+  host,
+  onChange,
+  t,
+}: {
+  host: Host;
+  onChange: () => void | Promise<void>;
+  t: ReturnType<typeof useI18n>["t"];
+}) {
+  const [seconds, setSeconds] = useState(3600);
+  const [submitting, setSubmitting] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const silencedUntil = host.silenced_until ?? null;
+
+  const apply = async (s: number) => {
+    setSubmitting(true);
+    setErr(null);
+    try {
+      await hostsApi.silence(host.id, s);
+      await onChange();
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.message : String(e));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+  const lift = async () => {
+    setSubmitting(true);
+    setErr(null);
+    try {
+      await hostsApi.unsilence(host.id);
+      await onChange();
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.message : String(e));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Surface as="section" padded={false} className="mt-6 rounded-lg px-4 py-4">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <span className="text-xs uppercase tracking-wide text-[color:var(--color-muted)]">
+          {t("host.silenceTitle")}
+        </span>
+        {silencedUntil && (
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-[color:var(--color-muted)] px-2 py-0.5 text-xs text-[color:var(--color-muted)]">
+            {t("host.silenceActive", { until: new Date(silencedUntil).toLocaleString() })}
+          </span>
+        )}
+      </div>
+      <p className="mb-3 text-xs text-[color:var(--color-muted)]">{t("host.silenceHint")}</p>
+      <div className="flex flex-wrap items-center gap-2">
+        {silencedUntil ? (
+          <button
+            type="button"
+            onClick={lift}
+            disabled={submitting}
+            className="rounded-md border border-[color:var(--color-border)] px-3 py-1.5 text-sm hover:bg-[color:var(--color-bg)] disabled:opacity-50"
+          >
+            {submitting ? t("common.saving") : t("host.silenceLift")}
+          </button>
+        ) : (
+          <>
+            <select
+              value={seconds}
+              onChange={(e) => setSeconds(Number(e.target.value))}
+              className="rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2 py-1.5 text-sm"
+            >
+              <option value={15 * 60}>{t("host.silenceDur15m")}</option>
+              <option value={60 * 60}>{t("host.silenceDur1h")}</option>
+              <option value={4 * 60 * 60}>{t("host.silenceDur4h")}</option>
+              <option value={24 * 60 * 60}>{t("host.silenceDur24h")}</option>
+            </select>
+            <button
+              type="button"
+              onClick={() => apply(seconds)}
+              disabled={submitting}
+              className="rounded-md border border-[color:var(--color-border)] px-3 py-1.5 text-sm hover:bg-[color:var(--color-bg)] disabled:opacity-50"
+            >
+              {submitting ? t("common.saving") : t("host.silenceApply")}
+            </button>
+          </>
+        )}
+        {err && <span className="text-xs text-[color:var(--color-danger)]">{err}</span>}
       </div>
     </Surface>
   );

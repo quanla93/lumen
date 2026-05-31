@@ -95,6 +95,10 @@ type ruleState struct {
 	pendingSince time.Time
 	firing       bool
 	eventID      int64
+	// lastFiredAt is the timestamp of the most-recent firing transition
+	// that was actually emitted (not suppressed by cooldown / silence).
+	// Used to gate cooldown_seconds on the rule.
+	lastFiredAt time.Time
 	// rule snapshot at last fire — used so the resolve message can
 	// reference the threshold even if the operator changed the rule.
 	lastSeverity  string
@@ -115,6 +119,12 @@ type Engine struct {
 	// setting via OfflineAfter. Default = MinOfflineFor so tests that
 	// drive Tick without a DB behave as before unification.
 	offlineAfter time.Duration
+	// silencedUntil is refreshed each runOnce from the hosts table
+	// (hosts.silenced_until column). Hosts whose value is in the
+	// future are skipped by evaluate: no firing transition emitted,
+	// no resolved transition emitted, no state change. nil = no
+	// silenced hosts (tests that drive Tick without a DB get this).
+	silencedUntil map[string]time.Time
 }
 
 func NewEngine(cfg Config) *Engine {
@@ -202,6 +212,33 @@ func (e *Engine) runOnce(ctx context.Context) {
 		e.mu.Unlock()
 	}
 
+	// Refresh silencedUntil from the hosts table. Only future timestamps
+	// matter; past values are equivalent to "not silenced" so we filter
+	// at the SQL layer to keep the in-memory map small.
+	if e.cfg.DB != nil {
+		nowUnix := time.Now().Unix()
+		rows, err := e.cfg.DB.QueryContext(ctx,
+			`SELECT name, silenced_until FROM hosts
+			 WHERE silenced_until IS NOT NULL AND silenced_until > ?`,
+			nowUnix)
+		if err == nil {
+			m := map[string]time.Time{}
+			for rows.Next() {
+				var name string
+				var until int64
+				if rows.Scan(&name, &until) == nil {
+					m[name] = time.Unix(until, 0)
+				}
+			}
+			rows.Close()
+			e.mu.Lock()
+			e.silencedUntil = m
+			e.mu.Unlock()
+		} else {
+			e.cfg.Logger.Warn("alerts: load silenced hosts failed", "err", err)
+		}
+	}
+
 	rules, err := ListEnabledRules(ctx, e.cfg.DB)
 	if err != nil {
 		e.cfg.Logger.Error("alerts: list rules failed", "err", err)
@@ -282,6 +319,7 @@ func (e *Engine) evaluate(now time.Time, rules []Rule, snap []api.HostSnapshot, 
 	defer e.mu.Unlock()
 
 	offlineAfter := e.offlineAfter
+	silenced := e.silencedUntil
 
 	byHost := map[string]api.HostSnapshot{}
 	for _, s := range snap {
@@ -301,26 +339,53 @@ func (e *Engine) evaluate(now time.Time, rules []Rule, snap []api.HostSnapshot, 
 
 			breach, value := evaluateOne(r, host, byHost, now, offlineAfter)
 			forDur := time.Duration(r.ForSeconds) * time.Second
+			silentNow := isHostSilenced(host, silenced, now)
 
 			switch {
 			case breach && !st.firing:
 				if st.pendingSince.IsZero() {
 					st.pendingSince = now
 				}
-				if now.Sub(st.pendingSince) >= forDur {
-					st.firing = true
-					st.lastSeverity = r.Severity
-					st.lastMetric = r.Metric
-					st.lastRuleName = r.Name
-					st.lastThreshold = r.Threshold
-					out = append(out, Transition{
-						Rule: r, Host: host, State: "firing",
-						Value: value, Threshold: r.Threshold, Now: now,
-					})
+				if now.Sub(st.pendingSince) < forDur {
+					break // not yet held long enough
 				}
+				if silentNow {
+					// Don't flip firing — re-evaluate after silence ends.
+					// pendingSince stays set so the for_seconds hold doesn't
+					// restart counting once silence expires.
+					break
+				}
+				// At this point we will mark firing=true regardless of
+				// whether cooldown suppresses the notification, so the
+				// next breach→resolve transition fires the resolve event.
+				st.lastSeverity = r.Severity
+				st.lastMetric = r.Metric
+				st.lastRuleName = r.Name
+				st.lastThreshold = r.Threshold
+				if r.CooldownSeconds > 0 && !st.lastFiredAt.IsZero() &&
+					now.Sub(st.lastFiredAt) < time.Duration(r.CooldownSeconds)*time.Second {
+					// Cooldown window: flip state but skip the notification.
+					// Tradeoff: history loses this firing too — the operator
+					// set cooldown precisely to keep flap noise off both
+					// channels and the events table.
+					st.firing = true
+					break
+				}
+				st.firing = true
+				st.lastFiredAt = now
+				out = append(out, Transition{
+					Rule: r, Host: host, State: "firing",
+					Value: value, Threshold: r.Threshold, Now: now,
+				})
 			case !breach && st.firing:
 				st.firing = false
 				st.pendingSince = time.Time{}
+				if silentNow {
+					// Silenced: skip resolved notification. We may or may
+					// not have notified about the prior firing — either
+					// way the operator opted out of alerts on this host.
+					break
+				}
 				out = append(out, Transition{
 					Rule: r, Host: host, State: "resolved",
 					Value: value, Threshold: r.Threshold, Now: now,
@@ -331,6 +396,16 @@ func (e *Engine) evaluate(now time.Time, rules []Rule, snap []api.HostSnapshot, 
 		}
 	}
 	return out
+}
+
+// isHostSilenced reports whether the host has an active silence
+// (silenced_until > now). nil map = no silences (Tick test seam).
+func isHostSilenced(host string, silenced map[string]time.Time, now time.Time) bool {
+	if silenced == nil {
+		return false
+	}
+	until, ok := silenced[host]
+	return ok && until.After(now)
 }
 
 func targetHosts(r Rule, byHost map[string]api.HostSnapshot, registered []string, tagSet map[string]map[string]string) []string {

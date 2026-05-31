@@ -33,6 +33,10 @@ export type Host = {
   system?: SystemMetadata;
   metadata_updated_at?: string;
   tags: Record<string, string>;
+  // RFC3339 UTC. Present + future = silence active; absent = none /
+  // expired. Backend omits past values, so FE never needs to compare
+  // to clock to decide "is the silence still alive".
+  silenced_until?: string | null;
 };
 
 export type CreateHostResponse = {
@@ -183,6 +187,11 @@ export type AlertRule = {
   comparator: AlertComparator;
   threshold: number;
   for_seconds: number;
+  // cooldown_seconds: minimum gap between two firing notifications for
+  // the same (rule, host) pair. 0 = no cooldown (default). Suppressed
+  // firings also skip the event row, so a flapping rule stays out of
+  // both the channel and the history table.
+  cooldown_seconds: number;
   host: string;
   host_selector: string;
   severity: AlertSeverity;
@@ -198,6 +207,7 @@ export type AlertRuleWrite = {
   comparator: AlertComparator;
   threshold: number;
   for_seconds: number;
+  cooldown_seconds: number;
   host: string;
   host_selector: string;
   severity: AlertSeverity;
@@ -400,6 +410,13 @@ export const hostsApi = {
       body: JSON.stringify({ tags }),
     }),
   tagFacets: () => api<TagFacet[]>("/api/host-tags"),
+  silence: (id: number, seconds: number) =>
+    api<{ silenced_until: string | null }>(`/api/hosts/${id}/silence`, {
+      method: "POST",
+      body: JSON.stringify({ seconds }),
+    }),
+  unsilence: (id: number) =>
+    api<void>(`/api/hosts/${id}/silence`, { method: "DELETE" }),
   metrics: (id: number, q?: MetricsQuery) => {
     const params = new URLSearchParams();
     if (q?.from) params.set("from", q.from);

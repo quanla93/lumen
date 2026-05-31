@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -33,6 +34,11 @@ type hostView struct {
 	System            *api.SystemMetadata `json:"system,omitempty"`
 	MetadataUpdatedAt *string             `json:"metadata_updated_at,omitempty"`
 	Tags              map[string]string   `json:"tags"`
+	// SilencedUntil is RFC3339 in UTC when set; null = not silenced.
+	// FE compares with current time to render the silence chip — a past
+	// value (lazy-expired silence) is still surfaced as null since the
+	// alert engine treats it as expired too.
+	SilencedUntil *string `json:"silenced_until,omitempty"`
 }
 
 func toView(h Host, tags []Tag) hostView {
@@ -55,6 +61,13 @@ func toView(h Host, tags []Tag) hostView {
 	if h.MetadataUpdatedAt.Valid {
 		s := h.MetadataUpdatedAt.Time.UTC().Format("2006-01-02T15:04:05Z")
 		v.MetadataUpdatedAt = &s
+	}
+	if h.SilencedUntil.Valid {
+		t := time.Unix(h.SilencedUntil.Int64, 0).UTC()
+		if t.After(time.Now()) {
+			s := t.Format("2006-01-02T15:04:05Z")
+			v.SilencedUntil = &s
+		}
 	}
 	return v
 }
@@ -259,6 +272,82 @@ func (h *Handlers) Rotate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"token": token})
+}
+
+// POST /api/hosts/{id}/silence
+//
+// Body: {"seconds": 3600}. Sets silenced_until = now + seconds; the
+// alert engine then skips firing/resolved events + notifications for
+// this host until the timestamp passes. Use to suppress alerts during
+// planned maintenance (e.g. before running `docker compose pull && up`
+// on the agent's machine — without this the offline rule fires the
+// moment the container restarts).
+//
+// Pass seconds=0 (or call DELETE) to clear the silence immediately.
+// Maximum window is 7 days — past that, "you forgot to unsilence" is
+// the more likely failure mode than "the operator wanted alerts off
+// for two weeks".
+func (h *Handlers) Silence(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	var req struct {
+		Seconds int64 `json:"seconds"`
+	}
+	if err := decode(r, &req); err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if req.Seconds < 0 {
+		writeJSONError(w, http.StatusBadRequest, "seconds must be >= 0")
+		return
+	}
+	const maxSilenceSeconds = int64(7 * 24 * 60 * 60)
+	if req.Seconds > maxSilenceSeconds {
+		writeJSONError(w, http.StatusBadRequest, "silence window too long (max 7 days)")
+		return
+	}
+	var until time.Time
+	if req.Seconds > 0 {
+		until = time.Now().Add(time.Duration(req.Seconds) * time.Second)
+	}
+	if err := SetSilence(r.Context(), h.DB, id, until); err != nil {
+		if errors.Is(err, ErrNotFound) {
+			writeJSONError(w, http.StatusNotFound, "host not found")
+			return
+		}
+		h.Logger.Error("set silence failed", "err", err, "host_id", id)
+		writeJSONError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	resp := map[string]any{}
+	if !until.IsZero() {
+		resp["silenced_until"] = until.UTC().Format("2006-01-02T15:04:05Z")
+	} else {
+		resp["silenced_until"] = nil
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// DELETE /api/hosts/{id}/silence — clears any active silence.
+func (h *Handlers) Unsilence(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	if err := SetSilence(r.Context(), h.DB, id, time.Time{}); err != nil {
+		if errors.Is(err, ErrNotFound) {
+			writeJSONError(w, http.StatusNotFound, "host not found")
+			return
+		}
+		h.Logger.Error("clear silence failed", "err", err, "host_id", id)
+		writeJSONError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // helpers (duplicated minimally with auth.handlers — kept package-local

@@ -485,6 +485,7 @@ function blankRule(): AlertRuleWrite {
     comparator: "gt",
     threshold: 80,
     for_seconds: 60,
+    cooldown_seconds: 0,
     host: "",
     host_selector: "",
     severity: "warning",
@@ -500,6 +501,7 @@ function ruleToWrite(r: AlertRule): AlertRuleWrite {
     comparator: r.comparator,
     threshold: r.threshold,
     for_seconds: r.for_seconds,
+    cooldown_seconds: r.cooldown_seconds ?? 0,
     host: r.host,
     host_selector: r.host_selector ?? "",
     severity: r.severity,
@@ -664,6 +666,15 @@ function RulesPanel() {
                 onChange={(e) => setDraft({ ...draft, for_seconds: Math.max(0, Number(e.target.value)) })}
               />
               <p className="mt-1 text-xs text-[color:var(--color-muted)]">{t("alerts.forSecondsHint")}</p>
+            </Field>
+            <Field label={t("alerts.fieldCooldownSeconds")}>
+              <FieldInput
+                type="number"
+                min={0}
+                value={draft.cooldown_seconds}
+                onChange={(e) => setDraft({ ...draft, cooldown_seconds: Math.max(0, Number(e.target.value)) })}
+              />
+              <p className="mt-1 text-xs text-[color:var(--color-muted)]">{t("alerts.cooldownSecondsHint")}</p>
             </Field>
             <div className="sm:col-span-2">
               <HostTargetingFields draft={draft} setDraft={setDraft} hosts={hosts} inventory={tagInventory} />
