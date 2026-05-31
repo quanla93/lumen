@@ -6,6 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.4.6] - 2026-06-01
+
+Stuck-alerts fix + Alerts UI full pass. A real operator-pain bug (firing events that never auto-resolved after the underlying rule was disabled or the hub restarted mid-firing) is closed at the source, and every tab of the Alerts section gets the visual + interaction treatment Rules already got in v0.4.5 — inline Switch toggles, quick-create templates, sectioned forms, and per-row quick actions (silence host from Active, retry from Deliveries).
+
+### Fixed
+
+- **Firing alerts now auto-resolve when their rule is disabled.** `UpdateRule` was a plain UPDATE — flipping `enabled` from true→false stopped the engine from ticking the rule, but any live firing rows in `alert_events` had nothing left to drive their resolved transition. They sat in Active forever until either re-enabling the rule or hand-editing the DB. `UpdateRule` now runs inside a tx that detects the true→false transition and marks firing events resolved + drops their pending deliveries — same pattern `DeleteRule` already uses. Closing the gap in three places at once: the live transition above; a one-shot boot sweep that resolves any pre-existing firing events whose rule is currently disabled (covers state from before this fix landed); plus engine boot now hydrates `ruleState.eventID` from existing firing rows so a restart mid-firing doesn't lose the row reference and silently skip the eventual resolve transition.
+
+### Changed
+
+- **Alerts UI redesign across all six tabs.**
+  - **Rules:** inline Switch on each row with optimistic update (no more "open form → tick Enabled → Save" 3-click pause). Quick-template chip strip above the list (CPU > 80, RAM > 90, Disk > 85, Host offline, Load > 4) prefills the new-rule form so the 80% case starts with one click instead of 11 blank fields. Form regrouped into Condition / Targeting / Notification sections; comparator and severity use SegmentedControl; enabled is a Switch in a labeled card. Row layout: metric icon tinted teal/muted by enabled state, hover-revealed Edit/Delete IconButtons.
+  - **Channels:** same Switch + IconButton + sectioned form treatment (Identity / Configuration / Routing & state), with channel-type icons (Megaphone, MessagesSquare, Webhook, Send, Mail) on rows and inside the Config section header.
+  - **Active / History:** severity stripe on the left edge, severity-tinted state icon (BellRing for firing, CheckCircle2 for resolved). Each firing row has a hover-reveal `VolumeX` IconButton that pops a quick-silence panel (15m / 1h / 4h) wired to the existing `hostsApi.silence` endpoint. Rows whose host has an active silence get a "silenced" pill.
+  - **Deliveries:** rows are roughly half their previous height. Single mono meta line — `STATUS · attempts · http · queued/sent · next retry` — replaces the prior three-line stack. Channel-type icon next to channel name; inflight status spins.
+  - **Tags:** pane headers gain teal Tag/Server icons; "New tag" becomes a Ghost + Plus button to match Rules/Channels; row actions become hover IconButtons.
+- **Sidebar footer cleanup.** Three stacked rows (username label, lang/theme/logout, collapse toggle) collapsed into a user pill (avatar + name + logout) over a single utility row (lang, theme, collapse on the right). Collapsed state mirrors with a vertical stack of avatar / theme / logout / expand.
+- **Chart fill gradient anchors to series max, not chart bbox.** `gradientFill` in HostDetail used the chart's full bbox as the gradient stop range, so fixed-scale charts (CPU/RAM/Disk on 0–100, Disk I/O on its auto-scale) drew the line near the low-alpha end and the Grafana-style fill was invisible. Now the strong-alpha stop sits at the series' actual max value pixel — every chart shows a visible fill below the line regardless of scale.
+
 ## [0.4.5] - 2026-05-31
 
 Phase 6 wrap-up. Email (SMTP) joins the channel lineup and two cooperating alert-noise levers land together: per-rule flap cooldown (rule-level, "this rule itself flaps") and per-host maintenance silence (operator-level, "I'm about to restart the agent — please be quiet"). With these, Phase 6.x is closed; remaining items (template polish, tag rename, derived metrics, webhook HMAC, fleet-summary pre-agg) move to a "post-Phase-6 backlog" pending real user demand.
