@@ -11,7 +11,7 @@ metrics — designed to run comfortably on a Raspberry Pi.
 [Documentation](docs/src/content/docs/getting-started/overview.md) ·
 [Roadmap](ACTION_PLAN.md)
 
-> ⚠️ **Pre-1.0.** Latest tag is **v0.3.0**. Breaking changes are allowed in
+> ⚠️ **Pre-1.0.** Latest tag is **v0.4.2**. Breaking changes are allowed in
 > minor releases until v1.0. The project is staged at
 > [`quanla93/lumen`](https://github.com/quanla93/lumen); the `quanla.org`
 > site, Discord, and any hosted installer URLs are placeholders and don't
@@ -75,7 +75,7 @@ If those are dealbreakers, look at [Grafana + Prometheus](https://grafana.com) o
 | Deploy | Docker Compose (primary), single binary + systemd, install script | ✅ |
 | Agent lifecycle | Per-agent Docker Compose, version awareness, in-UI "Update agent" guidance | ✅ |
 | Auto-discovery | LXC, Proxmox VMs | 🛣️ |
-| Alerts | Threshold rules + offline detection; ntfy / Discord / webhook delivery (Email + Telegram coming) | ✅ (Milestone A) |
+| Alerts | Threshold rules + offline detection; ntfy / Discord / webhook / Telegram delivery; per-rule routing, per-channel severity floor, host glob + tag selectors, persisted delivery queue with severity-aware retry, history + delivery scrollback, retention sweep | ✅ (Phase 6 complete) |
 | TOTP 2FA / multi-user | Optional second factor, read-only viewer role | 🛣️ |
 
 ---
@@ -134,7 +134,7 @@ Lumen is **pre-1.0**. Expect breaking changes until v1.0. We aim for stable APIs
 | v0.1 | ✅ Released | MVP: hub + agent, auth, Docker collector, realtime dashboard, history API, PWA |
 | v0.2 | ✅ Released | Runtime settings, downsample policy, UI polish, bilingual (EN/VI) UI |
 | v0.3 | ✅ Released | Docker Compose agent lifecycle: generated per-agent compose, agent version awareness, in-UI "Update agent" guidance |
-| v0.4 | Planned | Proxmox / LXC / ZFS / PBS integration + alert engine and notification channels |
+| v0.4 | ✅ Released | Phase 6 alert engine end-to-end (rules, four channel types, per-rule routing, host tag inventory, persisted delivery queue). v0.4.1 follow-up: alert history retention sweep + scrollback, dashboard KPI rework (hottest host per metric, +disk), `agent_interval`-derived offline threshold. v0.4.2: WebSocket auto-reconnect + server-side keepalive. Proxmox / LXC / ZFS / PBS integration deferred to a later release. |
 | v0.5 | Planned | Parquet cold tier, retention compaction, multi-user, TOTP 2FA |
 | v0.6 | Planned | Self-hosted SSO (OIDC), public status page, Web Push |
 | v1.0 | Planned | API freeze (`/api/v1`), plugin SDK, Beszel migration tool |
@@ -167,7 +167,7 @@ Docs are a Starlight site under [docs/](docs/) (English + Vietnamese).
 **Develop**
 - **[Run from source](docs/src/content/docs/how-to/run-from-source.md)** · **[CI/CD](docs/src/content/docs/contributing/ci-cd.md)** · **[Contributing](CONTRIBUTING.md)**
 
-Proxmox/LXC/ZFS/PBS integration guides land with the v0.4 Proxmox wedge — see the [roadmap](ACTION_PLAN.md).
+Proxmox/LXC/ZFS/PBS integration guides land when the Proxmox wedge ships (deferred from v0.4 to a later release) — see the [roadmap](ACTION_PLAN.md).
 
 ---
 
