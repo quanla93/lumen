@@ -411,6 +411,12 @@ Numbered slots for Email/Flap/tag-rename got reassigned in-flight because dashbo
 - [ ] Test-send action sends a real email; same UX as the current ntfy/Discord test.
 - [ ] Docs section + UI form fields + i18n.
 
+**Post-MVP follow-ups (deferred — Email ships hardcoded subject/body first):**
+- Customizable **subject template** per channel — operator overrides default `[{{.Severity}}] {{.RuleName}} · {{.Host}}` with Go `text/template` syntax. ~20 lines + 1 UI field. Most-likely first ask.
+- Customizable **body template** per channel — full plain-text body override. ~50 lines + textarea + preview button. Useful for embedding runbook URL / dashboard deep-link.
+- **HTML body option** — `Content-Type: text/html` switch with template helpers (escape, link). Matches Alertmanager / Grafana / PagerDuty. Higher edge-case surface (escaping, multipart alternative); only pursue if operators explicitly ask after the plain-text ship.
+- Multi-recipient `to_addr` — split on comma, RCPT TO each. Trivial after the single-recipient base ships.
+
 #### v0.4.6 — Flap suppression + tag key rename  *(was v0.4.3)*
 - [ ] Flap suppression: per-rule cooldown / "fire at most N times per window" (today only `for_seconds` exists, which doesn't stop a rule that flaps every few minutes from spamming the channel).
 - [ ] Tag key rename: atomic three-table swap (`tags` + `tag_values` + `host_tags`) + rewrite every affected `host_selector`. Currently the recommended workaround is delete-and-recreate; rename is a quality-of-life add once the user shows it matters in practice.
