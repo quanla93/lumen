@@ -1203,20 +1203,36 @@ function lumenTooltipPlugin(): uPlot.Plugin {
 }
 
 // gradientFill builds a Grafana-style vertical alpha gradient under the
-// line. Returns a function so uPlot can re-eval against the chart's
-// canvas context on each draw (size-aware).
+// line. Anchors the strong end to the series' max value (where the line
+// actually sits) so every chart shows a vivid fill near the line — not
+// just auto-scaled ones. Without this, fixed-range scales (e.g. percent
+// 0-100) drew the line in the low-alpha bottom of the bbox gradient and
+// the fill looked invisible.
 function gradientFill(color: string, topAlpha = 0.32) {
   const flatFallback = withAlpha(color, topAlpha * 0.5);
-  return (u: uPlot, _seriesIdx: number): CanvasGradient | string => {
+  return (u: uPlot, seriesIdx: number): CanvasGradient | string => {
     const ctx = u.ctx;
     const bbox = u.bbox;
     if (!ctx || !bbox) return flatFallback;
-    const top = bbox.top;
-    const height = bbox.height;
-    if (!Number.isFinite(top) || !Number.isFinite(height) || height <= 0) {
+
+    const data = u.data?.[seriesIdx] as Array<number | null | undefined> | undefined;
+    if (!data || data.length === 0) return flatFallback;
+
+    let maxVal = -Infinity;
+    for (let i = 0; i < data.length; i++) {
+      const v = data[i];
+      if (v != null && Number.isFinite(v) && v > maxVal) maxVal = v;
+    }
+    if (!Number.isFinite(maxVal)) return flatFallback;
+
+    const scaleKey = u.series[seriesIdx]?.scale ?? "y";
+    const topPx = u.valToPos(maxVal, scaleKey, true);
+    const botPx = bbox.top + bbox.height;
+    if (!Number.isFinite(topPx) || !Number.isFinite(botPx) || topPx >= botPx) {
       return flatFallback;
     }
-    const grad = ctx.createLinearGradient(0, top, 0, top + height);
+
+    const grad = ctx.createLinearGradient(0, topPx, 0, botPx);
     grad.addColorStop(0, withAlpha(color, topAlpha));
     grad.addColorStop(1, withAlpha(color, 0));
     return grad;

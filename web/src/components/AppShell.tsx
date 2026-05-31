@@ -104,41 +104,79 @@ export function AppShell({
             })}
           </ul>
         </nav>
-        <div className={`border-t border-[color:var(--color-border)] ${collapsed ? "px-2 py-3 space-y-2" : "px-3 py-3 space-y-2"}`}>
-          {!collapsed && (
-            <>
-              <div className="px-2 py-1.5 text-[11px] uppercase tracking-wide text-[color:var(--color-muted)]">
-                {t("shell.signedInAs")}
+        <div className={`border-t border-[color:var(--color-border)] ${collapsed ? "px-2 py-3" : "px-3 py-3"} space-y-2`}>
+          {collapsed ? (
+            <div className="flex flex-col items-center gap-1.5">
+              <div
+                className="h-9 w-9 rounded-full bg-[color-mix(in_oklch,var(--lumen-teal)_18%,var(--color-card))] text-[color:var(--lumen-teal)] flex items-center justify-center text-sm font-semibold ring-1 ring-[color:var(--lumen-teal)]/30"
+                title={user.username}
+                aria-label={user.username}
+              >
+                {user.username.charAt(0).toUpperCase()}
               </div>
-              <div className="px-2 truncate lumen-num text-sm font-semibold text-[color:var(--color-fg)]">
-                {user.username}
+              <div className="my-1 h-px w-6 bg-[color:var(--color-border)]" />
+              <ThemeToggle />
+              <button
+                type="button"
+                onClick={logout}
+                aria-label={t("shell.signOut")}
+                title={t("shell.signOut")}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-md text-[color:var(--color-muted)] transition-colors hover:bg-[color:var(--color-border)] hover:text-[color:var(--color-danger)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-accent)]"
+              >
+                <LogOut size={16} strokeWidth={1.75} />
+              </button>
+              <button
+                type="button"
+                onClick={() => setCollapsed((c) => !c)}
+                aria-label={t("shell.expandSidebar")}
+                title={t("shell.expandSidebar")}
+                className="flex h-8 w-8 items-center justify-center rounded-md text-[color:var(--color-muted)] transition-colors hover:bg-[color:var(--color-border)] hover:text-[color:var(--color-fg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--lumen-teal)]"
+              >
+                <PanelLeftOpen size={16} strokeWidth={1.75} />
+              </button>
+            </div>
+          ) : (
+            <>
+              <div className="flex items-center gap-2.5 px-1 py-1">
+                <div
+                  className="h-9 w-9 shrink-0 rounded-full bg-[color-mix(in_oklch,var(--lumen-teal)_18%,var(--color-card))] text-[color:var(--lumen-teal)] flex items-center justify-center text-sm font-semibold ring-1 ring-[color:var(--lumen-teal)]/30"
+                  aria-hidden
+                >
+                  {user.username.charAt(0).toUpperCase()}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm font-semibold text-[color:var(--color-fg)]">
+                    {user.username}
+                  </div>
+                  <div className="truncate text-[11px] text-[color:var(--color-muted)]">
+                    {t("shell.signedInAs")}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={logout}
+                  aria-label={t("shell.signOut")}
+                  title={t("shell.signOut")}
+                  className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-[color:var(--color-muted)] transition-colors hover:bg-[color:var(--color-border)] hover:text-[color:var(--color-danger)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-accent)]"
+                >
+                  <LogOut size={16} strokeWidth={1.75} />
+                </button>
+              </div>
+              <div className="flex items-center gap-1 border-t border-[color:var(--color-border)]/60 pt-2">
+                <LanguageToggle />
+                <ThemeToggle />
+                <button
+                  type="button"
+                  onClick={() => setCollapsed((c) => !c)}
+                  aria-label={t("shell.collapseSidebar")}
+                  title={t("shell.collapseSidebar")}
+                  className="ml-auto flex h-8 w-8 items-center justify-center rounded-md text-[color:var(--color-muted)] transition-colors hover:bg-[color:var(--color-border)] hover:text-[color:var(--color-fg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--lumen-teal)]"
+                >
+                  <PanelLeftClose size={16} strokeWidth={1.75} />
+                </button>
               </div>
             </>
           )}
-          <div className={`flex ${collapsed ? "flex-col" : "items-center"} gap-1.5 pt-1`}>
-            <LanguageToggle />
-            <ThemeToggle />
-            <button
-              type="button"
-              onClick={logout}
-              aria-label={t("shell.signOut")}
-              title={t("shell.signOut")}
-              className={`${collapsed ? "" : "ml-auto"} inline-flex h-9 w-9 items-center justify-center rounded-md text-[color:var(--color-muted)] transition-colors hover:bg-[color:var(--color-border)] hover:text-[color:var(--color-danger)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-accent)]`}
-            >
-              <LogOut size={16} strokeWidth={1.75} />
-            </button>
-          </div>
-          <div className="pt-1">
-            <button
-              type="button"
-              onClick={() => setCollapsed((c) => !c)}
-              aria-label={collapsed ? t("shell.expandSidebar") : t("shell.collapseSidebar")}
-              title={collapsed ? t("shell.expandSidebar") : t("shell.collapseSidebar")}
-              className={`${collapsed ? "mx-auto" : "ml-auto"} flex h-8 w-8 items-center justify-center rounded-md text-[color:var(--color-muted)] transition-colors hover:bg-[color:var(--color-border)] hover:text-[color:var(--color-fg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--lumen-teal)]`}
-            >
-              {collapsed ? <PanelLeftOpen size={16} strokeWidth={1.75} /> : <PanelLeftClose size={16} strokeWidth={1.75} />}
-            </button>
-          </div>
         </div>
       </aside>
 
