@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { BellRing, History, Send, ShieldAlert, Cable, Tag as TagIcon } from "lucide-react";
 import {
   alertsApi,
   ApiError,
@@ -34,13 +35,13 @@ import type { TranslationKey } from "@/i18n/types";
 
 type AlertsTab = "active" | "history" | "deliveries" | "rules" | "channels" | "tags";
 
-const TABS: { id: AlertsTab; labelKey: TranslationKey }[] = [
-  { id: "active",     labelKey: "alerts.tabs.active" },
-  { id: "history",    labelKey: "alerts.tabs.history" },
-  { id: "deliveries", labelKey: "alerts.tabs.deliveries" },
-  { id: "rules",      labelKey: "alerts.tabs.rules" },
-  { id: "channels",   labelKey: "alerts.tabs.channels" },
-  { id: "tags",       labelKey: "alerts.tabs.tags" },
+const TABS: { id: AlertsTab; labelKey: TranslationKey; icon: typeof BellRing }[] = [
+  { id: "active",     labelKey: "alerts.tabs.active",     icon: BellRing },
+  { id: "history",    labelKey: "alerts.tabs.history",    icon: History },
+  { id: "deliveries", labelKey: "alerts.tabs.deliveries", icon: Send },
+  { id: "rules",      labelKey: "alerts.tabs.rules",      icon: ShieldAlert },
+  { id: "channels",   labelKey: "alerts.tabs.channels",   icon: Cable },
+  { id: "tags",       labelKey: "alerts.tabs.tags",       icon: TagIcon },
 ];
 
 const METRICS: AlertMetric[] = ["cpu_pct", "ram_pct", "swap_pct", "disk_pct", "load1", "offline"];
@@ -73,10 +74,10 @@ export function Alerts() {
   }, [refreshActive]);
 
   return (
-    <div className="space-y-5">
-      <header className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+    <div className="space-y-6">
+      <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight">{t("alerts.title")}</h1>
+          <h1 className="text-3xl font-bold tracking-tight text-[color:var(--color-fg)]">{t("alerts.title")}</h1>
           <p className="mt-1 text-sm text-[color:var(--color-muted)]">{t("alerts.subtitle")}</p>
         </div>
         <StatusPill tone={activeCount && activeCount > 0 ? "danger" : "ok"}>
@@ -86,15 +87,30 @@ export function Alerts() {
         </StatusPill>
       </header>
 
-      <nav className="flex items-center gap-1 border-b border-[color:var(--color-border)] -mt-2 pb-0">
-        {TABS.map((item) => (
-          <SubTabButton key={item.id} active={item.id === tab} onClick={() => setTab(item.id)}>
-            {t(item.labelKey)}
-          </SubTabButton>
-        ))}
+      <nav className="flex flex-wrap items-center gap-1 rounded-lg border border-[color:var(--color-border)] bg-[color:var(--color-card)] p-1">
+        {TABS.map((item) => {
+          const Icon = item.icon;
+          const active = item.id === tab;
+          return (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => setTab(item.id)}
+              aria-current={active ? "page" : undefined}
+              className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                active
+                  ? "bg-[color-mix(in_oklch,var(--lumen-teal)_15%,transparent)] text-[color:var(--color-fg)]"
+                  : "text-[color:var(--color-muted)] hover:bg-[color:var(--color-border)]/40 hover:text-[color:var(--color-fg)]"
+              }`}
+            >
+              <Icon size={14} strokeWidth={active ? 2.25 : 1.75} className={active ? "text-[color:var(--lumen-teal)]" : ""} />
+              {t(item.labelKey)}
+            </button>
+          );
+        })}
       </nav>
 
-      <div className="pt-2">
+      <div>
         {tab === "active"     && <EventsList state="firing" />}
         {tab === "history"    && <EventsList state="resolved" />}
         {tab === "deliveries" && <DeliveriesPanel />}
@@ -105,31 +121,6 @@ export function Alerts() {
       {/* locale is read so the relativeTime in nested rows refreshes on language change */}
       <span className="sr-only" aria-hidden>{locale}</span>
     </div>
-  );
-}
-
-function SubTabButton({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  const base = "px-3 py-2 -mb-px text-sm border-b-2 transition-colors";
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={
-        active
-          ? `${base} border-[color:var(--color-fg)] text-[color:var(--color-fg)] font-medium`
-          : `${base} border-transparent text-[color:var(--color-muted)] hover:text-[color:var(--color-fg)]`
-      }
-    >
-      {children}
-    </button>
   );
 }
 

@@ -2,6 +2,8 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App";
 import { I18nProvider } from "./i18n/I18nProvider";
+import "@fontsource-variable/inter";
+import "@fontsource-variable/jetbrains-mono";
 import "./index.css";
 import "uplot/dist/uPlot.min.css";
 

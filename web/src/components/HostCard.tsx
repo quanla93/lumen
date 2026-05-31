@@ -1,8 +1,10 @@
+import { ArrowDown, ArrowUp, Cpu, MemoryStick, HardDrive } from "lucide-react";
 import { cpuTone, TONE_CLASS, widthClass, type StatusTone } from "@/lib/status";
 import { isStale, relativeTime, staleAfterForIntervalMs } from "@/lib/time";
 import { Sparkline } from "@/components/Sparkline";
 import { Surface } from "@/components/ui";
 import { agentUpdateAvailable } from "@/lib/api";
+import { formatBps } from "@/lib/format";
 import { useI18n } from "@/i18n/useI18n";
 
 export type ContainerInfo = {
@@ -59,10 +61,11 @@ type MetricRow = {
   label: string;
   value: number;
   tone: StatusTone;
+  icon: typeof Cpu;
 };
 
-function metricRow(label: string, value: number, stale: boolean): MetricRow {
-  return { label, value, tone: cpuTone(value, stale) };
+function metricRow(label: string, value: number, stale: boolean, icon: typeof Cpu): MetricRow {
+  return { label, value, tone: cpuTone(value, stale), icon };
 }
 
 export function HostCard({
@@ -87,9 +90,9 @@ export function HostCard({
   );
 
   const rows: MetricRow[] = [
-    metricRow(t("host.cpu"), snapshot.cpu_pct, stale),
-    metricRow(t("host.ram"), snapshot.ram_pct, stale),
-    metricRow(t("host.disk"), snapshot.disk_pct, stale),
+    metricRow(t("host.cpu"),  snapshot.cpu_pct,  stale, Cpu),
+    metricRow(t("host.ram"),  snapshot.ram_pct,  stale, MemoryStick),
+    metricRow(t("host.disk"), snapshot.disk_pct, stale, HardDrive),
   ];
 
   const hasLoad = snapshot.load1 + snapshot.load5 + snapshot.load15 > 0;
@@ -105,6 +108,14 @@ export function HostCard({
     }
   };
 
+  const meta = [
+    snapshot.system?.os,
+    snapshot.system?.primary_ip,
+    snapshot.system?.agent_version ? `agent ${snapshot.system.agent_version}` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
   return (
     <Surface
       role={interactive ? "button" : undefined}
@@ -112,60 +123,73 @@ export function HostCard({
       onClick={interactive ? handleClick : undefined}
       onKeyDown={interactive ? handleKey : undefined}
       className={
-        "p-4 " +
+        "p-5 " +
         (interactive
-          ? "cursor-pointer transition-all hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-[color:var(--color-accent)]"
+          ? "cursor-pointer transition-all duration-[var(--dur-150)] ease-[var(--ease-out)] hover:-translate-y-0.5 hover:border-[color:var(--lumen-teal)]/40 hover:shadow-[var(--shadow-2)] focus:outline-none focus:ring-2 focus:ring-[color:var(--lumen-teal)]"
           : "")
       }
     >
-      <div className="flex items-start justify-between gap-3 mb-4">
+      <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2.5">
             <span
               aria-hidden
               className={`inline-block h-2.5 w-2.5 rounded-full ${TONE_CLASS[headerTone]}`}
             />
-            <span className="truncate font-mono text-base font-semibold tracking-tight">
+            <span className="truncate text-lg font-semibold tracking-tight">
               {snapshot.host}
             </span>
           </div>
-          <span className="mt-1 block text-xs text-[color:var(--color-muted)]">
-            {stale
-              ? t("host.staleLastSeen", { time: relativeTime(snapshot.ts, now, locale) })
-              : t("host.lastSeen", { time: relativeTime(snapshot.ts, now, locale) })}
-          </span>
-        </div>
-        <div className="flex shrink-0 flex-col items-end gap-1.5">
-          <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${stale ? "bg-[color:var(--color-border)] text-[color:var(--color-muted)]" : "bg-[color:var(--color-accent)] text-[color:var(--color-bg)]"}`}>
-            {stale ? t("host.stale") : t("host.online")}
-          </span>
-          {updateAvailable && (
-            <span
-              className="rounded-full border border-[color:var(--color-warn)] px-2 py-0.5 text-[10px] font-medium text-[color:var(--color-warn)]"
-              title={t("host.updateAvailableTitle", { version: latestAgentVersion ?? "" })}
-            >
-              {t("host.updateBadge")}
-            </span>
+          {meta && (
+            <div className="mt-1 truncate lumen-num text-[11px] text-[color:var(--color-muted)]">
+              {meta}
+            </div>
           )}
         </div>
+        {updateAvailable && (
+          <span
+            className="lumen-bg-warn-soft rounded-full border border-[color:var(--color-warn)] px-2 py-0.5 text-[10px] font-medium text-[color:var(--color-warn)]"
+            title={t("host.updateAvailableTitle", { version: latestAgentVersion ?? "" })}
+          >
+            {t("host.updateBadge")}
+          </span>
+        )}
       </div>
 
       {series.length >= 2 && (
-        <div className={`mb-4 h-[28px] rounded-lg bg-[color:var(--color-bg)] p-1 ${TONE_TEXT[headerTone]}`}>
-          <Sparkline values={series} width={100} height={24} className="w-full h-full" />
+        <div className={`mt-3 h-[24px] rounded-md bg-[color:var(--color-bg)] p-1 ${TONE_TEXT[headerTone]}`}>
+          <Sparkline values={series} width={100} height={20} className="w-full h-full" />
         </div>
       )}
 
-      <div className="space-y-2.5">
+      <div className="mt-3 space-y-2.5">
         {rows.map((r) => (
           <MetricBar key={r.label} {...r} />
         ))}
       </div>
 
+      <div className="mt-4 pt-3 border-t border-[color:var(--color-border)] flex items-center justify-between gap-3 text-[11px] text-[color:var(--color-muted)]">
+        <span className="lumen-num inline-flex items-center gap-2.5">
+          <span className="inline-flex items-center gap-1">
+            <ArrowDown size={11} strokeWidth={2} />
+            {formatBps(snapshot.net_rx_bps)}
+          </span>
+          <span className="inline-flex items-center gap-1">
+            <ArrowUp size={11} strokeWidth={2} />
+            {formatBps(snapshot.net_tx_bps)}
+          </span>
+        </span>
+        <span>
+          {stale
+            ? t("host.staleLastSeen", { time: relativeTime(snapshot.ts, now, locale) })
+            : t("host.lastSeen", { time: relativeTime(snapshot.ts, now, locale) })}
+        </span>
+      </div>
+
       {hasLoad && (
-        <div className="mt-4 pt-3 border-t border-[color:var(--color-border)] flex items-center justify-between text-xs text-[color:var(--color-muted)]">
+        <div className="mt-2 flex items-center justify-between text-[11px] text-[color:var(--color-muted)]">
           <span>{t("host.loadAvg")}</span>
-          <span className="font-mono tabular-nums">
+          <span className="lumen-num">
             {snapshot.load1.toFixed(2)} · {snapshot.load5.toFixed(2)} · {snapshot.load15.toFixed(2)}
           </span>
         </div>
@@ -174,16 +198,17 @@ export function HostCard({
   );
 }
 
-function MetricBar({ label, value, tone }: MetricRow) {
+function MetricBar({ label, value, tone, icon: Icon }: MetricRow) {
   return (
     <div>
-      <div className="flex items-baseline justify-between mb-1">
-        <span className="text-xs uppercase tracking-wide text-[color:var(--color-muted)]">
+      <div className="flex items-baseline justify-between mb-1.5">
+        <span className="inline-flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide text-[color:var(--color-muted)]">
+          <Icon size={12} strokeWidth={1.75} />
           {label}
         </span>
-        <span className="font-mono text-sm tabular-nums">{value.toFixed(1)}%</span>
+        <span className="lumen-num text-sm font-semibold text-[color:var(--color-fg)]">{value.toFixed(1)}%</span>
       </div>
-      <div className="h-1.5 w-full rounded-full bg-[color:var(--color-border)] overflow-hidden">
+      <div className="h-1.5 w-full rounded-full bg-[color:var(--color-border)]/60 overflow-hidden">
         <div
           className={`h-full transition-[width] duration-300 ease-out ${TONE_CLASS[tone]} ${widthClass(value)}`}
         />

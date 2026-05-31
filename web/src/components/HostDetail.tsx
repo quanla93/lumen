@@ -9,11 +9,13 @@ import {
   type MetricsResponse,
   type MetricPoint,
 } from "@/lib/api";
+import { ArrowLeft, Clock, Cpu, MemoryStick, HardDrive, Activity, Network, Database, Thermometer, Boxes, Settings2 } from "lucide-react";
 import { UPlotChart } from "@/components/UPlotChart";
-import { EmptyState, Surface } from "@/components/ui";
+import { AppButton, EmptyState, Popover, SegmentedControl, Surface } from "@/components/ui";
 import type { Snapshot, ContainerInfo } from "@/components/HostCard";
-import { type StatusTone } from "@/lib/status";
+import { cpuTone, TONE_CLASS, type StatusTone } from "@/lib/status";
 import { copyToClipboard } from "@/lib/clipboard";
+import { formatBytes, formatBps } from "@/lib/format";
 import { isStale, relativeTime } from "@/lib/time";
 import { useStreamConnection } from "@/lib/useStreamConnection";
 import { useI18n } from "@/i18n/useI18n";
@@ -194,6 +196,14 @@ export function HostDetail({
         t={t}
       />
 
+      {/* Hero KPI strip — live values at a glance, big mono numerics. */}
+      <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+        <HeroStat icon={Cpu}         label={t("host.cpu")}    value={last?.cpu_pct}  unit="%" tone={cpuTone(last?.cpu_pct  ?? 0, !live)} />
+        <HeroStat icon={MemoryStick} label={t("host.ram")}    value={last?.ram_pct}  unit="%" tone={cpuTone(last?.ram_pct  ?? 0, !live)} />
+        <HeroStat icon={HardDrive}   label={t("host.disk")}   value={last?.disk_pct} unit="%" tone={cpuTone(last?.disk_pct ?? 0, !live)} />
+        <HeroStat icon={Clock}       label={t("host.uptime")} valueText={formatUptime(live?.system?.uptime_seconds) ?? "—"} tone="muted" />
+      </div>
+
       {live?.cpu_per_core && live.cpu_per_core.length > 0 && (
         <PerCoreStrip cores={live.cpu_per_core} t={t} />
       )}
@@ -212,96 +222,110 @@ export function HostDetail({
           detail={t("host.noHistoryDescription")}
         />
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <ChartCard
-            title={t("host.cpu")}
-            badges={[swatch(COLOR.cpu, `${(last?.cpu_pct ?? 0).toFixed(1)}%`)]}
-          >
-            <UPlotChart
-              key={`cpu-${themeKey}`}
-              data={data.cpu}
-              options={percentOpts(COLOR.cpu, t("host.seriesCpu"))}
-              className="h-[220px] w-full"
-            />
-          </ChartCard>
-          <ChartCard
-            title={t("host.ram")}
-            badges={[swatch(COLOR.ram, `${(last?.ram_pct ?? 0).toFixed(1)}%`)]}
-          >
-            <UPlotChart
-              key={`ram-${themeKey}`}
-              data={data.ram}
-              options={percentOpts(COLOR.ram, t("host.ram"))}
-              className="h-[220px] w-full"
-            />
-          </ChartCard>
-          <ChartCard
-            title={t("host.disk")}
-            badges={[swatch(COLOR.disk, `${(last?.disk_pct ?? 0).toFixed(1)}%`)]}
-          >
-            <UPlotChart
-              key={`disk-${themeKey}`}
-              data={data.disk}
-              options={percentOpts(COLOR.disk, t("host.disk"))}
-              className="h-[220px] w-full"
-            />
-          </ChartCard>
-          <ChartCard
-            title={t("host.loadAverage")}
-            badges={[
-              swatch(COLOR.load1, `1m ${(last?.load1 ?? 0).toFixed(2)}`),
-              swatch(COLOR.load5, `5m ${(last?.load5 ?? 0).toFixed(2)}`),
-              swatch(COLOR.load15, `15m ${(last?.load15 ?? 0).toFixed(2)}`),
-            ]}
-          >
-            <UPlotChart
-              key={`load-${themeKey}`}
-              data={data.load}
-              options={loadOpts([t("host.series1m"), t("host.series5m"), t("host.series15m")])}
-              className="h-[220px] w-full"
-            />
-          </ChartCard>
-          <ChartCard
-            title={t("host.network")}
-            badges={[
-              swatch(COLOR.netRx, `↓ ${formatBps(last?.net_rx_bps ?? 0)}`),
-              swatch(COLOR.netTx, `↑ ${formatBps(last?.net_tx_bps ?? 0)}`),
-            ]}
-          >
-            <UPlotChart
-              key={`net-${themeKey}`}
-              data={data.net}
-              options={bpsOpts([t("host.seriesDownload"), t("host.seriesUpload")], [COLOR.netRx, COLOR.netTx])}
-              className="h-[220px] w-full"
-            />
-          </ChartCard>
-          <ChartCard
-            title={t("host.diskIo")}
-            badges={[
-              swatch(COLOR.diskR, `read ${formatBps(last?.disk_r_bps ?? 0)}`),
-              swatch(COLOR.diskW, `write ${formatBps(last?.disk_w_bps ?? 0)}`),
-            ]}
-          >
-            <UPlotChart
-              key={`dio-${themeKey}`}
-              data={data.diskIO}
-              options={bpsOpts([t("host.seriesRead"), t("host.seriesWrite")], [COLOR.diskR, COLOR.diskW])}
-              className="h-[220px] w-full"
-            />
-          </ChartCard>
-          {hasTemp && (
+        <div className="space-y-4">
+          {/* Featured row: CPU + RAM big */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <ChartCard
-              title={t("host.temperature")}
-              badges={[swatch(COLOR.temp, `${(last?.temp_c ?? 0).toFixed(1)}°C`)]}
+              title={t("host.cpu")}
+              icon={Cpu}
+              badges={[swatch(COLOR.cpu, `${(last?.cpu_pct ?? 0).toFixed(1)}%`)]}
             >
               <UPlotChart
-                key={`temp-${themeKey}`}
-                data={data.temp}
-                options={tempOpts(t("host.seriesTemp"))}
-                className="h-[220px] w-full"
+                key={`cpu-${themeKey}`}
+                data={data.cpu}
+                options={percentOpts(COLOR.cpu, t("host.seriesCpu"))}
+                className="h-[240px] w-full"
               />
             </ChartCard>
-          )}
+            <ChartCard
+              title={t("host.ram")}
+              icon={MemoryStick}
+              badges={[swatch(COLOR.ram, `${(last?.ram_pct ?? 0).toFixed(1)}%`)]}
+            >
+              <UPlotChart
+                key={`ram-${themeKey}`}
+                data={data.ram}
+                options={percentOpts(COLOR.ram, t("host.ram"))}
+                className="h-[240px] w-full"
+              />
+            </ChartCard>
+          </div>
+
+          {/* Secondary row: Disk + Load + Network + DiskIO + Temp — smaller, denser */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+            <ChartCard
+              title={t("host.disk")}
+              icon={HardDrive}
+              badges={[swatch(COLOR.disk, `${(last?.disk_pct ?? 0).toFixed(1)}%`)]}
+            >
+              <UPlotChart
+                key={`disk-${themeKey}`}
+                data={data.disk}
+                options={percentOpts(COLOR.disk, t("host.disk"))}
+                className="h-[170px] w-full"
+              />
+            </ChartCard>
+            <ChartCard
+              title={t("host.loadAverage")}
+              icon={Activity}
+              badges={[
+                swatch(COLOR.load1, `1m ${(last?.load1 ?? 0).toFixed(2)}`),
+                swatch(COLOR.load5, `5m ${(last?.load5 ?? 0).toFixed(2)}`),
+                swatch(COLOR.load15, `15m ${(last?.load15 ?? 0).toFixed(2)}`),
+              ]}
+            >
+              <UPlotChart
+                key={`load-${themeKey}`}
+                data={data.load}
+                options={loadOpts([t("host.series1m"), t("host.series5m"), t("host.series15m")])}
+                className="h-[170px] w-full"
+              />
+            </ChartCard>
+            <ChartCard
+              title={t("host.network")}
+              icon={Network}
+              badges={[
+                swatch(COLOR.netRx, `↓ ${formatBps(last?.net_rx_bps ?? 0)}`),
+                swatch(COLOR.netTx, `↑ ${formatBps(last?.net_tx_bps ?? 0)}`),
+              ]}
+            >
+              <UPlotChart
+                key={`net-${themeKey}`}
+                data={data.net}
+                options={bpsOpts([t("host.seriesDownload"), t("host.seriesUpload")], [COLOR.netRx, COLOR.netTx])}
+                className="h-[170px] w-full"
+              />
+            </ChartCard>
+            <ChartCard
+              title={t("host.diskIo")}
+              icon={Database}
+              badges={[
+                swatch(COLOR.diskR, `read ${formatBps(last?.disk_r_bps ?? 0)}`),
+                swatch(COLOR.diskW, `write ${formatBps(last?.disk_w_bps ?? 0)}`),
+              ]}
+            >
+              <UPlotChart
+                key={`dio-${themeKey}`}
+                data={data.diskIO}
+                options={bpsOpts([t("host.seriesRead"), t("host.seriesWrite")], [COLOR.diskR, COLOR.diskW])}
+                className="h-[170px] w-full"
+              />
+            </ChartCard>
+            {hasTemp && (
+              <ChartCard
+                title={t("host.temperature")}
+                icon={Thermometer}
+                badges={[swatch(COLOR.temp, `${(last?.temp_c ?? 0).toFixed(1)}°C`)]}
+              >
+                <UPlotChart
+                  key={`temp-${themeKey}`}
+                  data={data.temp}
+                  options={tempOpts(t("host.seriesTemp"))}
+                  className="h-[170px] w-full"
+                />
+              </ChartCard>
+            )}
+          </div>
         </div>
       )}
 
@@ -370,32 +394,24 @@ function HostSummaryHeader({
     ? { label: t("host.stale"), tone: "warn" }
     : { label: t("host.waiting"), tone: "muted" };
   const system = live?.system ?? host?.system;
-  const [rangeOpen, setRangeOpen] = useState(false);
-  const rangeMenuRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!rangeOpen) return;
-    const onPointerDown = (e: PointerEvent) => {
-      if (!rangeMenuRef.current?.contains(e.target as Node)) {
-        setRangeOpen(false);
-      }
-    };
-    window.addEventListener("pointerdown", onPointerDown);
-    return () => window.removeEventListener("pointerdown", onPointerDown);
-  }, [rangeOpen]);
+  const rangeOptions = (Object.keys(RANGE_SECONDS) as Range[]).map((r) => ({
+    value: r,
+    label: rangeLabel(r, t),
+  }));
 
   return (
-    <Surface as="section" padded={false} className="mb-4 px-6 py-5">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+    <Surface as="section" padded={false} className="mb-6 px-6 py-5">
+      <button
+        type="button"
+        onClick={onBack}
+        className="mb-3 inline-flex items-center gap-1.5 text-xs text-[color:var(--color-muted)] transition-colors hover:text-[color:var(--color-fg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--lumen-teal)] rounded-sm"
+      >
+        <ArrowLeft size={13} strokeWidth={1.75} />
+        {t("host.backToDashboard")}
+      </button>
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div className="min-w-0">
-          <button
-            type="button"
-            onClick={onBack}
-            className="mb-3 inline-flex items-center gap-1.5 rounded-full border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-3 py-1.5 text-xs text-[color:var(--color-muted)] transition-colors hover:bg-[color:var(--color-border)] hover:text-[color:var(--color-fg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-accent)]"
-          >
-            {t("host.backToDashboard")}
-          </button>
-          <h2 className="truncate text-2xl font-bold tracking-tight">
+          <h2 className="truncate text-3xl font-bold tracking-tight text-[color:var(--color-fg)]">
             {host?.name ?? live?.host ?? t("common.loading")}
           </h2>
           <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-[color:var(--color-muted)]">
@@ -404,45 +420,81 @@ function HostSummaryHeader({
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          <div ref={rangeMenuRef} className="relative">
-            <button
-              type="button"
-              onClick={() => setRangeOpen((open) => !open)}
-              className="inline-flex items-center rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-3 py-2 text-sm hover:bg-[color:var(--color-border)] transition-colors"
-              title={t("host.timeRange")}
-            >
-              <ClockIcon />
-              <span className="ml-2 min-w-[58px] text-left">{rangeLabel(range, t)}</span>
-              <ChevronDownIcon />
-            </button>
-            {rangeOpen && (
-              <div className="absolute right-0 z-20 mt-2 min-w-[132px] overflow-hidden rounded-lg border border-[color:var(--color-border)] bg-[color:var(--color-card)] shadow-lg">
-                {(Object.keys(RANGE_SECONDS) as Range[]).map((r) => (
-                  <button
-                    key={r}
-                    type="button"
-                    onClick={() => {
-                      onRangeChange(r);
-                      setRangeOpen(false);
-                    }}
-                    className={`block w-full px-3 py-2 text-left text-sm transition-colors ${r === range ? "bg-[color:var(--color-border)] text-[color:var(--color-fg)]" : "text-[color:var(--color-muted)] hover:bg-[color:var(--color-border)] hover:text-[color:var(--color-fg)]"}`}
-                  >
-                    {rangeLabel(r, t)}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-          <button
-            type="button"
-            className="rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-3 py-2 text-lg leading-none hover:bg-[color:var(--color-border)] transition-colors"
-            title={t("host.layout")}
-          >
-            ⊞
-          </button>
+          <SegmentedControl
+            value={range}
+            onChange={onRangeChange}
+            options={rangeOptions}
+            ariaLabel={t("host.timeRange")}
+          />
+          <HostCustomizeButton t={t} />
         </div>
       </div>
     </Surface>
+  );
+}
+
+// PR1.B: Customize button stub on host detail. Same pattern as
+// Dashboard's CustomizeButton — opens a Popover explaining the
+// upcoming personalisation features for *this* page (panel show/hide,
+// default time range, density). Wired in PR2 with per-user prefs.
+function HostCustomizeButton({ t }: { t: ReturnType<typeof useI18n>["t"] }) {
+  return (
+    <Popover
+      trigger={
+        <AppButton variant="secondary" className="gap-2 whitespace-nowrap">
+          <Settings2 size={14} strokeWidth={1.75} />
+          {t("host.customize")}
+        </AppButton>
+      }
+    >
+      <div className="space-y-3">
+        <div>
+          <div className="text-sm font-semibold">{t("host.customize")}</div>
+          <p className="mt-1 text-xs text-[color:var(--color-muted)]">
+            {t("host.customizeStub")}
+          </p>
+        </div>
+        <ul className="space-y-1.5 text-xs text-[color:var(--color-muted)]">
+          <li>· {t("host.customizeShowHide")}</li>
+          <li>· {t("host.customizeDefaultRange")}</li>
+          <li>· {t("host.customizeCompact")}</li>
+        </ul>
+      </div>
+    </Popover>
+  );
+}
+
+// HeroStat renders one big-number live KPI tile at the top of the
+// host detail page. Pairs `value` (numeric) + `unit` for percentage
+// metrics, or `valueText` (pre-formatted string) for things like
+// uptime. Tone applies a colored status dot for at-a-glance read.
+function HeroStat({
+  icon: Icon,
+  label,
+  value,
+  valueText,
+  unit,
+  tone,
+}: {
+  icon: typeof Cpu;
+  label: string;
+  value?: number;
+  valueText?: string;
+  unit?: string;
+  tone: StatusTone;
+}) {
+  const display = valueText ?? (value != null ? `${value.toFixed(1)}${unit ?? ""}` : "—");
+  return (
+    <div className="rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-card)] p-4 transition-all hover:border-[color:var(--lumen-teal)]/40 hover:shadow-[var(--shadow-2)]">
+      <div className="flex items-center justify-between gap-2">
+        <span className="inline-flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide text-[color:var(--color-muted)]">
+          <Icon size={14} strokeWidth={1.75} />
+          {label}
+        </span>
+        <span aria-hidden className={`h-2 w-2 rounded-full ${TONE_CLASS[tone]}`} />
+      </div>
+      <div className="mt-2 text-3xl font-bold lumen-num text-[color:var(--color-fg)]">{display}</div>
+    </div>
   );
 }
 
@@ -479,7 +531,7 @@ function SystemMetaLine({
     items.push({ icon: <TagIcon />, text: t("host.agentVersion", { version: system.agent_version }) });
   }
   if (!system && lastSeen) {
-    items.push({ icon: <ClockIcon />, text: t("host.lastSeen", { time: relativeTime(lastSeen, now, locale) }) });
+    items.push({ icon: <Clock size={14} strokeWidth={1.75} className="text-[color:var(--color-muted)]" />, text: t("host.lastSeen", { time: relativeTime(lastSeen, now, locale) }) });
   }
 
   const updateAvailable = agentUpdateAvailable(system?.agent_version, latestAgentVersion ?? undefined);
@@ -528,23 +580,6 @@ function StatusIcon({ tone }: { tone: StatusTone }) {
   return (
     <svg aria-hidden className={`h-4 w-4 ${color}`} viewBox="0 0 16 16" fill="currentColor">
       <circle cx="8" cy="8" r="5" />
-    </svg>
-  );
-}
-
-function ClockIcon() {
-  return (
-    <svg aria-hidden className="h-4 w-4 text-[color:var(--color-muted)]" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-      <circle cx="8" cy="8" r="5.5" />
-      <path d="M8 4.5V8l2.25 1.5" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function ChevronDownIcon() {
-  return (
-    <svg aria-hidden className="pointer-events-none absolute right-3 h-4 w-4 text-[color:var(--color-muted)]" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-      <path d="m4.5 6.25 3.5 3.5 3.5-3.5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -632,10 +667,11 @@ function ContainersTable({ containers, t }: { containers: ContainerInfo[]; t: Re
   return (
     <Surface as="section" padded={false} className="mt-6 rounded-lg overflow-hidden">
       <header className="flex items-center justify-between px-4 py-3 border-b border-[color:var(--color-border)]">
-        <span className="text-xs uppercase tracking-wide text-[color:var(--color-muted)]">
+        <span className="inline-flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide text-[color:var(--color-muted)]">
+          <Boxes size={12} strokeWidth={1.75} />
           {t("host.containers")} · {containers.length} {t("common.total")}
         </span>
-        <span className="font-mono text-xs">
+        <span className="lumen-num text-xs">
           <span className="text-[color:var(--color-muted)]">{t("common.running")}</span>{" "}
           {running}
         </span>
@@ -890,15 +926,6 @@ function StateBadge({ state }: { state: string }) {
   );
 }
 
-function formatBytes(b: number): string {
-  if (!b) return "0 B";
-  const abs = Math.abs(b);
-  if (abs >= 1024 * 1024 * 1024) return `${(b / (1024 * 1024 * 1024)).toFixed(2)} GiB`;
-  if (abs >= 1024 * 1024)        return `${(b / (1024 * 1024)).toFixed(1)} MiB`;
-  if (abs >= 1024)               return `${(b / 1024).toFixed(0)} KiB`;
-  return `${b.toFixed(0)} B`;
-}
-
 // PerCoreStrip renders one tile per logical core in an auto-wrapping grid.
 // Tile width adapts to core count so 1-core VMs don't look empty and
 // 64-core servers don't paginate forever:
@@ -1003,21 +1030,24 @@ function CoreTile({
 
 function ChartCard({
   title,
+  icon: Icon,
   badges,
   children,
 }: {
   title: string;
+  icon?: typeof Cpu;
   badges?: React.ReactNode[];
   children: React.ReactNode;
 }) {
   return (
-    <Surface padded={false} className="rounded-lg p-3">
+    <Surface padded={false} className="rounded-lg p-3 transition-colors hover:border-[color:var(--lumen-teal)]/30">
       <div className="mb-2 flex items-center justify-between gap-2 flex-wrap">
-        <span className="text-xs uppercase tracking-wide text-[color:var(--color-muted)]">
+        <span className="inline-flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide text-[color:var(--color-muted)]">
+          {Icon && <Icon size={12} strokeWidth={1.75} />}
           {title}
         </span>
         {badges && badges.length > 0 && (
-          <div className="flex items-center gap-3 font-mono text-xs tabular-nums">
+          <div className="lumen-num flex items-center gap-3 text-xs">
             {badges.map((b, i) => <span key={i}>{b}</span>)}
           </div>
         )}
@@ -1088,12 +1118,114 @@ function baseAxes(yValues?: (u: uPlot, vals: number[]) => string[], leftSize = 5
   ];
 }
 
+// Disable uPlot's built-in legend overlay — it renders as a wide
+// single-row <table> that overflows the chart card when nowrap is
+// applied. Replaced by a custom near-cursor tooltip plugin below.
 function legend() {
   return {
-    show: true,
-    live: true,
-    markers: { show: true },
+    show: false,
   };
+}
+
+// Custom hover tooltip plugin — replaces the default uPlot legend with
+// a stacked label:value list anchored near the cursor. Constrained to
+// the chart's bbox so it never overflows into adjacent panels.
+function lumenTooltipPlugin(): uPlot.Plugin {
+  let tooltip: HTMLDivElement | null = null;
+  return {
+    hooks: {
+      init: (u) => {
+        tooltip = document.createElement("div");
+        tooltip.className = "lumen-chart-tooltip";
+        tooltip.style.display = "none";
+        u.root.appendChild(tooltip);
+      },
+      setCursor: (u) => {
+        if (!tooltip) return;
+        const { idx, left, top } = u.cursor;
+        if (idx == null || left == null || top == null || left < 0 || top < 0) {
+          tooltip.style.display = "none";
+          return;
+        }
+        const xs = u.data[0];
+        if (!xs || idx >= xs.length) {
+          tooltip.style.display = "none";
+          return;
+        }
+        const tsSeconds = xs[idx] as number;
+        const time = new Date(tsSeconds * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+        let html = `<div class="t">${time}</div>`;
+        for (let i = 1; i < u.series.length; i++) {
+          const s = u.series[i];
+          if (!s.show) continue;
+          const raw = u.data[i]?.[idx];
+          let valStr: string;
+          if (raw == null) {
+            valStr = "—";
+          } else if (typeof s.value === "function") {
+            valStr = String(s.value(u, raw, i, idx));
+          } else {
+            valStr = String(raw);
+          }
+          const color = typeof s.stroke === "function" ? s.stroke(u, i) : s.stroke ?? "currentColor";
+          html += `<div class="r"><span class="dot" style="background:${color}"></span><span class="l">${s.label ?? ""}</span><span class="v">${valStr}</span></div>`;
+        }
+        tooltip.innerHTML = html;
+        tooltip.style.display = "block";
+        // Use the `.u-over` element rect for boundary math — its dimensions
+        // are in CSS pixels, while u.bbox.* is in canvas/DPR units which
+        // double-counts on HiDPI displays and breaks the overflow check.
+        const overRect = u.over.getBoundingClientRect();
+        const tw = tooltip.offsetWidth;
+        const th = tooltip.offsetHeight;
+        let x = left + 14;
+        let y = top + 14;
+        if (x + tw > overRect.width)  x = left - tw - 14;
+        if (y + th > overRect.height) y = top  - th - 14;
+        if (x < 4) x = 4;
+        if (y < 4) y = 4;
+        if (x + tw > overRect.width)  x = overRect.width - tw - 4;
+        if (y + th > overRect.height) y = overRect.height - th - 4;
+        // Tooltip is appended to u.root (chart container, parent of .u-over).
+        // Add the over element's offset relative to that root.
+        const rootRect = u.root.getBoundingClientRect();
+        const offsetLeft = overRect.left - rootRect.left;
+        const offsetTop  = overRect.top  - rootRect.top;
+        tooltip.style.left = `${offsetLeft + x}px`;
+        tooltip.style.top  = `${offsetTop  + y}px`;
+      },
+      destroy: () => {
+        tooltip?.remove();
+        tooltip = null;
+      },
+    },
+  };
+}
+
+// gradientFill builds a Grafana-style vertical alpha gradient under the
+// line. Returns a function so uPlot can re-eval against the chart's
+// canvas context on each draw (size-aware).
+function gradientFill(color: string, topAlpha = 0.32) {
+  const flatFallback = withAlpha(color, topAlpha * 0.5);
+  return (u: uPlot, _seriesIdx: number): CanvasGradient | string => {
+    const ctx = u.ctx;
+    const bbox = u.bbox;
+    if (!ctx || !bbox) return flatFallback;
+    const top = bbox.top;
+    const height = bbox.height;
+    if (!Number.isFinite(top) || !Number.isFinite(height) || height <= 0) {
+      return flatFallback;
+    }
+    const grad = ctx.createLinearGradient(0, top, 0, top + height);
+    grad.addColorStop(0, withAlpha(color, topAlpha));
+    grad.addColorStop(1, withAlpha(color, 0));
+    return grad;
+  };
+}
+
+function withAlpha(oklch: string, alpha: number): string {
+  // "oklch(70% 0.16 145)" → "oklch(70% 0.16 145 / 0.32)"
+  return oklch.replace(/\)$/, ` / ${alpha})`);
 }
 
 function percentOpts(color: string, label: string): Omit<Options, "width" | "height"> {
@@ -1101,14 +1233,15 @@ function percentOpts(color: string, label: string): Omit<Options, "width" | "hei
     scales: { y: { range: [0, 100] } },
     axes: baseAxes((_u, vals) => vals.map((v) => `${v}%`), 44),
     legend: legend(),
+    plugins: [lumenTooltipPlugin()],
     series: [
       {},
       {
         label,
         value: (_u, v) => v == null ? "—" : `${v.toFixed(1)}%`,
         stroke: color,
-        width: 1.75,
-        fill: color.replace(/^oklch\((\d+)%/, "oklch($1% / 0.14)"),
+        width: 2,
+        fill: gradientFill(color),
         points: { show: false },
       },
     ],
@@ -1119,11 +1252,12 @@ function loadOpts(labels: [string, string, string]): Omit<Options, "width" | "he
   return {
     axes: baseAxes(undefined, 44),
     legend: legend(),
+    plugins: [lumenTooltipPlugin()],
     series: [
       {},
-      { label: labels[0], value: (_u, v) => v == null ? "—" : v.toFixed(2), stroke: COLOR.load1,  width: 1.75, points: { show: false } },
-      { label: labels[1], value: (_u, v) => v == null ? "—" : v.toFixed(2), stroke: COLOR.load5,  width: 1.5,  points: { show: false } },
-      { label: labels[2], value: (_u, v) => v == null ? "—" : v.toFixed(2), stroke: COLOR.load15, width: 1.5,  points: { show: false } },
+      { label: labels[0], value: (_u, v) => v == null ? "—" : v.toFixed(2), stroke: COLOR.load1,  width: 2,   fill: gradientFill(COLOR.load1, 0.18), points: { show: false } },
+      { label: labels[1], value: (_u, v) => v == null ? "—" : v.toFixed(2), stroke: COLOR.load5,  width: 1.5, points: { show: false } },
+      { label: labels[2], value: (_u, v) => v == null ? "—" : v.toFixed(2), stroke: COLOR.load15, width: 1.5, points: { show: false } },
     ],
   };
 }
@@ -1132,10 +1266,11 @@ function bpsOpts(labels: [string, string], colors: [string, string]): Omit<Optio
   return {
     axes: baseAxes((_u, vals) => vals.map((v) => formatBps(v)), 80),
     legend: legend(),
+    plugins: [lumenTooltipPlugin()],
     series: [
       {},
-      { label: labels[0], value: (_u, v) => v == null ? "—" : formatBps(v), stroke: colors[0], width: 1.75, points: { show: false } },
-      { label: labels[1], value: (_u, v) => v == null ? "—" : formatBps(v), stroke: colors[1], width: 1.75, points: { show: false } },
+      { label: labels[0], value: (_u, v) => v == null ? "—" : formatBps(v), stroke: colors[0], width: 2, fill: gradientFill(colors[0], 0.22), points: { show: false } },
+      { label: labels[1], value: (_u, v) => v == null ? "—" : formatBps(v), stroke: colors[1], width: 2, fill: gradientFill(colors[1], 0.22), points: { show: false } },
     ],
   };
 }
@@ -1144,19 +1279,12 @@ function tempOpts(label: string): Omit<Options, "width" | "height"> {
   return {
     axes: baseAxes((_u, vals) => vals.map((v) => `${v}°`), 44),
     legend: legend(),
+    plugins: [lumenTooltipPlugin()],
     series: [
       {},
-      { label, value: (_u, v) => v == null ? "—" : `${v.toFixed(1)}°C`, stroke: COLOR.temp, width: 1.75, points: { show: false } },
+      { label, value: (_u, v) => v == null ? "—" : `${v.toFixed(1)}°C`, stroke: COLOR.temp, width: 2, fill: gradientFill(COLOR.temp), points: { show: false } },
     ],
   };
-}
-
-function formatBps(bps: number): string {
-  const abs = Math.abs(bps);
-  if (abs >= 1_000_000_000) return `${(bps / 1_000_000_000).toFixed(2)} GB/s`;
-  if (abs >= 1_000_000)     return `${(bps / 1_000_000).toFixed(2)} MB/s`;
-  if (abs >= 1_000)         return `${(bps / 1_000).toFixed(1)} kB/s`;
-  return `${bps.toFixed(0)} B/s`;
 }
 
 // useThemeKey returns a counter that bumps whenever the `dark` class is

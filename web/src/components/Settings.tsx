@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { Server, User as UserIcon, Gauge, Archive, BarChart3, ScrollText } from "lucide-react";
 import {
   hostsApi,
   authApi,
@@ -16,65 +17,60 @@ import { useI18n } from "@/i18n/useI18n";
 
 type SettingsTab = "hosts" | "account" | "runtime" | "retention" | "downsample" | "logs";
 
-const TABS: { id: SettingsTab; labelKey: "settings.tabs.hosts" | "settings.tabs.account" | "settings.tabs.runtime" | "settings.tabs.retention" | "settings.tabs.downsample" | "settings.tabs.logs" }[] = [
-  { id: "hosts",     labelKey: "settings.tabs.hosts" },
-  { id: "account",   labelKey: "settings.tabs.account" },
-  { id: "runtime",   labelKey: "settings.tabs.runtime" },
-  { id: "retention", labelKey: "settings.tabs.retention" },
-  { id: "downsample", labelKey: "settings.tabs.downsample" },
-  { id: "logs",      labelKey: "settings.tabs.logs" },
+const TABS: {
+  id: SettingsTab;
+  labelKey: "settings.tabs.hosts" | "settings.tabs.account" | "settings.tabs.runtime" | "settings.tabs.retention" | "settings.tabs.downsample" | "settings.tabs.logs";
+  icon: typeof Server;
+}[] = [
+  { id: "hosts",      labelKey: "settings.tabs.hosts",      icon: Server },
+  { id: "account",    labelKey: "settings.tabs.account",    icon: UserIcon },
+  { id: "runtime",    labelKey: "settings.tabs.runtime",    icon: Gauge },
+  { id: "retention",  labelKey: "settings.tabs.retention",  icon: Archive },
+  { id: "downsample", labelKey: "settings.tabs.downsample", icon: BarChart3 },
+  { id: "logs",       labelKey: "settings.tabs.logs",       icon: ScrollText },
 ];
 
 export function Settings({ user }: { user: User }) {
   const { t } = useI18n();
   const [tab, setTab] = useState<SettingsTab>("hosts");
   return (
-    <div className="space-y-4">
-      <nav className="flex items-center gap-1 border-b border-[color:var(--color-border)] -mt-2 pb-0">
-        {TABS.map((item) => (
-          <SubTabButton
-            key={item.id}
-            active={item.id === tab}
-            onClick={() => setTab(item.id)}
-          >
-            {t(item.labelKey)}
-          </SubTabButton>
-        ))}
-      </nav>
-      <div className="pt-2">
-        {tab === "hosts"     && <HostsSettings />}
-        {tab === "account"   && <AccountSettings user={user} />}
-        {tab === "runtime"    && <RuntimeSettings />}
-        {tab === "retention"  && <RetentionSettings />}
-        {tab === "downsample" && <DownsampleSettings />}
-        {tab === "logs"       && <LogManagementSettings />}
+    <div className="space-y-6">
+      <header>
+        <h2 className="text-3xl font-bold tracking-tight text-[color:var(--color-fg)]">{t("shell.settings")}</h2>
+      </header>
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-[200px_1fr]">
+        <nav className="space-y-1" aria-label={t("shell.settings")}>
+          {TABS.map((item) => {
+            const Icon = item.icon;
+            const active = item.id === tab;
+            return (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => setTab(item.id)}
+                aria-current={active ? "page" : undefined}
+                className={`flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+                  active
+                    ? "bg-[color-mix(in_oklch,var(--lumen-teal)_15%,transparent)] text-[color:var(--color-fg)]"
+                    : "text-[color:var(--color-muted)] hover:bg-[color:var(--color-border)]/40 hover:text-[color:var(--color-fg)]"
+                }`}
+              >
+                <Icon size={16} strokeWidth={active ? 2.25 : 1.75} className={active ? "text-[color:var(--lumen-teal)]" : ""} />
+                {t(item.labelKey)}
+              </button>
+            );
+          })}
+        </nav>
+        <div>
+          {tab === "hosts"      && <HostsSettings />}
+          {tab === "account"    && <AccountSettings user={user} />}
+          {tab === "runtime"    && <RuntimeSettings />}
+          {tab === "retention"  && <RetentionSettings />}
+          {tab === "downsample" && <DownsampleSettings />}
+          {tab === "logs"       && <LogManagementSettings />}
+        </div>
       </div>
     </div>
-  );
-}
-
-function SubTabButton({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  const base = "px-3 py-2 -mb-px text-sm border-b-2 transition-colors";
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={
-        active
-          ? `${base} border-[color:var(--color-fg)] text-[color:var(--color-fg)] font-medium`
-          : `${base} border-transparent text-[color:var(--color-muted)] hover:text-[color:var(--color-fg)]`
-      }
-    >
-      {children}
-    </button>
   );
 }
 

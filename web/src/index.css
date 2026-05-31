@@ -19,7 +19,23 @@
    * dark bg = teal-300 per brand README). */
   --lumen-teal: #14b8a6;
 
-  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  /* Typography — Fontsource imports the @font-face declarations in main.tsx.
+   * Falls back to system stacks if the font assets fail to load. */
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "JetBrains Mono Variable", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  /* Elevation — same shadow stack for both themes; the OKLCH backgrounds
+   * already provide enough contrast that we don't need theme-specific shadows. */
+  --shadow-1: 0 1px 2px oklch(0% 0 0 / 4%), 0 1px 1px oklch(0% 0 0 / 6%);
+  --shadow-2: 0 4px 6px oklch(0% 0 0 / 4%), 0 2px 4px oklch(0% 0 0 / 8%);
+  --shadow-3: 0 12px 24px oklch(0% 0 0 / 8%), 0 4px 8px oklch(0% 0 0 / 12%);
+
+  /* Motion */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in:  cubic-bezier(0.4, 0, 1, 1);
+  --dur-100: 100ms;
+  --dur-150: 150ms;
+  --dur-250: 250ms;
 }
 
 .dark {
@@ -31,6 +47,14 @@
   --lumen-teal: #5eead4;
 }
 
+/* Status soft tints — for chip/section backgrounds. Computed at the var()
+ * site so they re-resolve when --color-card flips between light/dark. */
+:root {
+  --bg-ok-soft:     color-mix(in oklch, var(--color-accent) 12%, var(--color-card));
+  --bg-warn-soft:   color-mix(in oklch, var(--color-warn)   12%, var(--color-card));
+  --bg-danger-soft: color-mix(in oklch, var(--color-danger) 12%, var(--color-card));
+}
+
 @layer base {
   html, body, #root {
     height: 100%;
@@ -38,9 +62,25 @@
   body {
     background-color: var(--color-bg);
     color: var(--color-fg);
-    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
   }
+}
+
+@layer utilities {
+  /* Mono + tabular numerics — for metric values, IDs, timestamps. Stable
+   * width so a percentage going 89→100 doesn't shift adjacent layout. */
+  .lumen-num {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" 1;
+  }
+
+  /* Status soft backgrounds — for chip/badge fills. */
+  .lumen-bg-ok-soft     { background-color: var(--bg-ok-soft); }
+  .lumen-bg-warn-soft   { background-color: var(--bg-warn-soft); }
+  .lumen-bg-danger-soft { background-color: var(--bg-danger-soft); }
 }
 
 @layer components {
@@ -81,25 +121,53 @@
     position: relative;
   }
 
-  .lumen-uplot .u-legend {
+  /* Cursor-position tooltip — built by lumenTooltipPlugin() in HostDetail.
+   * Anchored near the cursor inside the chart's bbox so it never overflows
+   * into adjacent panels (unlike uPlot's default <table> legend). */
+  .lumen-chart-tooltip {
     position: absolute;
-    left: 50%;
-    top: 0.25rem;
-    z-index: 2;
-    transform: translateX(-50%);
+    z-index: 3;
+    min-width: 9rem;
+    max-width: 14rem;
     border: 1px solid var(--color-border);
-    border-radius: 0.375rem;
-    background: color-mix(in oklch, var(--color-card) 88%, transparent);
+    border-radius: 0.5rem;
+    background: color-mix(in oklch, var(--color-card) 94%, transparent);
+    backdrop-filter: blur(8px);
     color: var(--color-fg);
+    font-family: var(--font-mono);
+    font-feature-settings: "tnum" 1;
     font-size: 0.6875rem;
     line-height: 1rem;
+    padding: 0.4rem 0.5rem;
     pointer-events: none;
-    white-space: nowrap;
+    box-shadow: var(--shadow-2);
   }
-
-  .lumen-uplot .u-legend th,
-  .lumen-uplot .u-legend td {
-    padding: 0.125rem 0.375rem;
+  .lumen-chart-tooltip .t {
+    color: var(--color-muted);
+    margin-bottom: 0.25rem;
+    font-size: 0.625rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .lumen-chart-tooltip .r {
+    display: grid;
+    grid-template-columns: 0.5rem 1fr auto;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.075rem 0;
+  }
+  .lumen-chart-tooltip .dot {
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 9999px;
+    display: inline-block;
+  }
+  .lumen-chart-tooltip .l {
+    color: var(--color-muted);
+  }
+  .lumen-chart-tooltip .v {
+    color: var(--color-fg);
+    font-weight: 600;
   }
 }
 
