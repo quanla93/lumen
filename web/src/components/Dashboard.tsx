@@ -95,11 +95,27 @@ export function Dashboard({
               {t("dashboard.subtitle")}
             </p>
           </div>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:min-w-[32rem]">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5 lg:min-w-[40rem]">
             <SummaryCard label={t("dashboard.hosts")} value={summary.total} detail={`${summary.online} ${t("dashboard.online")}`} tone="ok" />
             <SummaryCard label={t("dashboard.stale")} value={summary.stale} detail={t("dashboard.noRecentTick")} tone={summary.stale > 0 ? "warn" : "muted"} />
-            <SummaryCard label={t("dashboard.avgCpu")} value={`${summary.avgCpu.toFixed(0)}%`} detail={t("dashboard.fleetAverage")} tone={cpuTone(summary.avgCpu, summary.total === 0)} />
-            <SummaryCard label={t("dashboard.avgRam")} value={`${summary.avgRam.toFixed(0)}%`} detail={t("dashboard.fleetAverage")} tone={cpuTone(summary.avgRam, summary.total === 0)} />
+            <SummaryCard
+              label={t("dashboard.hottestCpu")}
+              value={summary.hottestCpu ? `${summary.hottestCpu.value.toFixed(0)}%` : "—"}
+              detail={summary.hottestCpu?.host ?? t("dashboard.noLiveHost")}
+              tone={cpuTone(summary.hottestCpu?.value ?? 0, !summary.hottestCpu)}
+            />
+            <SummaryCard
+              label={t("dashboard.hottestRam")}
+              value={summary.hottestRam ? `${summary.hottestRam.value.toFixed(0)}%` : "—"}
+              detail={summary.hottestRam?.host ?? t("dashboard.noLiveHost")}
+              tone={cpuTone(summary.hottestRam?.value ?? 0, !summary.hottestRam)}
+            />
+            <SummaryCard
+              label={t("dashboard.hottestDisk")}
+              value={summary.hottestDisk ? `${summary.hottestDisk.value.toFixed(0)}%` : "—"}
+              detail={summary.hottestDisk?.host ?? t("dashboard.noLiveHost")}
+              tone={cpuTone(summary.hottestDisk?.value ?? 0, !summary.hottestDisk)}
+            />
           </div>
         </div>
       </Surface>
@@ -148,14 +164,23 @@ function summarizeSnapshots(snapshots: Snapshot[], now: number, staleAfterMs: nu
   const total = snapshots.length;
   const stale = snapshots.filter((s) => isStale(s.ts, staleAfterMs, now)).length;
   const online = total - stale;
-  const avgCpu = average(snapshots.map((s) => s.cpu_pct));
-  const avgRam = average(snapshots.map((s) => s.ram_pct));
-  return { total, online, stale, avgCpu, avgRam };
+  const live = snapshots.filter((s) => !isStale(s.ts, staleAfterMs, now));
+  return {
+    total,
+    online,
+    stale,
+    hottestCpu: hottest(live, (s) => s.cpu_pct),
+    hottestRam: hottest(live, (s) => s.ram_pct),
+    hottestDisk: hottest(live, (s) => s.disk_pct),
+  };
 }
 
-function average(values: number[]) {
-  if (values.length === 0) return 0;
-  return values.reduce((sum, value) => sum + value, 0) / values.length;
+function hottest(snapshots: Snapshot[], pick: (s: Snapshot) => number): { host: string; value: number } | null {
+  if (snapshots.length === 0) return null;
+  return snapshots.reduce(
+    (best, s) => (pick(s) > best.value ? { host: s.host, value: pick(s) } : best),
+    { host: snapshots[0].host, value: pick(snapshots[0]) },
+  );
 }
 
 function SummaryCard({
