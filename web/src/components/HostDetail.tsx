@@ -14,6 +14,7 @@ import { EmptyState, Surface } from "@/components/ui";
 import type { Snapshot, ContainerInfo } from "@/components/HostCard";
 import { type StatusTone } from "@/lib/status";
 import { isStale, relativeTime } from "@/lib/time";
+import { useStreamConnection } from "@/lib/useStreamConnection";
 import { useI18n } from "@/i18n/useI18n";
 import type { Locale } from "@/i18n/types";
 
@@ -115,27 +116,27 @@ export function HostDetail({
     return () => { cancelled = true; };
   }, [hostName, t]);
 
-  useEffect(() => {
+  const wsUrl = useMemo(() => {
     const scheme = window.location.protocol === "https:" ? "wss" : "ws";
-    const ws = new WebSocket(`${scheme}://${window.location.host}/api/stream`);
-    // Narrow the firehose to just this host once the socket opens.
-    // The hub falls back to broadcasting everything if we never send
-    // a subscribe frame, so the dashboard view (no subscribe) keeps
-    // working unchanged. See internal/hub/stream/handler.go.
-    ws.addEventListener("open", () => {
+    return `${scheme}://${window.location.host}/api/stream`;
+  }, []);
+
+  // Re-sends the subscribe frame on every (re)connect so the server-side
+  // filter survives an auto-reconnect. Without onOpen, a dropped socket
+  // would come back as firehose and we'd churn through every host's
+  // snapshot just to find this one.
+  useStreamConnection<Snapshot[]>({
+    url: wsUrl,
+    onMessage: (arr) => {
+      const match = arr.find((s) => s.host === hostName);
+      if (match) setLive(match);
+    },
+    onOpen: (ws) => {
       try {
         ws.send(JSON.stringify({ type: "subscribe", hosts: [hostName] }));
       } catch { /* socket may have closed in the meantime */ }
-    });
-    ws.addEventListener("message", (e) => {
-      try {
-        const arr = JSON.parse(e.data as string) as Snapshot[];
-        const match = arr.find((s) => s.host === hostName);
-        if (match) setLive(match);
-      } catch { /* ignore malformed */ }
-    });
-    return () => ws.close();
-  }, [hostName]);
+    },
+  });
 
   const fetchOnce = useCallback(async () => {
     if (hostId == null) return;

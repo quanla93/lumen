@@ -4,9 +4,8 @@ import { EmptyState, StatusPill, Surface } from "@/components/ui";
 import { settingsApi, versionApi } from "@/lib/api";
 import { cpuTone, TONE_CLASS, type StatusTone } from "@/lib/status";
 import { isStale, staleAfterForIntervalMs } from "@/lib/time";
+import { useStreamConnection, type WsStatus } from "@/lib/useStreamConnection";
 import { useI18n } from "@/i18n/useI18n";
-
-type WsStatus = "connecting" | "connected" | "disconnected" | "error";
 
 const STATUS_META: Record<WsStatus, { tone: StatusTone; labelKey: "dashboard.wsConnected" | "dashboard.wsConnecting" | "dashboard.wsDisconnected" | "dashboard.wsError" }> = {
   connected:    { tone: "ok",     labelKey: "dashboard.wsConnected" },
@@ -22,7 +21,6 @@ export function Dashboard({
 }) {
   const { t } = useI18n();
   const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
-  const [status, setStatus] = useState<WsStatus>("connecting");
   const [agentInterval, setAgentInterval] = useState("5s");
   const [latestAgentVersion, setLatestAgentVersion] = useState<string | null>(null);
   const [query, setQuery] = useState("");
@@ -44,29 +42,23 @@ export function Dashboard({
       })
       .catch(() => {});
 
-    const scheme = window.location.protocol === "https:" ? "wss" : "ws";
-    const url = `${scheme}://${window.location.host}/api/stream`;
-    const ws = new WebSocket(url);
-
-    ws.addEventListener("open", () => setStatus("connected"));
-    ws.addEventListener("message", (e) => {
-      try {
-        const parsed = JSON.parse(e.data as string) as Snapshot[];
-        setSnapshots(parsed ?? []);
-      } catch {
-        // ignore malformed frames
-      }
-    });
-    ws.addEventListener("close", () => setStatus("disconnected"));
-    ws.addEventListener("error", () => setStatus("error"));
-
-    const tick = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(tick);
-      ws.close();
-    };
+    return () => { cancelled = true; };
   }, []);
+
+  useEffect(() => {
+    const tick = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(tick);
+  }, []);
+
+  const wsUrl = useMemo(() => {
+    const scheme = window.location.protocol === "https:" ? "wss" : "ws";
+    return `${scheme}://${window.location.host}/api/stream`;
+  }, []);
+
+  const status = useStreamConnection<Snapshot[]>({
+    url: wsUrl,
+    onMessage: (parsed) => setSnapshots(parsed ?? []),
+  });
 
   const meta = STATUS_META[status];
   const sorted = useMemo(
