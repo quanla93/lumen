@@ -208,6 +208,7 @@ func validateSystemMetadata(meta api.SystemMetadata) error {
 		{"system.kernel", meta.Kernel, 128},
 		{"system.arch", meta.Arch, 32},
 		{"system.cpu_model", meta.CPUModel, 256},
+		{"system.virt_type", meta.VirtType, 32},
 		{"system.agent_version", meta.AgentVersion, 64},
 	} {
 		if len(p.value) > p.max {

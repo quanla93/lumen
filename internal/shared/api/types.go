@@ -44,6 +44,12 @@ type SystemMetadata struct {
 	CPUModel      string `json:"cpu_model,omitempty"`
 	UptimeSeconds uint64 `json:"uptime_seconds,omitempty"`
 	AgentVersion  string `json:"agent_version,omitempty"`
+	// VirtType is gopsutil's VirtualizationSystem ("kvm", "lxc", "docker",
+	// "vmware", "wsl", …) when the agent runs in a guest; empty on bare
+	// metal. Empty also means "older agent that didn't report it" —
+	// callers treating "unknown" as bare-metal is the safe default
+	// (show per-core; operator can verify by clicking through).
+	VirtType string `json:"virt_type,omitempty"`
 }
 
 // IngestRequest is the body of POST /api/ingest sent by the agent every tick.

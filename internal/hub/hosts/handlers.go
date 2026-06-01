@@ -95,6 +95,9 @@ func systemMetadata(h Host) (api.SystemMetadata, bool) {
 	if h.SystemUptimeSeconds.Valid && h.SystemUptimeSeconds.Int64 > 0 {
 		meta.UptimeSeconds = uint64(h.SystemUptimeSeconds.Int64)
 	}
+	if h.SystemVirtType.Valid {
+		meta.VirtType = h.SystemVirtType.String
+	}
 	if h.AgentVersion.Valid {
 		meta.AgentVersion = h.AgentVersion.String
 	}

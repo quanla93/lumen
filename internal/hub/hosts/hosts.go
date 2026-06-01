@@ -47,8 +47,13 @@ type Host struct {
 	SystemArch          sql.NullString
 	SystemCPUModel      sql.NullString
 	SystemUptimeSeconds sql.NullInt64
-	AgentVersion        sql.NullString
-	MetadataUpdatedAt   sql.NullTime
+	// SystemVirtType is gopsutil's VirtualizationSystem on the agent
+	// host: "" on bare metal, "kvm"/"lxc"/"docker"/"wsl"/etc inside
+	// a guest. Used by the UI to hide per-core CPU charts on guests
+	// where the data doesn't reflect this agent's actual cores.
+	SystemVirtType    sql.NullString
+	AgentVersion      sql.NullString
+	MetadataUpdatedAt sql.NullTime
 	// SilencedUntil is a unix timestamp (seconds). NULL or past = not
 	// silenced; future = alerts engine skips event+notify for this host
 	// until the time passes. Set via /api/hosts/{id}/silence.
@@ -91,7 +96,7 @@ func validateName(name string) error {
 
 const hostColumns = `id, name, created_at, last_seen_at,
 	system_os, system_hostname, system_primary_ip, system_kernel,
-	system_arch, system_cpu_model, system_uptime_seconds,
+	system_arch, system_cpu_model, system_uptime_seconds, system_virt_type,
 	agent_version, metadata_updated_at, silenced_until`
 
 func scanHost(scanner interface{ Scan(dest ...any) error }) (Host, error) {
@@ -99,7 +104,7 @@ func scanHost(scanner interface{ Scan(dest ...any) error }) (Host, error) {
 	err := scanner.Scan(
 		&h.ID, &h.Name, &h.CreatedAt, &h.LastSeenAt,
 		&h.SystemOS, &h.SystemHostname, &h.SystemPrimaryIP, &h.SystemKernel,
-		&h.SystemArch, &h.SystemCPUModel, &h.SystemUptimeSeconds,
+		&h.SystemArch, &h.SystemCPUModel, &h.SystemUptimeSeconds, &h.SystemVirtType,
 		&h.AgentVersion, &h.MetadataUpdatedAt, &h.SilencedUntil,
 	)
 	return h, err
@@ -258,6 +263,7 @@ func UpdateSystemMetadata(ctx context.Context, db *sql.DB, id int64, meta api.Sy
 			system_arch = ?,
 			system_cpu_model = ?,
 			system_uptime_seconds = ?,
+			system_virt_type = ?,
 			agent_version = ?,
 			metadata_updated_at = CURRENT_TIMESTAMP
 		WHERE id = ?`,
@@ -268,6 +274,7 @@ func UpdateSystemMetadata(ctx context.Context, db *sql.DB, id int64, meta api.Sy
 		nullString(meta.Arch),
 		nullString(meta.CPUModel),
 		nullInt64(meta.UptimeSeconds),
+		nullString(meta.VirtType),
 		nullString(meta.AgentVersion),
 		id,
 	)

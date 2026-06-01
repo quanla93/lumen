@@ -204,9 +204,22 @@ export function HostDetail({
         <HeroStat icon={Clock}       label={t("host.uptime")} valueText={formatUptime(live?.system?.uptime_seconds) ?? "—"} tone="muted" />
       </div>
 
-      {live?.cpu_per_core && live.cpu_per_core.length > 0 && (
-        <PerCoreStrip cores={live.cpu_per_core} t={t} />
-      )}
+      {live?.cpu_per_core && live.cpu_per_core.length > 0 && (() => {
+        // Hide per-core on guest hosts (LXC / KVM / Docker / WSL / …) —
+        // the data either reflects the hypervisor's shared physical
+        // cores (LXC kernel-share) or vCPUs that don't isolate from
+        // sibling guests on the same physical core (oversubscribed VM).
+        // Showing it would make operators chase ghost contention.
+        const virt = (live?.system?.virt_type ?? host?.system?.virt_type ?? "").trim();
+        if (virt !== "") {
+          return (
+            <div className="mb-6 rounded-md border border-dashed border-[color:var(--color-border)] bg-[color:var(--color-card)] px-3 py-2 text-xs text-[color:var(--color-muted)]">
+              {t("host.perCoreHiddenOnGuest", { virt })}
+            </div>
+          );
+        }
+        return <PerCoreStrip cores={live.cpu_per_core} t={t} />;
+      })()}
 
       {err && (
         <div className="mb-4 rounded-md border border-[color:var(--color-danger)] bg-[color:var(--color-card)] px-3 py-2 text-sm text-[color:var(--color-danger)]">

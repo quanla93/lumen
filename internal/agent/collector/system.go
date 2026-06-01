@@ -33,6 +33,10 @@ func SystemMetadata(ctx context.Context, agentVersion string) (api.SystemMetadat
 		meta.OS = systemOS(info)
 		meta.Kernel = info.KernelVersion
 		meta.UptimeSeconds = info.Uptime
+		// VirtualizationSystem is "" on bare metal and "kvm"/"lxc"/
+		// "docker"/"wsl"/etc inside a guest. Hub uses this to decide
+		// whether per-core CPU is meaningful for this agent.
+		meta.VirtType = strings.TrimSpace(info.VirtualizationSystem)
 	}
 
 	infos, err := cpu.InfoWithContext(ctx)

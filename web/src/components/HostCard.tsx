@@ -27,6 +27,7 @@ export type SystemMetadata = {
   cpu_model?: string;
   uptime_seconds?: number;
   agent_version?: string;
+  virt_type?: string;
 };
 
 export type Snapshot = {

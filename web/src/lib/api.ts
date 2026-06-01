@@ -17,6 +17,10 @@ export type SystemMetadata = {
   cpu_model?: string;
   uptime_seconds?: number;
   agent_version?: string;
+  // VirtualizationSystem ("kvm", "lxc", "docker", "wsl", …) when the
+  // agent runs in a guest; empty/undefined on bare metal. UI uses this
+  // to hide per-core CPU on hosts where the data doesn't isolate.
+  virt_type?: string;
 };
 
 export type TagFacet = {
