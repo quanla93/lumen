@@ -240,6 +240,14 @@ func Run(ctx context.Context, cfg Config) error {
 		r.Get("/api/v1/version", publicAPIHandlers.Version)
 		r.With(publicapi.RequireScope(apikey.ScopeReadHosts)).
 			Get("/api/v1/hosts", publicAPIHandlers.Hosts)
+		r.With(publicapi.RequireScope(apikey.ScopeReadHosts)).
+			Get("/api/v1/hosts/{name}", publicAPIHandlers.HostDetail)
+		r.With(publicapi.RequireScope(apikey.ScopeReadMetrics)).
+			Get("/api/v1/hosts/{name}/metrics", publicAPIHandlers.HostMetrics)
+		r.With(publicapi.RequireScope(apikey.ScopeReadAlerts)).
+			Get("/api/v1/alerts/events", publicAPIHandlers.AlertEvents)
+		r.With(publicapi.RequireScope(apikey.ScopeReadAlerts)).
+			Get("/api/v1/alerts/rules", publicAPIHandlers.AlertRules)
 	})
 
 	// Everything else falls to the embedded web bundle (SPA-style), except

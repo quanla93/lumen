@@ -6,6 +6,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-06-01
+
+**Phase 7 ships its first slice — the Public Read API is live.** Mint a bearer key in Settings → API Keys, point Grafana / n8n / scripts at `/api/v1/*`, integrate without touching the admin session. v0.4.11 introduced the API Keys + first two endpoints; this release completes the read surface.
+
+### Added (v0.5.0)
+
+- **`GET /api/v1/hosts/{name}`** — host detail (name, last_seen_at, created_at). Requires `read:hosts`. Host filter glob from the key is enforced; 404 if the host is unknown or excluded (same response either way, so a key can't probe for hosts outside its filter).
+- **`GET /api/v1/hosts/{name}/metrics?from=&to=&bucket=`** — downsampled time-series. `from` / `to` are RFC3339 timestamps; `bucket` is a Go duration (`30s`, `1m`, `5m`, …). Caps: range ≤ 7 days, bucket ≥ 30s, (to-from)/bucket ≤ 1000 points. Requires `read:metrics`. Bucket is mandatory — there's no "raw 5s" path on the public API; that's reserved for the UI's WebSocket stream.
+- **`GET /api/v1/alerts/events?state=&limit=`** — alert event history. `state` = `firing` / `resolved` / `all` (default `all`); `limit` 1–500 (default 100). Host filter glob enforced post-query (over-fetch + filter; fine at homelab scale). Requires `read:alerts`.
+- **`GET /api/v1/alerts/rules`** — read-only rule inventory (id, name, metric, comparator, threshold, severity, host_selector, enabled). Channel routing is NOT exposed — that stays operator-internal. Requires `read:alerts`.
+
+### Carried in from v0.4.11
+
+- `Settings → API Keys` admin UI + `/api/apikeys` CRUD: mint / list / revoke, plaintext-shown-once flow, glob host_filter, scopes (`read:hosts`, `read:metrics`, `read:alerts`).
+- `/api/v1/version` and `/api/v1/hosts` with Bearer auth + per-key in-memory token bucket (100/min) + public envelope `{success, data, error, request_id}` + `X-RateLimit-*` headers.
+- Migration 0016: `api_keys` table, SHA-256 hex hash, unique index on hash for the verify hot path.
+
+### Notes
+
+- **RFC + reference docs land in v0.5.1** (`docs/rfcs/0002-public-api.md`, `docs/src/content/docs/reference/public-api.md` EN + VI, Grafana JSON datasource recipe).
+- Phase 7 reorder logged in ACTION_PLAN: Public API ships ahead of Cold tier because (a) it's a lower-risk expose layer over data we already have, (b) homelab fleets bounded by the v0.4.1 retention sweep don't need Cold tier yet. Cold tier becomes v0.6.0 if real demand for >7d queries surfaces via the new metrics endpoint.
+- Smoke test once shipped:
+  ```bash
+  curl -H "Authorization: Bearer lumk_..." \
+    "http://hub:8090/api/v1/hosts/lumen-hub/metrics?from=2026-06-01T00:00:00Z&to=2026-06-01T06:00:00Z&bucket=5m"
+  ```
+
 ## [0.4.11] - 2026-06-01
 
 Public Read API foundation (Phase 7 / v0.5.0, patch 1+2 of 4). API keys mint, list, revoke + the first two `/api/v1/*` endpoints with Bearer auth + rate limit.
