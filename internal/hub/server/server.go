@@ -19,6 +19,7 @@ import (
 	"github.com/quanla93/lumen/internal/hub/alerts"
 	"github.com/quanla93/lumen/internal/hub/auth"
 	"github.com/quanla93/lumen/internal/hub/hosts"
+	"github.com/quanla93/lumen/internal/hub/hubstats"
 	"github.com/quanla93/lumen/internal/hub/ingest"
 	"github.com/quanla93/lumen/internal/hub/install"
 	"github.com/quanla93/lumen/internal/hub/meta"
@@ -137,6 +138,14 @@ func Run(ctx context.Context, cfg Config) error {
 		Logger:          logger.With("subsys", "alerts"),
 	})
 	go alertsEngine.Run(ctx)
+	hubStatsHandler := &hubstats.Handler{
+		DB:        db,
+		Store:     st,
+		DBPath:    cfg.DBPath,
+		Version:   cfg.Version,
+		StartedAt: time.Now(),
+		Logger:    logger.With("subsys", "hubstats"),
+	}
 	requireSession := auth.RequireSession(cfg.Secret)
 
 	r := chi.NewRouter()
@@ -182,6 +191,8 @@ func Run(ctx context.Context, cfg Config) error {
 
 		r.Get("/api/settings", settingsHandlers.Get)
 		r.Put("/api/settings", settingsHandlers.Put)
+
+		r.Get("/api/admin/hub-stats", hubStatsHandler.ServeHTTP)
 
 		r.Get("/api/alerts/rules", alertsHandlers.ListRules)
 		r.Post("/api/alerts/rules", alertsHandlers.CreateRule)

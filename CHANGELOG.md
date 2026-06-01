@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.4.10] - 2026-06-01
+
+Hub self-visibility — a new **Settings → Hub status** tab.
+
+### Added
+
+- **`GET /api/admin/hub-stats` + Settings → Hub status panel.** Operator-only health snapshot that shows what only the hub can see: SQLite file + WAL size, per-table row counts (`snapshots`, `alert_events`, `notification_deliveries`, `hosts`, `alert_rules`, `notification_channels`), Go runtime counters (goroutines, heap, GC cycles), connected/registered agent count, and the notification queue depth (pending / inflight). Response cached 15s server-side; UI auto-refreshes every 30s. To monitor the hub host's CPU/RAM/disk, install the agent on it like any other host — this panel covers the gap an agent can't see. Bilingual (EN + VI).
+
 ## [0.4.9] - 2026-06-01
 
 Retention settings UX polish.

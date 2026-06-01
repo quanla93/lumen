@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useState } from "react";
-import { Server, User as UserIcon, Gauge, Archive, BarChart3, ScrollText } from "lucide-react";
+import { Server, User as UserIcon, Gauge, Archive, BarChart3, ScrollText, Activity } from "lucide-react";
 import {
   hostsApi,
   authApi,
   settingsApi,
+  hubStatsApi,
   ApiError,
   type Host,
   type User,
   type SettingsResponse,
+  type HubStatsResponse,
 } from "@/lib/api";
 import { relativeTime } from "@/lib/time";
 import { ErrorText, Field, FieldInput, GhostButton, PrimaryButton } from "@/components/CenterCard";
@@ -16,11 +18,18 @@ import { TokenReveal } from "@/components/TokenReveal";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { useI18n } from "@/i18n/useI18n";
 
-type SettingsTab = "hosts" | "account" | "runtime" | "retention" | "downsample" | "logs";
+type SettingsTab = "hosts" | "account" | "runtime" | "retention" | "downsample" | "logs" | "hub-status";
 
 const TABS: {
   id: SettingsTab;
-  labelKey: "settings.tabs.hosts" | "settings.tabs.account" | "settings.tabs.runtime" | "settings.tabs.retention" | "settings.tabs.downsample" | "settings.tabs.logs";
+  labelKey:
+    | "settings.tabs.hosts"
+    | "settings.tabs.account"
+    | "settings.tabs.runtime"
+    | "settings.tabs.retention"
+    | "settings.tabs.downsample"
+    | "settings.tabs.logs"
+    | "settings.tabs.hubStatus";
   icon: typeof Server;
 }[] = [
   { id: "hosts",      labelKey: "settings.tabs.hosts",      icon: Server },
@@ -29,6 +38,7 @@ const TABS: {
   { id: "retention",  labelKey: "settings.tabs.retention",  icon: Archive },
   { id: "downsample", labelKey: "settings.tabs.downsample", icon: BarChart3 },
   { id: "logs",       labelKey: "settings.tabs.logs",       icon: ScrollText },
+  { id: "hub-status", labelKey: "settings.tabs.hubStatus",  icon: Activity },
 ];
 
 export function Settings({ user }: { user: User }) {
@@ -69,6 +79,7 @@ export function Settings({ user }: { user: User }) {
           {tab === "retention"  && <RetentionSettings />}
           {tab === "downsample" && <DownsampleSettings />}
           {tab === "logs"       && <LogManagementSettings />}
+          {tab === "hub-status" && <HubStatusSettings />}
         </div>
       </div>
     </div>
@@ -890,6 +901,144 @@ function RetentionSettings() {
           </PrimaryButton>
         </form>
       )}
+    </div>
+  );
+}
+
+// ─── Hub status sub-tab ───────────────────────────────────────────────────
+
+function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes < 0) return "—";
+  if (bytes < 1024) return `${bytes} B`;
+  const units = ["KB", "MB", "GB", "TB"];
+  let v = bytes / 1024;
+  let i = 0;
+  while (v >= 1024 && i < units.length - 1) {
+    v /= 1024;
+    i++;
+  }
+  return `${v.toFixed(v >= 100 ? 0 : v >= 10 ? 1 : 2)} ${units[i]}`;
+}
+
+function formatUptime(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`;
+  const m = Math.floor(seconds / 60);
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ${m % 60}m`;
+  const d = Math.floor(h / 24);
+  return `${d}d ${h % 24}h`;
+}
+
+function HubStatusSettings() {
+  const { t } = useI18n();
+  const [data, setData] = useState<HubStatsResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const fetchOnce = () => {
+      hubStatsApi.get()
+        .then((s) => { if (!cancelled) { setData(s); setError(null); } })
+        .catch((err) => {
+          if (cancelled) return;
+          setError(err instanceof ApiError ? err.message : String(err));
+        });
+    };
+    fetchOnce();
+    const id = window.setInterval(fetchOnce, 30_000);
+    return () => { cancelled = true; window.clearInterval(id); };
+  }, []);
+
+  if (error && !data) {
+    return (
+      <div className="max-w-md space-y-4">
+        <h2 className="text-base font-semibold tracking-tight">{t("settings.hubStatusTitle")}</h2>
+        <ErrorText message={error} />
+      </div>
+    );
+  }
+  if (!data) {
+    return (
+      <div className="max-w-md space-y-4">
+        <h2 className="text-base font-semibold tracking-tight">{t("settings.hubStatusTitle")}</h2>
+        <p className="text-sm text-[color:var(--color-muted)]">{t("common.loading")}</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <section>
+        <h2 className="text-base font-semibold tracking-tight">{t("settings.hubStatusTitle")}</h2>
+        <p className="mt-1 text-sm text-[color:var(--color-muted)]">{t("settings.hubStatusDescription")}</p>
+      </section>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <SettingsPanel
+          title={t("settings.hubStatusHubTitle")}
+          description={t("settings.hubStatusHubDescription")}
+        >
+          <StatRow label={t("settings.hubStatusVersion")} value={data.version || "—"} />
+          <StatRow label={t("settings.hubStatusUptime")} value={formatUptime(data.uptime_seconds)} />
+          <StatRow
+            label={t("settings.hubStatusStartedAt")}
+            value={new Date(data.started_at).toLocaleString()}
+          />
+          <StatRow label={t("settings.hubStatusGoVersion")} value={data.runtime.go_version} />
+          <StatRow label={t("settings.hubStatusGoroutines")} value={data.runtime.goroutines.toLocaleString()} />
+          <StatRow label={t("settings.hubStatusHeap")} value={formatBytes(data.runtime.heap_alloc_bytes)} />
+          <StatRow label={t("settings.hubStatusNumGC")} value={data.runtime.num_gc.toLocaleString()} />
+        </SettingsPanel>
+
+        <SettingsPanel
+          title={t("settings.hubStatusStorageTitle")}
+          description={t("settings.hubStatusStorageDescription")}
+        >
+          <StatRow label={t("settings.hubStatusDBPath")} value={data.storage.db_path} mono />
+          <StatRow label={t("settings.hubStatusDBSize")} value={formatBytes(data.storage.db_size_bytes)} />
+          {data.storage.wal_size_bytes > 0 && (
+            <StatRow label={t("settings.hubStatusWALSize")} value={formatBytes(data.storage.wal_size_bytes)} />
+          )}
+          <div className="mt-3 border-t border-[color:var(--color-border)] pt-3">
+            <p className="mb-2 text-xs uppercase tracking-wide text-[color:var(--color-muted)]">
+              {t("settings.hubStatusRowsLabel")}
+            </p>
+            {Object.entries(data.storage.rows).map(([table, count]) => (
+              <StatRow key={table} label={table} value={count.toLocaleString()} mono />
+            ))}
+          </div>
+        </SettingsPanel>
+
+        <SettingsPanel
+          title={t("settings.hubStatusAgentsTitle")}
+          description={t("settings.hubStatusAgentsDescription")}
+        >
+          <StatRow
+            label={t("settings.hubStatusAgentsConnected")}
+            value={`${data.agents.connected.toLocaleString()} / ${data.agents.registered.toLocaleString()}`}
+          />
+        </SettingsPanel>
+
+        <SettingsPanel
+          title={t("settings.hubStatusDeliveriesTitle")}
+          description={t("settings.hubStatusDeliveriesDescription")}
+        >
+          <StatRow label={t("settings.hubStatusDeliveriesPending")} value={data.deliveries.pending.toLocaleString()} />
+          <StatRow label={t("settings.hubStatusDeliveriesInflight")} value={data.deliveries.inflight.toLocaleString()} />
+        </SettingsPanel>
+      </div>
+    </div>
+  );
+}
+
+function StatRow({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <div className="flex items-baseline justify-between gap-3 py-1 text-sm">
+      <span className="text-[color:var(--color-muted)]">{label}</span>
+      <span className={mono ? "font-mono text-xs text-[color:var(--color-fg)] break-all text-right" : "text-[color:var(--color-fg)]"}>
+        {value}
+      </span>
     </div>
   );
 }

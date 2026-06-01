@@ -171,6 +171,36 @@ export const settingsApi = {
     }),
 };
 
+export type HubStatsResponse = {
+  version: string;
+  started_at: string;
+  uptime_seconds: number;
+  storage: {
+    db_path: string;
+    db_size_bytes: number;
+    wal_size_bytes: number;
+    rows: Record<string, number>;
+  };
+  runtime: {
+    go_version: string;
+    goroutines: number;
+    heap_alloc_bytes: number;
+    num_gc: number;
+  };
+  agents: {
+    connected: number;
+    registered: number;
+  };
+  deliveries: {
+    pending: number;
+    inflight: number;
+  };
+};
+
+export const hubStatsApi = {
+  get: () => api<HubStatsResponse>("/api/admin/hub-stats"),
+};
+
 // ----- Alerts (Phase 6 / RFC 0001) -----
 
 export type AlertMetric =
