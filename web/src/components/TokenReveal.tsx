@@ -91,7 +91,7 @@ sudo docker compose logs -f
 sudo docker compose pull
 sudo docker compose up -d`;
 
-  async function copy(text: string, which: "token" | "compose" | "commands" | "binary") {
+  async function copy(text: string, which: "token" | "compose" | "commands" | "binary" | "binaryGithub") {
     if (await copyToClipboard(text)) {
       setCopied(which);
       setTimeout(() => setCopied(null), 1500);
