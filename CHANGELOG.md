@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.4.8] - 2026-06-01
+
+Hotfix for v0.4.7 — `/install.sh` returned 500 on the hub.
+
+### Fixed
+
+- **`/install.sh` endpoint serves the script again.** A code comment in `scripts/install-agent.sh` contained a stray literal `{{` (talking *about* the Go template delimiter); `text/template.ParseFiles` doesn't care that it's inside a `#`-prefixed shell comment and tripped with `unterminated raw quoted string`. Every `curl http://<hub>/install.sh` came back 500. Comment rewritten without the literal delimiter; renders fine now.
+
+### Added (also confirms in-app dialog from this round)
+
+- **In-app confirm dialog replaces `window.confirm()` across six callsites.** Rotate token, delete host (Settings); delete rule, delete channel (Alerts); delete tag, delete value (Tags) — all now show a Radix `AlertDialog` styled to match the rest of the UI, with per-flow Title + body + destructive-red confirm button. New `useConfirm()` hook in `components/ConfirmDialog.tsx` so future destructive flows can swap in with one line.
+
 ## [0.4.7] - 2026-06-01
 
 No-Docker install path, virt-aware per-core CPU, silence UX bigger.
