@@ -61,9 +61,13 @@ const EVENT_POLL_MS = 15_000;
 // silence durations; clicking auto-resolves the firing event on the next
 // engine tick (silence suppresses future fires).
 const SILENCE_PRESETS: { seconds: number; labelKey: TranslationKey }[] = [
-  { seconds: 15 * 60,     labelKey: "alerts.silenceFor15m" },
-  { seconds: 60 * 60,     labelKey: "alerts.silenceFor1h"  },
-  { seconds: 4 * 60 * 60, labelKey: "alerts.silenceFor4h"  },
+  { seconds: 15 * 60,           labelKey: "alerts.silenceFor15m"     },
+  { seconds: 60 * 60,           labelKey: "alerts.silenceFor1h"      },
+  { seconds: 4 * 60 * 60,       labelKey: "alerts.silenceFor4h"      },
+  // "Until I lift" uses the backend's 1-year cap as a practical
+  // sentinel — long enough to feel indefinite for homelab maintenance,
+  // short enough that an abandoned silence eventually self-clears.
+  { seconds: 365 * 24 * 60 * 60, labelKey: "alerts.silenceUntilLift" },
 ];
 
 export function Alerts() {

@@ -1,4 +1,4 @@
-import { ArrowDown, ArrowUp, Cpu, MemoryStick, HardDrive } from "lucide-react";
+import { ArrowDown, ArrowUp, Cpu, MemoryStick, HardDrive, ArrowUpCircle, VolumeX } from "lucide-react";
 import { cpuTone, TONE_CLASS, widthClass, type StatusTone } from "@/lib/status";
 import { isStale, relativeTime, staleAfterForIntervalMs } from "@/lib/time";
 import { Sparkline } from "@/components/Sparkline";
@@ -73,12 +73,14 @@ export function HostCard({
   now,
   agentInterval,
   latestAgentVersion,
+  silencedUntil,
   onSelect,
 }: {
   snapshot: Snapshot;
   now: number;
   agentInterval?: string;
   latestAgentVersion?: string | null;
+  silencedUntil?: string | null;
   onSelect?: (hostName: string) => void;
 }) {
   const { locale, t } = useI18n();
@@ -88,6 +90,9 @@ export function HostCard({
     snapshot.system?.agent_version,
     latestAgentVersion ?? undefined,
   );
+  // Silence is operator state — the backend only emits silenced_until
+  // when it's in the future, but guard anyway in case of clock drift.
+  const isSilenced = !!silencedUntil && new Date(silencedUntil).getTime() > now;
 
   const rows: MetricRow[] = [
     metricRow(t("host.cpu"),  snapshot.cpu_pct,  stale, Cpu),
@@ -139,6 +144,16 @@ export function HostCard({
             <span className="truncate text-lg font-semibold tracking-tight">
               {snapshot.host}
             </span>
+            {isSilenced && (
+              <VolumeX
+                size={14}
+                strokeWidth={1.75}
+                className="shrink-0 text-[color:var(--color-muted)]"
+                aria-label={t("host.silencedTitle", { time: silencedUntil ?? "" })}
+              >
+                <title>{t("host.silencedTitle", { time: silencedUntil ?? "" })}</title>
+              </VolumeX>
+            )}
           </div>
           {meta && (
             <div className="mt-1 truncate lumen-num text-[11px] text-[color:var(--color-muted)]">
@@ -148,9 +163,10 @@ export function HostCard({
         </div>
         {updateAvailable && (
           <span
-            className="lumen-bg-warn-soft rounded-full border border-[color:var(--color-warn)] px-2 py-0.5 text-[10px] font-medium text-[color:var(--color-warn)]"
+            className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full bg-[color-mix(in_oklch,var(--color-warn)_14%,var(--color-card))] px-2 py-0.5 text-[10px] font-medium text-[color:var(--color-warn)] ring-1 ring-[color:var(--color-warn)]/35"
             title={t("host.updateAvailableTitle", { version: latestAgentVersion ?? "" })}
           >
+            <ArrowUpCircle size={11} strokeWidth={2.25} />
             {t("host.updateBadge")}
           </span>
         )}

@@ -284,9 +284,10 @@ func (h *Handlers) Rotate(w http.ResponseWriter, r *http.Request) {
 // moment the container restarts).
 //
 // Pass seconds=0 (or call DELETE) to clear the silence immediately.
-// Maximum window is 7 days — past that, "you forgot to unsilence" is
-// the more likely failure mode than "the operator wanted alerts off
-// for two weeks".
+// Maximum window is 1 year — long enough to act as "until I lift it"
+// for homelab maintenance, short enough that an abandoned silence
+// auto-expires before drifting into a "why didn't we get paged?"
+// post-mortem.
 func (h *Handlers) Silence(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 	if err != nil {
@@ -304,9 +305,9 @@ func (h *Handlers) Silence(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusBadRequest, "seconds must be >= 0")
 		return
 	}
-	const maxSilenceSeconds = int64(7 * 24 * 60 * 60)
+	const maxSilenceSeconds = int64(365 * 24 * 60 * 60)
 	if req.Seconds > maxSilenceSeconds {
-		writeJSONError(w, http.StatusBadRequest, "silence window too long (max 7 days)")
+		writeJSONError(w, http.StatusBadRequest, "silence window too long (max 1 year)")
 		return
 	}
 	var until time.Time

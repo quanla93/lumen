@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Server, AlertTriangle, Cpu, MemoryStick, HardDrive, Settings2, Search } from "lucide-react";
 import { HostCard, type Snapshot } from "@/components/HostCard";
 import { AppButton, EmptyState, Popover, StatusPill, TooltipProvider } from "@/components/ui";
-import { settingsApi, versionApi } from "@/lib/api";
+import { hostsApi, settingsApi, versionApi } from "@/lib/api";
 import { cpuTone, TONE_CLASS, type StatusTone } from "@/lib/status";
 import { isStale, staleAfterForIntervalMs } from "@/lib/time";
 import { useStreamConnection, type WsStatus } from "@/lib/useStreamConnection";
@@ -24,6 +24,7 @@ export function Dashboard({
   const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
   const [agentInterval, setAgentInterval] = useState("5s");
   const [latestAgentVersion, setLatestAgentVersion] = useState<string | null>(null);
+  const [silencedByHost, setSilencedByHost] = useState<Record<string, string | null>>({});
   const [query, setQuery] = useState("");
   // `now` ticks every second so relative timestamps refresh without a
   // server push.
@@ -49,6 +50,26 @@ export function Dashboard({
   useEffect(() => {
     const tick = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(tick);
+  }, []);
+
+  // Poll the host list so the dashboard can flag silenced hosts. The
+  // snapshot stream carries live metrics but not silence state — that
+  // only changes on operator action, so a 30s poll is plenty.
+  useEffect(() => {
+    let cancelled = false;
+    const refresh = () => {
+      hostsApi.list()
+        .then((hs) => {
+          if (cancelled) return;
+          const map: Record<string, string | null> = {};
+          for (const h of hs) map[h.name] = h.silenced_until ?? null;
+          setSilencedByHost(map);
+        })
+        .catch(() => {});
+    };
+    refresh();
+    const id = window.setInterval(refresh, 30_000);
+    return () => { cancelled = true; window.clearInterval(id); };
   }, []);
 
   const wsUrl = useMemo(() => {
@@ -154,7 +175,15 @@ export function Dashboard({
             ) : (
               <div className="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(320px,1fr))]">
                 {filtered.map((s) => (
-                  <HostCard key={s.host} snapshot={s} now={now} agentInterval={agentInterval} latestAgentVersion={latestAgentVersion} onSelect={onSelectHost} />
+                  <HostCard
+                    key={s.host}
+                    snapshot={s}
+                    now={now}
+                    agentInterval={agentInterval}
+                    latestAgentVersion={latestAgentVersion}
+                    silencedUntil={silencedByHost[s.host] ?? null}
+                    onSelect={onSelectHost}
+                  />
                 ))}
               </div>
             )}

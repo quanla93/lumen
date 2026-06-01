@@ -9,7 +9,7 @@ import {
   type MetricsResponse,
   type MetricPoint,
 } from "@/lib/api";
-import { ArrowLeft, Clock, Cpu, MemoryStick, HardDrive, Activity, Network, Database, Thermometer, Boxes, Settings2 } from "lucide-react";
+import { ArrowLeft, Clock, Cpu, MemoryStick, HardDrive, Activity, Network, Database, Thermometer, Boxes, Settings2, VolumeX } from "lucide-react";
 import { UPlotChart } from "@/components/UPlotChart";
 import { AppButton, EmptyState, Popover, SegmentedControl, Surface } from "@/components/ui";
 import type { Snapshot, ContainerInfo } from "@/components/HostCard";
@@ -411,9 +411,20 @@ function HostSummaryHeader({
       </button>
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div className="min-w-0">
-          <h2 className="truncate text-3xl font-bold tracking-tight text-[color:var(--color-fg)]">
-            {host?.name ?? live?.host ?? t("common.loading")}
-          </h2>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+            <h2 className="truncate text-3xl font-bold tracking-tight text-[color:var(--color-fg)]">
+              {host?.name ?? live?.host ?? t("common.loading")}
+            </h2>
+            {host?.silenced_until && (
+              <span
+                className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-[color-mix(in_oklch,var(--color-warn)_14%,var(--color-card))] px-2.5 py-1 text-xs font-medium text-[color:var(--color-warn)] ring-1 ring-[color:var(--color-warn)]/35"
+                title={t("host.silenceActive", { until: new Date(host.silenced_until).toLocaleString() })}
+              >
+                <VolumeX size={13} strokeWidth={2} />
+                {t("host.silencedBanner")}
+              </span>
+            )}
+          </div>
           <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-[color:var(--color-muted)]">
             <MetaItem icon={<StatusIcon tone={status.tone} />} text={status.label} strong />
             <SystemMetaLine system={system} lastSeen={lastSeen} now={now} locale={locale} latestAgentVersion={latestAgentVersion} t={t} />
@@ -702,9 +713,10 @@ function ContainersTable({ containers, t }: { containers: ContainerInfo[]; t: Re
 // bounded window — covers planned maintenance like `docker compose pull
 // && up -d` that briefly trips the offline rule. Backend stores
 // silenced_until as a unix timestamp; FE renders the absolute time and
-// offers a "Lift silence" button while it's active. Max window 7 days
-// (server-enforced — past that, "forgot to unsilence" beats "wanted off
-// for two weeks" as the failure mode).
+// offers a "Lift silence" button while it's active. Max window 1 year
+// (server-enforced — "Until I lift it" sends the cap as a practical
+// indefinite, but it self-expires so an abandoned silence eventually
+// surfaces alerts again instead of silently masking real failures).
 function SilencePanel({
   host,
   onChange,
@@ -778,6 +790,7 @@ function SilencePanel({
               <option value={60 * 60}>{t("host.silenceDur1h")}</option>
               <option value={4 * 60 * 60}>{t("host.silenceDur4h")}</option>
               <option value={24 * 60 * 60}>{t("host.silenceDur24h")}</option>
+              <option value={365 * 24 * 60 * 60}>{t("host.silenceDurUntilLift")}</option>
             </select>
             <button
               type="button"
