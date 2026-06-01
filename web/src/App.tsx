@@ -8,6 +8,8 @@ import { HostDetail } from "@/components/HostDetail";
 import { Settings } from "@/components/Settings";
 import { Alerts } from "@/components/Alerts";
 import { CenterCard } from "@/components/CenterCard";
+import { PrefsApply } from "@/components/PrefsApply";
+import { PrefsProvider } from "@/lib/userPrefs";
 import { useI18n } from "@/i18n/useI18n";
 
 type View =
@@ -72,15 +74,18 @@ export default function App() {
         body = <Settings user={view.user} />;
       }
       return (
-        <AppShell
-          user={view.user}
-          tab={view.tab}
-          onTabChange={onTabChange}
-          onHome={onHome}
-          onLogout={() => setView({ kind: "login" })}
-        >
-          {body}
-        </AppShell>
+        <PrefsProvider>
+          <PrefsApply />
+          <AppShell
+            user={view.user}
+            tab={view.tab}
+            onTabChange={onTabChange}
+            onHome={onHome}
+            onLogout={() => setView({ kind: "login" })}
+          >
+            {body}
+          </AppShell>
+        </PrefsProvider>
       );
     }
   }

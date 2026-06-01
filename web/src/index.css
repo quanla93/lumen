@@ -169,5 +169,44 @@
     color: var(--color-fg);
     font-weight: 600;
   }
+
+  /* RFC 0004 — Host detail dashboard builder. The grid + items rely on
+   * react-grid-layout's own CSS (imported in main.tsx) for the absolute
+   * positioning; these rules add Lumen polish (drag affordance, dashed
+   * outline while editing, smooth resize handle) without overriding the
+   * library's positional math. */
+  .lumen-host-grid {
+    position: relative;
+  }
+  .lumen-host-grid-item {
+    height: 100%;
+  }
+  .lumen-host-grid--editing .react-grid-item {
+    outline: 1px dashed color-mix(in oklch, var(--lumen-teal) 55%, transparent);
+    outline-offset: -1px;
+    border-radius: 0.5rem;
+  }
+  .lumen-host-grid .react-grid-item.react-grid-placeholder {
+    background: color-mix(in oklch, var(--lumen-teal) 28%, transparent);
+    border: 1px dashed var(--lumen-teal);
+    border-radius: 0.5rem;
+    opacity: 1;
+  }
+  .lumen-host-grid--editing .chart-drag-handle {
+    cursor: grab;
+  }
+  .lumen-host-grid--editing .react-grid-item.react-draggable-dragging .chart-drag-handle {
+    cursor: grabbing;
+  }
+  .lumen-host-grid .react-resizable-handle {
+    opacity: 0;
+    transition: opacity 120ms ease-out;
+  }
+  .lumen-host-grid--editing .react-resizable-handle {
+    opacity: 0.6;
+  }
+  .lumen-host-grid--editing .react-resizable-handle:hover {
+    opacity: 1;
+  }
 }
 

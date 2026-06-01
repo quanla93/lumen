@@ -11,7 +11,7 @@ metrics — designed to run comfortably on a Raspberry Pi.
 [Documentation](docs/src/content/docs/getting-started/overview.md) ·
 [Roadmap](ACTION_PLAN.md)
 
-> ⚠️ **Pre-1.0.** Latest tag is **v0.5.0**. Breaking changes are allowed in
+> ⚠️ **Pre-1.0.** Latest tag is **v0.6.0**. Breaking changes are allowed in
 > minor releases until v1.0. The project is staged at
 > [`quanla93/lumen`](https://github.com/quanla93/lumen); the `quanla.org`
 > site, Discord, and any hosted installer URLs are placeholders and don't
@@ -48,7 +48,7 @@ Each line is tagged **✅ shipped** or **🛣️ roadmap** so you know what work
 
 So you can decide quickly if this is for you:
 
-- ❌ Not a Grafana replacement — no dashboard builder, fixed views only.
+- ❌ Not a Grafana replacement — no query editor, no user-defined metrics, no arbitrary panels. The **Host detail** page supports drag/resize over a curated chart catalog (10 entries), but the **Dashboard host grid** stays fixed views.
 - ❌ Not for Kubernetes / microservices observability — use Prometheus + Grafana.
 - ❌ Not multi-tenant or enterprise — single admin, optional read-only users.
 - ❌ Not a log aggregator — minimal log tail viewer only (no Loki/ELK).

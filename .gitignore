@@ -73,3 +73,7 @@ tmp/
 *.tmp
 .screenshots/
 /docs/dist/
+
+# Local tooling artifacts (per-user, not source)
+.omc/
+.playwright-mcp/

@@ -6,6 +6,40 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-06-01
+
+**Level 3 personalization + Host detail dashboard builder.** RFC 0002 PR2 ([`docs/rfcs/0002-ui-polish-and-personalization.md`](docs/rfcs/0002-ui-polish-and-personalization.md)) moves per-user prefs off `localStorage` onto the hub. RFC 0004 ([`docs/rfcs/0004-host-detail-builder.md`](docs/rfcs/0004-host-detail-builder.md)) turns the per-host detail page into a drag/resize/add/remove grid — operators can shape every host's view to the metrics they actually care about, persistent per-user.
+
+### Added — personalization
+
+- **`Settings → Display` tab**: theme (System / Light / Dark), language (EN / VI), units (Auto / Binary / Decimal), reduce-motion (System / On / Off). Auto-saved on each change. Per-user, server-stored — synced across browsers.
+- **Dashboard customize popover**: sort by Name / Hottest / Last seen with asc/desc direction, hide hosts from a dropdown + restore from the hidden list. Saved views are schema-reserved but UI lands in a follow-up patch.
+- **`GET/PUT /api/me/prefs`** + **`/api/me/prefs/{dashboard,display}`**: session-protected per-user key/value JSON blobs. Server validates shape (enum guards, schemaVersion=1, view count cap = 5, name length 1..32). Migration 0017 with composite PK `(user_id, key)`.
+
+### Added — Host detail dashboard builder (RFC 0004)
+
+- **Edit Layout mode** on Host detail: click toolbar button to enter, drag any chart by its header, resize from the bottom-right corner, remove with the × on each card. Click Done to exit.
+- **Add chart picker**: toggle-switch list of all available charts (cpu, ram, swap, disk, disk-io, network, load, temperature). Click any switch to show/hide that chart.
+- **Auto-arrange**: one-click compaction that re-flows the current arrangement leftward + upward (greedy first-fit) so gaps from drag-around vanish.
+- **Reset to defaults**: drops the saved layout for this host and falls back to the catalog defaults.
+- **Smart placement**: removing a chart auto-heals the gap; adding a chart lands it in the first empty slot.
+- **Per-user, per-host persistence**: layouts saved into `dashboard_prefs.hostDetailLayouts[hostName]`. Server caps the blob at 50 hosts × 20 charts/host and validates every chart ID against the catalog whitelist.
+- **Per-core CPU as live chart**: replaced the per-core tile strip with a uPlot multi-line live ring buffer (last 10 min, sampled at 5s). OKLCH golden-angle hue rotation so cores stay visually distinct without one looking "hotter" by colour. Legend hides above 8 cores; hover tooltip lists each.
+- **Swap chart**: dedicated time-series for `swap_pct` next to Disk on the secondary row. Already in the historical schema, just wasn't surfaced.
+
+### Changed
+
+- Top-bar `ThemeToggle` / `LanguageToggle` now write through `usePrefs` instead of `localStorage`. First load after upgrade auto-seeds display prefs from any pre-existing `lumen.theme` / `lumen.locale` so users don't lose their pick.
+- `PrefsApply` bridges `display.theme` to the `<html>` `.dark` class and live-tracks the OS color-scheme media query when `theme: 'system'`. `display.reduceMotion` sets `data-reduce-motion` on `<html>` so future stylesheet rules can opt in independently of the OS media query.
+
+### Notes
+
+- The "NO drag-drop grid" stance from earlier ranges was lifted only for **Host detail**. Dashboard (host grid) stays a fixed view — personalization there is sort + hide, not free placement.
+- Per-core CPU and Containers panels render outside the builder grid for v0.6.0 (live ring buffer + live table — different data lifecycles). Catalog already lists them so a future patch can pull them in.
+- Saved views deferred to v0.6.x (schema reserved, UI is the only missing piece).
+- Density toggle (`comfortable` / `compact`) reserved in the schema but UI is post-v0.6.
+- Host grid virtualization (RFC 0002 N>50 cutover) deferred — homelab fleets are small enough that `@tanstack/react-virtual` is wasted complexity for now. Ship when an operator complains.
+
 ## [0.5.0] - 2026-06-01
 
 **Phase 7 ships its first slice — the Public Read API is live.** Mint a bearer key in Settings → API Keys, point Grafana / n8n / scripts at `/api/v1/*`, integrate without touching the admin session. v0.4.11 introduced the API Keys + first two endpoints; this release completes the read surface.

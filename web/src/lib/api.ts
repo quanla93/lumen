@@ -226,6 +226,94 @@ export const apiKeysApi = {
     api<void>(`/api/apikeys/${encodeURIComponent(id)}`, { method: "DELETE" }),
 };
 
+// ─── User prefs (RFC 0002 PR2 Level 3 personalization) ──────────────────
+
+export type SortBy = "name" | "hottest" | "last-seen" | "tag";
+export type SortDir = "asc" | "desc";
+export type DefaultMetric = "all" | "cpu" | "ram" | "disk";
+export type Theme = "system" | "light" | "dark";
+export type UnitsMode = "auto" | "binary" | "decimal";
+export type ReduceMotion = "system" | "on" | "off";
+export type Density = "comfortable" | "compact";
+
+export type SavedView = {
+  id: string;
+  name: string;
+  sortBy: SortBy;
+  sortDir: SortDir;
+  defaultMetric: DefaultMetric;
+  hiddenHostIds: string[];
+  tagFilter?: string[];
+};
+
+export type ChartLayoutItem = {
+  i: string;   // chart catalog ID (e.g. "cpu", "ram", "swap")
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+};
+
+export type DashboardPrefs = {
+  schemaVersion: 1;
+  sortBy: SortBy;
+  sortDir: SortDir;
+  defaultMetric: DefaultMetric;
+  hiddenHostIds: string[];
+  activeViewId: string | null;
+  views: SavedView[];
+  // Per-host chart layout for the Host detail page. Key = host name.
+  // Server caps map size at 50 entries to bound the JSON blob.
+  hostDetailLayouts?: Record<string, ChartLayoutItem[]>;
+};
+
+export type DisplayPrefs = {
+  schemaVersion: 1;
+  theme: Theme;
+  language: "en" | "vi";
+  units: UnitsMode;
+  reduceMotion: ReduceMotion;
+  density: Density;
+};
+
+export type UserPrefsResponse = {
+  dashboard: DashboardPrefs | null;
+  display: DisplayPrefs | null;
+};
+
+export const DEFAULT_DASHBOARD_PREFS: DashboardPrefs = {
+  schemaVersion: 1,
+  sortBy: "name",
+  sortDir: "asc",
+  defaultMetric: "all",
+  hiddenHostIds: [],
+  activeViewId: null,
+  views: [],
+};
+
+export const DEFAULT_DISPLAY_PREFS: DisplayPrefs = {
+  schemaVersion: 1,
+  theme: "system",
+  language: "en",
+  units: "auto",
+  reduceMotion: "system",
+  density: "comfortable",
+};
+
+export const userPrefsApi = {
+  get: () => api<UserPrefsResponse>("/api/me/prefs"),
+  putDashboard: (prefs: DashboardPrefs) =>
+    api<void>("/api/me/prefs/dashboard", {
+      method: "PUT",
+      body: JSON.stringify(prefs),
+    }),
+  putDisplay: (prefs: DisplayPrefs) =>
+    api<void>("/api/me/prefs/display", {
+      method: "PUT",
+      body: JSON.stringify(prefs),
+    }),
+};
+
 // ----- Alerts (Phase 6 / RFC 0001) -----
 
 export type AlertMetric =

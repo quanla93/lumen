@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
-import { Server, AlertTriangle, Cpu, MemoryStick, HardDrive, Settings2, Search } from "lucide-react";
+import { Server, AlertTriangle, Cpu, MemoryStick, HardDrive, Settings2, Search, EyeOff, Eye } from "lucide-react";
 import { HostCard, type Snapshot } from "@/components/HostCard";
-import { AppButton, EmptyState, Popover, StatusPill, TooltipProvider } from "@/components/ui";
-import { hostsApi, settingsApi, versionApi } from "@/lib/api";
+import { AppButton, EmptyState, IconButton, Popover, SegmentedControl, StatusPill, TooltipProvider } from "@/components/ui";
+import { hostsApi, settingsApi, versionApi, type SortBy, type SortDir } from "@/lib/api";
 import { cpuTone, TONE_CLASS, type StatusTone } from "@/lib/status";
 import { isStale, staleAfterForIntervalMs } from "@/lib/time";
 import { useStreamConnection, type WsStatus } from "@/lib/useStreamConnection";
+import { usePrefs } from "@/lib/userPrefs";
 import { useI18n } from "@/i18n/useI18n";
 
 const STATUS_META: Record<WsStatus, { tone: StatusTone; labelKey: "dashboard.wsConnected" | "dashboard.wsConnecting" | "dashboard.wsDisconnected" | "dashboard.wsError" }> = {
@@ -83,10 +84,16 @@ export function Dashboard({
   });
 
   const meta = STATUS_META[status];
-  const sorted = useMemo(
-    () => [...snapshots].sort((a, b) => a.host.localeCompare(b.host)),
-    [snapshots],
-  );
+  const { dashboard: dashPrefs } = usePrefs();
+
+  // Sort + hide pipeline. Snapshot.host is the stable identifier (the
+  // public API uses the same string), so hiddenHostIds stores host
+  // names directly — no UUID indirection on the wire.
+  const sorted = useMemo(() => {
+    const hiddenSet = new Set(dashPrefs.hiddenHostIds);
+    const visible = snapshots.filter((s) => !hiddenSet.has(s.host));
+    return sortSnapshots(visible, dashPrefs.sortBy, dashPrefs.sortDir);
+  }, [snapshots, dashPrefs.hiddenHostIds, dashPrefs.sortBy, dashPrefs.sortDir]);
   const hostLabel = sorted.length === 1 ? t("dashboard.hostSingular") : t("dashboard.hostPlural");
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -136,69 +143,88 @@ export function Dashboard({
         />
       </div>
 
-      {sorted.length === 0 ? (
-        <EmptyState
-          title={t("dashboard.noHostDataTitle")}
-          detail={t("dashboard.noHostDataDescription")}
-        />
-      ) : (
-        <TooltipProvider>
-          <section>
-            <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <h3 className="text-sm font-medium text-[color:var(--color-muted)]">
-                {t("dashboard.monitoredHosts", { filtered: filtered.length, total: sorted.length, hostLabel })}
-              </h3>
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                <label className="relative w-full sm:w-72">
-                  <span className="sr-only">{t("dashboard.searchHostsLabel")}</span>
-                  <Search
-                    size={14}
-                    strokeWidth={1.75}
-                    className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[color:var(--color-muted)]"
-                  />
-                  <input
-                    value={query}
-                    onChange={(e) => setQuery(e.target.value)}
-                    placeholder={t("dashboard.searchHostsPlaceholder")}
-                    className="w-full rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-card)] pl-9 pr-3 py-2 text-sm outline-none transition-colors placeholder:text-[color:var(--color-muted)] focus:border-[color:var(--lumen-teal)] focus:ring-2 focus:ring-[color:var(--lumen-teal)]/30"
-                  />
-                </label>
-                <CustomizeButton />
-              </div>
+      <TooltipProvider>
+        <section>
+          <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <h3 className="text-sm font-medium text-[color:var(--color-muted)]">
+              {snapshots.length === 0
+                ? t("dashboard.monitoredHostsEmpty")
+                : t("dashboard.monitoredHosts", { filtered: filtered.length, total: sorted.length, hostLabel })}
+            </h3>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <label className="relative w-full sm:w-72">
+                <span className="sr-only">{t("dashboard.searchHostsLabel")}</span>
+                <Search
+                  size={14}
+                  strokeWidth={1.75}
+                  className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[color:var(--color-muted)]"
+                />
+                <input
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder={t("dashboard.searchHostsPlaceholder")}
+                  className="w-full rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-card)] pl-9 pr-3 py-2 text-sm outline-none transition-colors placeholder:text-[color:var(--color-muted)] focus:border-[color:var(--lumen-teal)] focus:ring-2 focus:ring-[color:var(--lumen-teal)]/30"
+                />
+              </label>
+              <CustomizeButton snapshots={snapshots} />
             </div>
-            {filtered.length === 0 ? (
-              <EmptyState
-                title={t("dashboard.noMatchingHostsTitle")}
-                detail={t("dashboard.noMatchingHostsDescription", { query })}
-                className="p-8"
-              />
-            ) : (
-              <div className="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(320px,1fr))]">
-                {filtered.map((s) => (
-                  <HostCard
-                    key={s.host}
-                    snapshot={s}
-                    now={now}
-                    agentInterval={agentInterval}
-                    latestAgentVersion={latestAgentVersion}
-                    silencedUntil={silencedByHost[s.host] ?? null}
-                    onSelect={onSelectHost}
-                  />
-                ))}
-              </div>
-            )}
-          </section>
-        </TooltipProvider>
-      )}
+          </div>
+          {snapshots.length === 0 ? (
+            <EmptyState
+              title={t("dashboard.noHostDataTitle")}
+              detail={t("dashboard.noHostDataDescription")}
+            />
+          ) : sorted.length === 0 ? (
+            <EmptyState
+              title={t("dashboard.allHiddenTitle")}
+              detail={t("dashboard.allHiddenDescription", { count: dashPrefs.hiddenHostIds.length })}
+              className="p-8"
+            />
+          ) : filtered.length === 0 ? (
+            <EmptyState
+              title={t("dashboard.noMatchingHostsTitle")}
+              detail={t("dashboard.noMatchingHostsDescription", { query })}
+              className="p-8"
+            />
+          ) : (
+            <div className="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(320px,1fr))]">
+              {filtered.map((s) => (
+                <HostCard
+                  key={s.host}
+                  snapshot={s}
+                  now={now}
+                  agentInterval={agentInterval}
+                  latestAgentVersion={latestAgentVersion}
+                  silencedUntil={silencedByHost[s.host] ?? null}
+                  onSelect={onSelectHost}
+                />
+              ))}
+            </div>
+          )}
+        </section>
+      </TooltipProvider>
     </div>
   );
 }
 
-// PR1: Customize button is a disabled stub — Popover opens with a
-// "coming in next release" notice. PR2 wires sort/hide/views to
-// the user_prefs backend.
-function CustomizeButton() {
+// CustomizeButton wires Dashboard prefs (sort + hidden hosts) through
+// usePrefs. Saved views are a Phase 7+ follow-up — schema is reserved
+// but no UI yet.
+function CustomizeButton({ snapshots }: { snapshots: Snapshot[] }) {
   const { t } = useI18n();
+  const { dashboard, updateDashboard } = usePrefs();
+
+  const hiddenSet = new Set(dashboard.hiddenHostIds);
+  const visibleNames = snapshots.map((s) => s.host).filter((n) => !hiddenSet.has(n));
+  // Hidden list may include hosts that aren't in the current snapshot
+  // (deleted, offline beyond store TTL). Show all so the operator can
+  // still un-hide them without re-adding the host first.
+  const hiddenNames = [...dashboard.hiddenHostIds];
+
+  function patch(next: Partial<typeof dashboard>) {
+    updateDashboard({ ...dashboard, ...next }).catch(() => {});
+  }
+
   return (
     <Popover
       trigger={
@@ -208,21 +234,105 @@ function CustomizeButton() {
         </AppButton>
       }
     >
-      <div className="space-y-3">
+      <div className="w-72 space-y-4">
         <div>
           <div className="text-sm font-semibold">{t("dashboard.customize")}</div>
-          <p className="mt-1 text-xs text-[color:var(--color-muted)]">
-            {t("dashboard.customizeStub")}
-          </p>
         </div>
-        <ul className="space-y-1.5 text-xs text-[color:var(--color-muted)]">
-          <li>· {t("dashboard.customizeSortBy")}</li>
-          <li>· {t("dashboard.customizeHide")}</li>
-          <li>· {t("dashboard.customizeViews")}</li>
-        </ul>
+
+        <div className="space-y-1.5">
+          <label className="block text-xs font-medium text-[color:var(--color-muted)]">
+            {t("dashboard.customizeSortBy")}
+          </label>
+          <SegmentedControl<SortBy>
+            ariaLabel={t("dashboard.customizeSortBy")}
+            value={dashboard.sortBy === "tag" ? "name" : dashboard.sortBy}
+            size="sm"
+            onChange={(v) => patch({ sortBy: v })}
+            options={[
+              { value: "name",      label: t("dashboard.customizeSortName") },
+              { value: "hottest",   label: t("dashboard.customizeSortHottest") },
+              { value: "last-seen", label: t("dashboard.customizeSortLastSeen") },
+            ]}
+          />
+          <SegmentedControl<SortDir>
+            ariaLabel={t("dashboard.customizeSortDir")}
+            value={dashboard.sortDir}
+            size="sm"
+            onChange={(v) => patch({ sortDir: v })}
+            options={[
+              { value: "asc",  label: "↑" },
+              { value: "desc", label: "↓" },
+            ]}
+          />
+        </div>
+
+        <div className="space-y-1.5">
+          <label className="block text-xs font-medium text-[color:var(--color-muted)]">
+            {t("dashboard.customizeHide")}
+          </label>
+          {visibleNames.length === 0 ? (
+            <p className="text-xs text-[color:var(--color-muted)]">{t("dashboard.customizeHideNoVisible")}</p>
+          ) : (
+            <select
+              className="w-full rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2 py-1 text-xs"
+              value=""
+              onChange={(e) => {
+                if (!e.target.value) return;
+                patch({ hiddenHostIds: [...dashboard.hiddenHostIds, e.target.value] });
+              }}
+            >
+              <option value="">{t("dashboard.customizeHidePlaceholder")}</option>
+              {visibleNames.map((n) => <option key={n} value={n}>{n}</option>)}
+            </select>
+          )}
+          {hiddenNames.length > 0 && (
+            <ul className="mt-1 space-y-1">
+              {hiddenNames.map((n) => (
+                <li key={n} className="flex items-center justify-between gap-2 rounded-md border border-[color:var(--color-border)] px-2 py-1 text-xs">
+                  <span className="flex items-center gap-1.5 truncate">
+                    <EyeOff size={12} strokeWidth={1.75} className="text-[color:var(--color-muted)]" />
+                    <span className="truncate">{n}</span>
+                  </span>
+                  <IconButton
+                    label={t("dashboard.customizeRestoreAria", { name: n })}
+                    onClick={() => patch({ hiddenHostIds: dashboard.hiddenHostIds.filter((x) => x !== n) })}
+                  >
+                    <Eye size={12} strokeWidth={1.75} />
+                  </IconButton>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        <p className="text-[10px] text-[color:var(--color-muted)]">{t("dashboard.customizeSavedViewsSoon")}</p>
       </div>
     </Popover>
   );
+}
+
+// sortSnapshots applies the operator's sortBy/sortDir from
+// dashboard prefs. 'tag' (in the prefs schema) is not supported in
+// PR2 and falls back to 'name'.
+function sortSnapshots(snapshots: Snapshot[], sortBy: SortBy, dir: SortDir): Snapshot[] {
+  const sign = dir === "desc" ? -1 : 1;
+  const cmp = (a: Snapshot, b: Snapshot): number => {
+    switch (sortBy) {
+      case "hottest": {
+        const ha = Math.max(a.cpu_pct, a.ram_pct, a.disk_pct);
+        const hb = Math.max(b.cpu_pct, b.ram_pct, b.disk_pct);
+        if (ha === hb) return a.host.localeCompare(b.host);
+        return hb - ha; // hottest first regardless of direction; direction below flips
+      }
+      case "last-seen":
+        return new Date(b.ts).getTime() - new Date(a.ts).getTime();
+      case "name":
+      case "tag":
+      default:
+        return a.host.localeCompare(b.host);
+    }
+  };
+  return [...snapshots].sort((a, b) => sign * cmp(a, b));
 }
 
 function summarizeSnapshots(snapshots: Snapshot[], now: number, staleAfterMs: number) {

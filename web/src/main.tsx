@@ -7,6 +7,7 @@ import "@fontsource-variable/inter";
 import "@fontsource-variable/jetbrains-mono";
 import "./index.css";
 import "uplot/dist/uPlot.min.css";
+import "react-grid-layout/css/styles.css";
 
 // Apply persisted theme (or system preference) BEFORE React mounts so there's
 // no flash of the wrong palette on first paint.

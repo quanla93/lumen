@@ -30,6 +30,7 @@ import (
 	"github.com/quanla93/lumen/internal/hub/storage"
 	"github.com/quanla93/lumen/internal/hub/store"
 	"github.com/quanla93/lumen/internal/hub/stream"
+	"github.com/quanla93/lumen/internal/hub/userprefs"
 	"github.com/quanla93/lumen/internal/hub/web"
 )
 
@@ -149,6 +150,7 @@ func Run(ctx context.Context, cfg Config) error {
 		Logger:    logger.With("subsys", "hubstats"),
 	}
 	apiKeysHandlers := apikey.NewHandlers(db, logger.With("subsys", "apikeys"))
+	userPrefsHandlers := userprefs.NewHandlers(db, logger.With("subsys", "userprefs"))
 	publicAPIHandlers := publicapi.NewHandlers(db, cfg.Version, logger.With("subsys", "publicapi"))
 	publicAPILimiter := publicapi.NewLimiter(100, 100) // 100 burst, 100/min refill
 	publicAPIAuthn := publicapi.Authn(db, logger.With("subsys", "publicapi"))
@@ -203,6 +205,10 @@ func Run(ctx context.Context, cfg Config) error {
 		r.Get("/api/apikeys", apiKeysHandlers.List)
 		r.Post("/api/apikeys", apiKeysHandlers.Create)
 		r.Delete("/api/apikeys/{id}", apiKeysHandlers.Delete)
+
+		r.Get("/api/me/prefs", userPrefsHandlers.Get)
+		r.Put("/api/me/prefs/dashboard", userPrefsHandlers.PutDashboard)
+		r.Put("/api/me/prefs/display", userPrefsHandlers.PutDisplay)
 
 		r.Get("/api/alerts/rules", alertsHandlers.ListRules)
 		r.Post("/api/alerts/rules", alertsHandlers.CreateRule)

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Server, User as UserIcon, Gauge, Archive, BarChart3, ScrollText, Activity, KeyRound, Trash2, Copy, Check } from "lucide-react";
+import { Server, User as UserIcon, Gauge, Archive, BarChart3, ScrollText, Activity, KeyRound, Trash2, Copy, Check, Palette } from "lucide-react";
 import {
   hostsApi,
   authApi,
@@ -14,22 +14,27 @@ import {
   type ApiKey,
   type ApiKeyCreated,
   type ApiKeyScope,
+  type Theme,
+  type UnitsMode,
+  type ReduceMotion,
 } from "@/lib/api";
 import { relativeTime } from "@/lib/time";
 import { copyToClipboard } from "@/lib/clipboard";
 import { ErrorText, Field, FieldInput, GhostButton, PrimaryButton } from "@/components/CenterCard";
-import { IconButton, Surface } from "@/components/ui";
+import { IconButton, SegmentedControl, Surface } from "@/components/ui";
 import { TokenReveal } from "@/components/TokenReveal";
 import { useConfirm } from "@/components/ConfirmDialog";
+import { usePrefs } from "@/lib/userPrefs";
 import { useI18n } from "@/i18n/useI18n";
 
-type SettingsTab = "hosts" | "account" | "runtime" | "retention" | "downsample" | "logs" | "hub-status" | "api-keys";
+type SettingsTab = "hosts" | "account" | "display" | "runtime" | "retention" | "downsample" | "logs" | "hub-status" | "api-keys";
 
 const TABS: {
   id: SettingsTab;
   labelKey:
     | "settings.tabs.hosts"
     | "settings.tabs.account"
+    | "settings.tabs.display"
     | "settings.tabs.runtime"
     | "settings.tabs.retention"
     | "settings.tabs.downsample"
@@ -40,6 +45,7 @@ const TABS: {
 }[] = [
   { id: "hosts",      labelKey: "settings.tabs.hosts",      icon: Server },
   { id: "account",    labelKey: "settings.tabs.account",    icon: UserIcon },
+  { id: "display",    labelKey: "settings.tabs.display",    icon: Palette },
   { id: "runtime",    labelKey: "settings.tabs.runtime",    icon: Gauge },
   { id: "retention",  labelKey: "settings.tabs.retention",  icon: Archive },
   { id: "downsample", labelKey: "settings.tabs.downsample", icon: BarChart3 },
@@ -82,6 +88,7 @@ export function Settings({ user }: { user: User }) {
         <div>
           {tab === "hosts"      && <HostsSettings />}
           {tab === "account"    && <AccountSettings user={user} />}
+          {tab === "display"    && <DisplaySettings />}
           {tab === "runtime"    && <RuntimeSettings />}
           {tab === "retention"  && <RetentionSettings />}
           {tab === "downsample" && <DownsampleSettings />}
@@ -1264,6 +1271,99 @@ function ApiKeysSettings() {
           </ul>
         )}
       </Surface>
+    </div>
+  );
+}
+
+// ─── Display sub-tab (theme / language / units / reduce-motion) ──────────
+
+function DisplaySettings() {
+  const { t } = useI18n();
+  const { display, ready, updateDisplay } = usePrefs();
+  const [error, setError] = useState<string | null>(null);
+
+  async function set<K extends keyof typeof display>(key: K, value: (typeof display)[K]) {
+    setError(null);
+    try {
+      await updateDisplay({ ...display, [key]: value });
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : String(err));
+    }
+  }
+
+  return (
+    <div className="space-y-6 max-w-xl">
+      <header>
+        <h2 className="text-base font-semibold tracking-tight">{t("settings.displayTitle")}</h2>
+        <p className="mt-1 text-sm text-[color:var(--color-muted)]">{t("settings.displayDescription")}</p>
+      </header>
+
+      {!ready ? (
+        <p className="text-sm text-[color:var(--color-muted)]">{t("common.loading")}</p>
+      ) : (
+        <div className="space-y-5">
+          <div className="space-y-1.5">
+            <label className="block text-sm font-medium">{t("settings.displayThemeLabel")}</label>
+            <SegmentedControl<Theme>
+              ariaLabel={t("settings.displayThemeLabel")}
+              value={display.theme}
+              onChange={(v) => set("theme", v)}
+              options={[
+                { value: "system", label: t("settings.displayThemeSystem") },
+                { value: "light",  label: t("settings.displayThemeLight") },
+                { value: "dark",   label: t("settings.displayThemeDark") },
+              ]}
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="block text-sm font-medium">{t("settings.displayLanguageLabel")}</label>
+            <SegmentedControl<"en" | "vi">
+              ariaLabel={t("settings.displayLanguageLabel")}
+              value={display.language}
+              onChange={(v) => set("language", v)}
+              options={[
+                { value: "en", label: "EN" },
+                { value: "vi", label: "VI" },
+              ]}
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="block text-sm font-medium">{t("settings.displayUnitsLabel")}</label>
+            <SegmentedControl<UnitsMode>
+              ariaLabel={t("settings.displayUnitsLabel")}
+              value={display.units}
+              onChange={(v) => set("units", v)}
+              options={[
+                { value: "auto",    label: t("settings.displayUnitsAuto") },
+                { value: "binary",  label: t("settings.displayUnitsBinary") },
+                { value: "decimal", label: t("settings.displayUnitsDecimal") },
+              ]}
+            />
+            <p className="text-xs text-[color:var(--color-muted)]">{t("settings.displayUnitsHelp")}</p>
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="block text-sm font-medium">{t("settings.displayReduceMotionLabel")}</label>
+            <SegmentedControl<ReduceMotion>
+              ariaLabel={t("settings.displayReduceMotionLabel")}
+              value={display.reduceMotion}
+              onChange={(v) => set("reduceMotion", v)}
+              options={[
+                { value: "system", label: t("settings.displayReduceMotionSystem") },
+                { value: "on",     label: t("settings.displayReduceMotionOn") },
+                { value: "off",    label: t("settings.displayReduceMotionOff") },
+              ]}
+            />
+            <p className="text-xs text-[color:var(--color-muted)]">{t("settings.displayReduceMotionHelp")}</p>
+          </div>
+
+          {error && <ErrorText message={error} />}
+
+          <p className="text-xs text-[color:var(--color-muted)]">{t("settings.displayDashboardHint")}</p>
+        </div>
+      )}
     </div>
   );
 }

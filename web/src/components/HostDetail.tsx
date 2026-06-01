@@ -5,13 +5,14 @@ import {
   versionApi,
   agentUpdateAvailable,
   ApiError,
+  type ChartLayoutItem,
   type Host,
   type MetricsResponse,
   type MetricPoint,
 } from "@/lib/api";
-import { ArrowLeft, Clock, Cpu, MemoryStick, HardDrive, Activity, Network, Database, Thermometer, Boxes, Settings2, VolumeX } from "lucide-react";
+import { ArrowLeft, Clock, Cpu, MemoryStick, HardDrive, Activity, Network, Database, Thermometer, Boxes, VolumeX, Settings2, RotateCcw, LayoutGrid, Plus, X } from "lucide-react";
 import { UPlotChart } from "@/components/UPlotChart";
-import { AppButton, EmptyState, Popover, SegmentedControl, Surface } from "@/components/ui";
+import { EmptyState, Popover, SegmentedControl, Surface } from "@/components/ui";
 import type { Snapshot, ContainerInfo } from "@/components/HostCard";
 import { cpuTone, TONE_CLASS, type StatusTone } from "@/lib/status";
 import { copyToClipboard } from "@/lib/clipboard";
@@ -19,7 +20,17 @@ import { formatBytes, formatBps } from "@/lib/format";
 import { isStale, relativeTime } from "@/lib/time";
 import { useStreamConnection } from "@/lib/useStreamConnection";
 import { useI18n } from "@/i18n/useI18n";
+import { usePrefs } from "@/lib/userPrefs";
+import { CATALOG_IDS, CHART_CATALOG, DEFAULT_LAYOUT_LG, type ChartId, type LayoutItem } from "@/components/hostCharts/catalog";
 import type { Locale } from "@/i18n/types";
+import { Responsive, WidthProvider } from "react-grid-layout/legacy";
+
+// rgl v2.2.3 reorganised exports: the WidthProvider HOC + the v1-style
+// flat-prop Responsive component live under /legacy. The top-level
+// `react-grid-layout` package is the new hook-based API which doesn't
+// fit the existing class-component / declarative `layouts` shape used
+// in dashboard_prefs.
+const ResponsiveGridLayout = WidthProvider(Responsive);
 
 type Range = "1h" | "6h" | "24h";
 
@@ -41,6 +52,7 @@ const AGENT_UPDATE_CMD = "docker compose pull && docker compose up -d";
 const COLOR = {
   cpu:    "oklch(70% 0.16 145)",  // green
   ram:    "oklch(68% 0.13 240)",  // blue
+  swap:   "oklch(68% 0.14 280)",  // violet
   disk:   "oklch(75% 0.16 75)",   // amber
   load1:  "oklch(65% 0.22 30)",   // red
   load5:  "oklch(68% 0.14 200)",  // teal
@@ -85,6 +97,14 @@ export function HostDetail({
   // their canvas paints with the colors that were active at construction;
   // forcing a key change remounts them with the new palette.
   const themeKey = useThemeKey();
+
+  // RFC 0004 Mức 1 — per-host dashboard builder. Layout is persisted in
+  // user_prefs.dashboard.hostDetailLayouts[hostName]; absent means "use
+  // DEFAULT_LAYOUT_LG". editMode gates drag/resize so a normal page view
+  // can't accidentally rearrange a saved layout.
+  const { dashboard, updateDashboard } = usePrefs();
+  const [editMode, setEditMode] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);
 
   useEffect(() => {
     const t = window.setInterval(() => setNow(Date.now()), 1_000);
@@ -182,6 +202,243 @@ export function HostDetail({
     return null;
   }, [live, resp]);
 
+  // availableIds gates which chart IDs are *renderable* for this host —
+  // temperature only when sensors report > 0°C in the current window.
+  // Per-core CPU and Containers are excluded here because they're
+  // rendered outside the grid (live ring buffer / live table); the
+  // catalog lists them for forward-compat with future ranking.
+  const availableIds = useMemo<Set<ChartId>>(() => {
+    const set = new Set<ChartId>(["cpu", "ram", "swap", "disk", "disk-io", "network", "load"]);
+    if (hasTemp) set.add("temperature");
+    return set;
+  }, [hasTemp]);
+
+  const savedLayout = dashboard.hostDetailLayouts?.[hostName];
+  // Filter the saved (or default) layout down to the charts we can
+  // actually render — a stale saved layout that references temperature
+  // on a sensor-less host should silently drop that item rather than
+  // render an empty card. If the filter dropped anything, re-pack so the
+  // absent chart's slot doesn't leave a hole; otherwise round-trip the
+  // user's exact placement.
+  const layout = useMemo<LayoutItem[]>(() => {
+    const base = (savedLayout ?? DEFAULT_LAYOUT_LG) as LayoutItem[];
+    const filtered = base.filter((it) => availableIds.has(it.i as ChartId));
+    return filtered.length === base.length ? filtered : packLayout(filtered);
+  }, [savedLayout, availableIds]);
+  const visibleIds = useMemo(
+    () => new Set<ChartId>(layout.map((it) => it.i as ChartId)),
+    [layout],
+  );
+
+  // Drag-end/resize-end fires onLayoutChange with the new positions.
+  // Debounce by 500ms so a long drag doesn't spam the prefs endpoint;
+  // the next interaction kicks the timer forward.
+  const saveTimer = useRef<number | null>(null);
+  const persistLayout = useCallback((next: LayoutItem[]) => {
+    if (saveTimer.current) window.clearTimeout(saveTimer.current);
+    const items: ChartLayoutItem[] = next.map((it) => ({ i: it.i, x: it.x, y: it.y, w: it.w, h: it.h }));
+    saveTimer.current = window.setTimeout(() => {
+      const layouts = { ...(dashboard.hostDetailLayouts ?? {}), [hostName]: items };
+      updateDashboard({ ...dashboard, hostDetailLayouts: layouts }).catch(() => {});
+    }, 500);
+  }, [dashboard, updateDashboard, hostName]);
+
+  useEffect(() => () => { if (saveTimer.current) window.clearTimeout(saveTimer.current); }, []);
+
+  // toggleChart adds (when hidden) or removes (when visible) a single
+  // chart from this host's saved layout. Both paths run the result
+  // through packLayout so the post-toggle grid never has phantom holes:
+  // remove heals the gap, add lands in the first empty slot.
+  const toggleChart = useCallback((id: ChartId) => {
+    const current = (savedLayout ?? DEFAULT_LAYOUT_LG) as LayoutItem[];
+    let next: LayoutItem[];
+    if (visibleIds.has(id)) {
+      next = packLayout(current.filter((it) => it.i !== id));
+    } else {
+      const meta = CHART_CATALOG[id];
+      next = packLayout([...current, { i: id, x: 0, y: 0, w: meta.defaultW, h: meta.defaultH }]);
+    }
+    const items: ChartLayoutItem[] = next.map((it) => ({ i: it.i, x: it.x, y: it.y, w: it.w, h: it.h }));
+    const layouts = { ...(dashboard.hostDetailLayouts ?? {}), [hostName]: items };
+    updateDashboard({ ...dashboard, hostDetailLayouts: layouts }).catch(() => {});
+  }, [savedLayout, visibleIds, dashboard, updateDashboard, hostName]);
+
+  const resetLayout = useCallback(() => {
+    const layouts = { ...(dashboard.hostDetailLayouts ?? {}) };
+    delete layouts[hostName];
+    updateDashboard({ ...dashboard, hostDetailLayouts: layouts }).catch(() => {});
+  }, [dashboard, updateDashboard, hostName]);
+
+  // tidyLayout re-packs the current arrangement leftward+upward to
+  // collapse gaps the user introduced while dragging. Triggered by the
+  // explicit "Auto-arrange" button so accidental clicks don't undo a
+  // deliberate sparse placement.
+  const tidyLayout = useCallback(() => {
+    const packed = packLayout(layout);
+    const items: ChartLayoutItem[] = packed.map((it) => ({ i: it.i, x: it.x, y: it.y, w: it.w, h: it.h }));
+    const layouts = { ...(dashboard.hostDetailLayouts ?? {}), [hostName]: items };
+    updateDashboard({ ...dashboard, hostDetailLayouts: layouts }).catch(() => {});
+  }, [layout, dashboard, updateDashboard, hostName]);
+
+  // renderChart turns a catalog ID into the matching ChartCard, threading
+  // editMode + onRemove so a card in the grid grows a close button when
+  // the operator hits Edit. Defined inside the component body so it can
+  // close over data/last/themeKey without prop-drilling them through a
+  // helper.
+  const renderChart = (id: ChartId): React.ReactNode => {
+    const removeFn = editMode ? () => toggleChart(id) : undefined;
+    switch (id) {
+      case "cpu":
+        return (
+          <ChartCard
+            title={t("host.cpu")}
+            icon={Cpu}
+            editing={editMode}
+            onRemove={removeFn}
+            badges={[swatch(COLOR.cpu, `${(last?.cpu_pct ?? 0).toFixed(1)}%`)]}
+          >
+            <UPlotChart
+              key={`cpu-${themeKey}`}
+              data={data.cpu}
+              options={percentOpts(COLOR.cpu, t("host.seriesCpu"))}
+              className="h-full w-full"
+            />
+          </ChartCard>
+        );
+      case "ram":
+        return (
+          <ChartCard
+            title={t("host.ram")}
+            icon={MemoryStick}
+            editing={editMode}
+            onRemove={removeFn}
+            badges={[swatch(COLOR.ram, `${(last?.ram_pct ?? 0).toFixed(1)}%`)]}
+          >
+            <UPlotChart
+              key={`ram-${themeKey}`}
+              data={data.ram}
+              options={percentOpts(COLOR.ram, t("host.ram"))}
+              className="h-full w-full"
+            />
+          </ChartCard>
+        );
+      case "swap":
+        return (
+          <ChartCard
+            title={t("host.swap")}
+            icon={MemoryStick}
+            editing={editMode}
+            onRemove={removeFn}
+            badges={[swatch(COLOR.swap, `${(last?.swap_pct ?? 0).toFixed(1)}%`)]}
+          >
+            <UPlotChart
+              key={`swap-${themeKey}`}
+              data={data.swap}
+              options={percentOpts(COLOR.swap, t("host.swap"))}
+              className="h-full w-full"
+            />
+          </ChartCard>
+        );
+      case "disk":
+        return (
+          <ChartCard
+            title={t("host.disk")}
+            icon={HardDrive}
+            editing={editMode}
+            onRemove={removeFn}
+            badges={[swatch(COLOR.disk, `${(last?.disk_pct ?? 0).toFixed(1)}%`)]}
+          >
+            <UPlotChart
+              key={`disk-${themeKey}`}
+              data={data.disk}
+              options={percentOpts(COLOR.disk, t("host.disk"))}
+              className="h-full w-full"
+            />
+          </ChartCard>
+        );
+      case "disk-io":
+        return (
+          <ChartCard
+            title={t("host.diskIo")}
+            icon={Database}
+            editing={editMode}
+            onRemove={removeFn}
+            badges={[
+              swatch(COLOR.diskR, `read ${formatBps(last?.disk_r_bps ?? 0)}`),
+              swatch(COLOR.diskW, `write ${formatBps(last?.disk_w_bps ?? 0)}`),
+            ]}
+          >
+            <UPlotChart
+              key={`dio-${themeKey}`}
+              data={data.diskIO}
+              options={bpsOpts([t("host.seriesRead"), t("host.seriesWrite")], [COLOR.diskR, COLOR.diskW])}
+              className="h-full w-full"
+            />
+          </ChartCard>
+        );
+      case "network":
+        return (
+          <ChartCard
+            title={t("host.network")}
+            icon={Network}
+            editing={editMode}
+            onRemove={removeFn}
+            badges={[
+              swatch(COLOR.netRx, `↓ ${formatBps(last?.net_rx_bps ?? 0)}`),
+              swatch(COLOR.netTx, `↑ ${formatBps(last?.net_tx_bps ?? 0)}`),
+            ]}
+          >
+            <UPlotChart
+              key={`net-${themeKey}`}
+              data={data.net}
+              options={bpsOpts([t("host.seriesDownload"), t("host.seriesUpload")], [COLOR.netRx, COLOR.netTx])}
+              className="h-full w-full"
+            />
+          </ChartCard>
+        );
+      case "load":
+        return (
+          <ChartCard
+            title={t("host.loadAverage")}
+            icon={Activity}
+            editing={editMode}
+            onRemove={removeFn}
+            badges={[
+              swatch(COLOR.load1, `1m ${(last?.load1 ?? 0).toFixed(2)}`),
+              swatch(COLOR.load5, `5m ${(last?.load5 ?? 0).toFixed(2)}`),
+              swatch(COLOR.load15, `15m ${(last?.load15 ?? 0).toFixed(2)}`),
+            ]}
+          >
+            <UPlotChart
+              key={`load-${themeKey}`}
+              data={data.load}
+              options={loadOpts([t("host.series1m"), t("host.series5m"), t("host.series15m")])}
+              className="h-full w-full"
+            />
+          </ChartCard>
+        );
+      case "temperature":
+        return hasTemp ? (
+          <ChartCard
+            title={t("host.temperature")}
+            icon={Thermometer}
+            editing={editMode}
+            onRemove={removeFn}
+            badges={[swatch(COLOR.temp, `${(last?.temp_c ?? 0).toFixed(1)}°C`)]}
+          >
+            <UPlotChart
+              key={`temp-${themeKey}`}
+              data={data.temp}
+              options={tempOpts(t("host.seriesTemp"))}
+              className="h-full w-full"
+            />
+          </ChartCard>
+        ) : null;
+      default:
+        return null;
+    }
+  };
+
   return (
     <>
       <HostSummaryHeader
@@ -218,7 +475,7 @@ export function HostDetail({
             </div>
           );
         }
-        return <PerCoreStrip cores={live.cpu_per_core} t={t} />;
+        return <PerCoreChart cores={live.cpu_per_core} t={t} />;
       })()}
 
       {err && (
@@ -235,111 +492,90 @@ export function HostDetail({
           detail={t("host.noHistoryDescription")}
         />
       ) : (
-        <div className="space-y-4">
-          {/* Featured row: CPU + RAM big */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <ChartCard
-              title={t("host.cpu")}
-              icon={Cpu}
-              badges={[swatch(COLOR.cpu, `${(last?.cpu_pct ?? 0).toFixed(1)}%`)]}
-            >
-              <UPlotChart
-                key={`cpu-${themeKey}`}
-                data={data.cpu}
-                options={percentOpts(COLOR.cpu, t("host.seriesCpu"))}
-                className="h-[240px] w-full"
-              />
-            </ChartCard>
-            <ChartCard
-              title={t("host.ram")}
-              icon={MemoryStick}
-              badges={[swatch(COLOR.ram, `${(last?.ram_pct ?? 0).toFixed(1)}%`)]}
-            >
-              <UPlotChart
-                key={`ram-${themeKey}`}
-                data={data.ram}
-                options={percentOpts(COLOR.ram, t("host.ram"))}
-                className="h-[240px] w-full"
-              />
-            </ChartCard>
-          </div>
-
-          {/* Secondary row: Disk + Load + Network + DiskIO + Temp — smaller, denser */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-            <ChartCard
-              title={t("host.disk")}
-              icon={HardDrive}
-              badges={[swatch(COLOR.disk, `${(last?.disk_pct ?? 0).toFixed(1)}%`)]}
-            >
-              <UPlotChart
-                key={`disk-${themeKey}`}
-                data={data.disk}
-                options={percentOpts(COLOR.disk, t("host.disk"))}
-                className="h-[170px] w-full"
-              />
-            </ChartCard>
-            <ChartCard
-              title={t("host.loadAverage")}
-              icon={Activity}
-              badges={[
-                swatch(COLOR.load1, `1m ${(last?.load1 ?? 0).toFixed(2)}`),
-                swatch(COLOR.load5, `5m ${(last?.load5 ?? 0).toFixed(2)}`),
-                swatch(COLOR.load15, `15m ${(last?.load15 ?? 0).toFixed(2)}`),
-              ]}
-            >
-              <UPlotChart
-                key={`load-${themeKey}`}
-                data={data.load}
-                options={loadOpts([t("host.series1m"), t("host.series5m"), t("host.series15m")])}
-                className="h-[170px] w-full"
-              />
-            </ChartCard>
-            <ChartCard
-              title={t("host.network")}
-              icon={Network}
-              badges={[
-                swatch(COLOR.netRx, `↓ ${formatBps(last?.net_rx_bps ?? 0)}`),
-                swatch(COLOR.netTx, `↑ ${formatBps(last?.net_tx_bps ?? 0)}`),
-              ]}
-            >
-              <UPlotChart
-                key={`net-${themeKey}`}
-                data={data.net}
-                options={bpsOpts([t("host.seriesDownload"), t("host.seriesUpload")], [COLOR.netRx, COLOR.netTx])}
-                className="h-[170px] w-full"
-              />
-            </ChartCard>
-            <ChartCard
-              title={t("host.diskIo")}
-              icon={Database}
-              badges={[
-                swatch(COLOR.diskR, `read ${formatBps(last?.disk_r_bps ?? 0)}`),
-                swatch(COLOR.diskW, `write ${formatBps(last?.disk_w_bps ?? 0)}`),
-              ]}
-            >
-              <UPlotChart
-                key={`dio-${themeKey}`}
-                data={data.diskIO}
-                options={bpsOpts([t("host.seriesRead"), t("host.seriesWrite")], [COLOR.diskR, COLOR.diskW])}
-                className="h-[170px] w-full"
-              />
-            </ChartCard>
-            {hasTemp && (
-              <ChartCard
-                title={t("host.temperature")}
-                icon={Thermometer}
-                badges={[swatch(COLOR.temp, `${(last?.temp_c ?? 0).toFixed(1)}°C`)]}
+        <>
+          <div className="mb-3 flex flex-wrap items-center justify-end gap-2">
+            {editMode && (
+              <Popover
+                open={addOpen}
+                onOpenChange={setAddOpen}
+                trigger={
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-1.5 rounded-md border border-[color:var(--color-border)] px-2.5 py-1.5 text-xs font-medium text-[color:var(--color-fg)] transition-colors hover:bg-[color:var(--color-bg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--lumen-teal)]"
+                  >
+                    <Plus size={13} strokeWidth={1.75} />
+                    {t("host.addChart")}
+                  </button>
+                }
               >
-                <UPlotChart
-                  key={`temp-${themeKey}`}
-                  data={data.temp}
-                  options={tempOpts(t("host.seriesTemp"))}
-                  className="h-[170px] w-full"
+                <ChartsPanel
+                  ids={CATALOG_IDS.filter((id) => availableIds.has(id))}
+                  visibleIds={visibleIds}
+                  t={t}
+                  onToggle={(id) => toggleChart(id)}
                 />
-              </ChartCard>
+              </Popover>
             )}
+            {editMode && (
+              <button
+                type="button"
+                onClick={tidyLayout}
+                className="inline-flex items-center gap-1.5 rounded-md border border-[color:var(--color-border)] px-2.5 py-1.5 text-xs font-medium text-[color:var(--color-fg)] transition-colors hover:bg-[color:var(--color-bg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--lumen-teal)]"
+                title={t("host.autoArrange")}
+              >
+                <LayoutGrid size={13} strokeWidth={1.75} />
+                {t("host.autoArrange")}
+              </button>
+            )}
+            {editMode && (
+              <button
+                type="button"
+                onClick={resetLayout}
+                className="inline-flex items-center gap-1.5 rounded-md border border-[color:var(--color-border)] px-2.5 py-1.5 text-xs font-medium text-[color:var(--color-fg)] transition-colors hover:bg-[color:var(--color-bg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--lumen-teal)]"
+              >
+                <RotateCcw size={13} strokeWidth={1.75} />
+                {t("host.resetLayout")}
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setEditMode((v) => !v)}
+              className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--lumen-teal)] ${
+                editMode
+                  ? "border-[color:var(--lumen-teal)] bg-[color:var(--lumen-teal)] text-[color:var(--color-bg)] hover:bg-[color:var(--lumen-teal)]/85"
+                  : "border-[color:var(--color-border)] text-[color:var(--color-fg)] hover:bg-[color:var(--color-bg)]"
+              }`}
+            >
+              <Settings2 size={13} strokeWidth={1.75} />
+              {editMode ? t("host.doneEditing") : t("host.editLayout")}
+            </button>
           </div>
-        </div>
+          {editMode && (
+            <p className="mb-3 text-xs text-[color:var(--color-muted)]">
+              {t("host.editLayoutHint")}
+            </p>
+          )}
+          <ResponsiveGridLayout
+            className={editMode ? "lumen-host-grid lumen-host-grid--editing" : "lumen-host-grid"}
+            layouts={{ lg: layout, md: layout, sm: layout, xs: layout, xxs: layout }}
+            breakpoints={{ lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 }}
+            cols={{ lg: 12, md: 12, sm: 6, xs: 4, xxs: 2 }}
+            rowHeight={40}
+            isDraggable={editMode}
+            isResizable={editMode}
+            draggableHandle=".chart-drag-handle"
+            compactType="vertical"
+            margin={[16, 16]}
+            containerPadding={[0, 0]}
+            onLayoutChange={(lyt) => persistLayout(lyt as LayoutItem[])}
+          >
+            {layout.map((item) => (
+              <div key={item.i} className="lumen-host-grid-item">
+                {renderChart(item.i as ChartId)}
+              </div>
+            ))}
+          </ResponsiveGridLayout>
+        </>
       )}
 
       {live?.containers && live.containers.length > 0 && (
@@ -450,41 +686,9 @@ function HostSummaryHeader({
             options={rangeOptions}
             ariaLabel={t("host.timeRange")}
           />
-          <HostCustomizeButton t={t} />
         </div>
       </div>
     </Surface>
-  );
-}
-
-// PR1.B: Customize button stub on host detail. Same pattern as
-// Dashboard's CustomizeButton — opens a Popover explaining the
-// upcoming personalisation features for *this* page (panel show/hide,
-// default time range, density). Wired in PR2 with per-user prefs.
-function HostCustomizeButton({ t }: { t: ReturnType<typeof useI18n>["t"] }) {
-  return (
-    <Popover
-      trigger={
-        <AppButton variant="secondary" className="gap-2 whitespace-nowrap">
-          <Settings2 size={14} strokeWidth={1.75} />
-          {t("host.customize")}
-        </AppButton>
-      }
-    >
-      <div className="space-y-3">
-        <div>
-          <div className="text-sm font-semibold">{t("host.customize")}</div>
-          <p className="mt-1 text-xs text-[color:var(--color-muted)]">
-            {t("host.customizeStub")}
-          </p>
-        </div>
-        <ul className="space-y-1.5 text-xs text-[color:var(--color-muted)]">
-          <li>· {t("host.customizeShowHide")}</li>
-          <li>· {t("host.customizeDefaultRange")}</li>
-          <li>· {t("host.customizeCompact")}</li>
-        </ul>
-      </div>
-    </Popover>
   );
 }
 
@@ -952,106 +1156,89 @@ function StateBadge({ state }: { state: string }) {
   );
 }
 
-// PerCoreStrip renders one tile per logical core in an auto-wrapping grid.
-// Tile width adapts to core count so 1-core VMs don't look empty and
-// 64-core servers don't paginate forever:
-//   ≤ 8 cores  → wide tiles with idx + percentage label below
-//   ≤ 32 cores → medium tiles, percentage label only
-//   > 32 cores → compact tiles (no labels, just colored fill)
-// Empty tracks stay visible at 0% so the operator can always count cores.
-function PerCoreStrip({ cores, t }: { cores: number[]; t: ReturnType<typeof useI18n>["t"] }) {
+// PerCoreChart renders a uPlot multi-line over the live WS window so
+// per-core CPU has the same visual language as the other charts. Data
+// is NOT persisted server-side (the snapshots table only carries the
+// aggregate `cpu_pct`); the buffer here lives client-side only and
+// caps at PER_CORE_RING points (~10 minutes at the default 5s tick).
+// Legend is hidden above 8 cores — the hover tooltip already lists
+// per-core values and a 32-row legend is unreadable.
+const PER_CORE_RING = 120;
+function PerCoreChart({ cores, t }: { cores: number[]; t: ReturnType<typeof useI18n>["t"] }) {
+  const bufRef = useRef<{ ts: number; cores: number[] }[]>([]);
+  const [tick, setTick] = useState(0);
+  const themeKey = useThemeKey();
+
+  useEffect(() => {
+    bufRef.current.push({ ts: Date.now() / 1000, cores: cores.slice() });
+    if (bufRef.current.length > PER_CORE_RING) bufRef.current.shift();
+    setTick((x) => x + 1);
+  }, [cores]);
+
   const n = cores.length;
-  const avg = cores.reduce((a, b) => a + b, 0) / n;
+  const avg = n === 0 ? 0 : cores.reduce((a, b) => a + b, 0) / n;
   const coreLabel = n === 1 ? t("host.coreSingular") : t("host.corePlural");
 
-  const layout = n <= 8
-    ? { tile: 64, height: 56, labels: "full" as const }
-    : n <= 32
-    ? { tile: 44, height: 48, labels: "pct" as const }
-    : n <= 64
-    ? { tile: 28, height: 40, labels: "none" as const }
-    : { tile: 18, height: 32, labels: "none" as const };
+  const data = useMemo<AlignedData>(() => {
+    const buf = bufRef.current;
+    if (buf.length === 0) {
+      // Pre-first-effect render — emit one point so uPlot doesn't error.
+      const now = Date.now() / 1000;
+      return [[now], ...Array.from({ length: n }, () => [null] as (number | null)[])] as AlignedData;
+    }
+    const xs = buf.map((b) => b.ts);
+    const series: (number | null)[][] = Array.from({ length: n }, () => []);
+    for (const sample of buf) {
+      for (let i = 0; i < n; i++) {
+        series[i].push(sample.cores[i] ?? null);
+      }
+    }
+    return [xs, ...series] as AlignedData;
+  }, [tick, n]);
 
   return (
-    <Surface padded={false} className="mb-4 rounded-lg px-4 py-3">
-      <div className="mb-3 flex items-center justify-between">
-        <span className="text-xs uppercase tracking-wide text-[color:var(--color-muted)]">
-          {t("host.perCoreCpu")} · {t("host.cores", { count: n, coreLabel })}
-        </span>
-        <span className="font-mono text-xs">
-          <span className="text-[color:var(--color-muted)]">{t("common.avg")}</span>{" "}
-          {avg.toFixed(1)}%
-        </span>
-      </div>
-      <div
-        className="grid gap-1.5"
-        style={{ gridTemplateColumns: `repeat(auto-fit, ${layout.tile}px)` }}
-      >
-        {cores.map((pct, i) => (
-          <CoreTile
-            key={i}
-            idx={i}
-            pct={pct}
-            height={layout.height}
-            labels={layout.labels}
-            t={t}
-          />
-        ))}
-      </div>
-    </Surface>
+    <ChartCard
+      title={t("host.perCoreCpu")}
+      icon={Cpu}
+      badges={[
+        <span key="cores">{t("host.cores", { count: n, coreLabel })}</span>,
+        <span key="avg" className="text-[color:var(--color-muted)]">avg <span className="text-[color:var(--color-fg)]">{avg.toFixed(1)}%</span></span>,
+      ]}
+    >
+      <UPlotChart
+        key={`per-core-${n}-${themeKey}`}
+        data={data}
+        options={perCoreOpts(n)}
+        className="h-[200px] w-full"
+      />
+    </ChartCard>
   );
 }
 
-function CoreTile({
-  idx,
-  pct,
-  height,
-  labels,
-  t,
-}: {
-  idx: number;
-  pct: number;
-  height: number;
-  labels: "full" | "pct" | "none";
-  t: ReturnType<typeof useI18n>["t"];
-}) {
-  const tone = pct >= 90 ? "danger" : pct >= 60 ? "warn" : "ok";
-  const toneClass =
-    tone === "danger" ? "lumen-status-danger"
-    : tone === "warn" ? "lumen-status-warn"
-    : "lumen-status-ok";
-  const fillPct = Math.min(100, pct);
-
-  return (
-    <div
-      className="flex flex-col items-center gap-1"
-      title={t("host.coreTooltip", { index: idx, pct: pct.toFixed(1) })} /* tooltip works even in compact mode */
-    >
-      <div
-        className="relative w-full rounded-sm border border-[color:var(--color-border)] bg-[color:var(--color-bg)] overflow-hidden"
-        style={{ height: `${height}px` }}
-      >
-        {pct > 0 && (
-          <div
-            className={`absolute bottom-0 left-0 right-0 ${toneClass} opacity-85 transition-[height] duration-300`}
-            style={{ height: `${fillPct}%` }}
-          />
-        )}
-      </div>
-      {labels === "full" && (
-        <div className="flex w-full items-center justify-between font-mono text-[10px] tabular-nums">
-          <span className="text-[color:var(--color-muted)]">{idx}</span>
-          <span>{pct.toFixed(0)}%</span>
-        </div>
-      )}
-      {labels === "pct" && (
-        <span className="font-mono text-[10px] tabular-nums">
-          {pct.toFixed(0)}
-        </span>
-      )}
-      {/* labels === "none" → no text; hover tooltip on the wrapper still surfaces idx + pct */}
-    </div>
-  );
+function perCoreOpts(n: number): Omit<Options, "width" | "height"> {
+  // OKLCH hue rotation gives N visually-distinct strokes at the same
+  // chroma/lightness, so no single core "looks hotter" purely by colour
+  // choice. golden-angle skip (137.5°) is the standard trick to avoid
+  // adjacent indices reading as the same hue at small N.
+  const series: Options["series"] = [{}];
+  for (let i = 0; i < n; i++) {
+    const hue = ((i * 137.5) % 360 + 360) % 360;
+    const color = `oklch(65% 0.15 ${hue})`;
+    series.push({
+      label: `core ${i}`,
+      value: (_u, v) => (v == null ? "—" : `${v.toFixed(1)}%`),
+      stroke: color,
+      width: 1.25,
+      points: { show: false },
+    });
+  }
+  return {
+    axes: baseAxes((_u, vals) => vals.map((v) => `${v}%`), 44),
+    legend: { show: n <= 8 },
+    scales: { y: { range: [0, 100], auto: false } },
+    plugins: [lumenTooltipPlugin()],
+    series,
+  };
 }
 
 function ChartCard({
@@ -1059,15 +1246,19 @@ function ChartCard({
   icon: Icon,
   badges,
   children,
+  editing,
+  onRemove,
 }: {
   title: string;
   icon?: typeof Cpu;
   badges?: React.ReactNode[];
   children: React.ReactNode;
+  editing?: boolean;
+  onRemove?: () => void;
 }) {
   return (
-    <Surface padded={false} className="rounded-lg p-3 transition-colors hover:border-[color:var(--lumen-teal)]/30">
-      <div className="mb-2 flex items-center justify-between gap-2 flex-wrap">
+    <Surface padded={false} className="relative rounded-lg p-3 h-full flex flex-col transition-colors hover:border-[color:var(--lumen-teal)]/30">
+      <div className={`chart-drag-handle shrink-0 mb-2 flex items-center justify-between gap-2 flex-wrap ${editing ? "cursor-move pr-7" : ""}`}>
         <span className="inline-flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide text-[color:var(--color-muted)]">
           {Icon && <Icon size={12} strokeWidth={1.75} />}
           {title}
@@ -1078,9 +1269,112 @@ function ChartCard({
           </div>
         )}
       </div>
-      {children}
+      {editing && onRemove && (
+        <button
+          type="button"
+          onClick={onRemove}
+          aria-label="Remove chart"
+          className="absolute right-2 top-2 z-10 inline-flex h-5 w-5 items-center justify-center rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-card)] text-[color:var(--color-muted)] transition-colors hover:border-[color:var(--color-danger)] hover:text-[color:var(--color-danger)]"
+        >
+          <X size={11} strokeWidth={2} />
+        </button>
+      )}
+      <div className="flex-1 min-h-0">
+        {children}
+      </div>
     </Surface>
   );
+}
+
+function ChartsPanel({
+  ids,
+  visibleIds,
+  t,
+  onToggle,
+}: {
+  ids: ChartId[];
+  visibleIds: Set<ChartId>;
+  t: ReturnType<typeof useI18n>["t"];
+  onToggle: (id: ChartId) => void;
+}) {
+  if (ids.length === 0) {
+    return (
+      <p className="text-xs text-[color:var(--color-muted)]">{t("host.noChartsToAdd")}</p>
+    );
+  }
+  return (
+    <ul className="flex flex-col gap-0.5">
+      {ids.map((id) => {
+        const on = visibleIds.has(id);
+        return (
+          <li key={id}>
+            <button
+              type="button"
+              onClick={() => onToggle(id)}
+              className="inline-flex w-full items-center justify-between gap-3 rounded-md px-2 py-1.5 text-left text-sm hover:bg-[color:var(--color-bg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--lumen-teal)]"
+            >
+              <span className={on ? "text-[color:var(--color-fg)]" : "text-[color:var(--color-muted)]"}>
+                {chartLabel(id, t)}
+              </span>
+              <span
+                aria-hidden
+                className={`inline-flex h-4 w-7 items-center rounded-full border transition-colors ${
+                  on
+                    ? "border-[color:var(--lumen-teal)] bg-[color:var(--lumen-teal)] justify-end"
+                    : "border-[color:var(--color-border)] bg-[color:var(--color-bg)] justify-start"
+                }`}
+              >
+                <span className={`mx-0.5 h-3 w-3 rounded-full ${on ? "bg-[color:var(--color-bg)]" : "bg-[color:var(--color-muted)]"}`} />
+              </span>
+            </button>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+// packLayout re-flows the grid items leftward+upward with a greedy
+// first-fit pass. Items are visited in reading order (top-to-bottom,
+// then left-to-right) and placed at the topmost-leftmost slot that
+// fits. Use it after add/remove so phantom gaps heal, and on the
+// explicit "Auto-arrange" action so the user can collapse a sparse
+// layout they accidentally created mid-drag.
+function packLayout(items: LayoutItem[], cols = 12): LayoutItem[] {
+  const sorted = [...items].sort((a, b) => a.y - b.y || a.x - b.x);
+  const placed: LayoutItem[] = [];
+  const MAX_Y = 200;
+  for (const it of sorted) {
+    const w = Math.max(1, Math.min(it.w, cols));
+    let bestX = 0;
+    let bestY = MAX_Y;
+    outer: for (let y = 0; y <= MAX_Y; y++) {
+      for (let x = 0; x <= cols - w; x++) {
+        const fits = !placed.some((p) =>
+          x < p.x + p.w && x + w > p.x &&
+          y < p.y + p.h && y + it.h > p.y
+        );
+        if (fits) { bestX = x; bestY = y; break outer; }
+      }
+    }
+    placed.push({ ...it, x: bestX, y: bestY, w });
+  }
+  return placed;
+}
+
+function chartLabel(id: ChartId, t: ReturnType<typeof useI18n>["t"]): string {
+  switch (id) {
+    case "cpu": return t("host.cpu");
+    case "cpu-per-core": return t("host.perCoreCpu");
+    case "ram": return t("host.ram");
+    case "swap": return t("host.swap");
+    case "disk": return t("host.disk");
+    case "disk-io": return t("host.diskIo");
+    case "network": return t("host.network");
+    case "load": return t("host.loadAverage");
+    case "temperature": return t("host.temperature");
+    case "containers": return t("host.containers");
+  }
 }
 
 function swatch(color: string, text: string) {
@@ -1099,12 +1393,13 @@ function swatch(color: string, text: string) {
 function buildSeries(r: MetricsResponse | null) {
   if (!r || r.points.length === 0) {
     const empty: AlignedData = [[]];
-    return { cpu: empty, ram: empty, disk: empty, load: empty, net: empty, diskIO: empty, temp: empty };
+    return { cpu: empty, ram: empty, swap: empty, disk: empty, load: empty, net: empty, diskIO: empty, temp: empty };
   }
   const xs = r.points.map((p) => Math.floor(new Date(p.ts).getTime() / 1000));
   return {
     cpu:    [xs, r.points.map((p) => p.cpu_pct)] as AlignedData,
     ram:    [xs, r.points.map((p) => p.ram_pct)] as AlignedData,
+    swap:   [xs, r.points.map((p) => p.swap_pct)] as AlignedData,
     disk:   [xs, r.points.map((p) => p.disk_pct)] as AlignedData,
     load: [
       xs,
