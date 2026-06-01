@@ -27,11 +27,12 @@ set -euo pipefail
 HUB_URL="{{ .HubURL }}"
 # Detect untemplated placeholder — happens when this script is fetched
 # directly from GitHub raw instead of through the hub's /install.sh
-# endpoint (which renders {{ .HubURL }}). The flag check below will
-# then prompt for --hub instead of silently using the literal string.
-case "$HUB_URL" in
-  *{{*) HUB_URL="" ;;
-esac
+# endpoint (which renders the template). Pattern matches the field name
+# instead of the literal opening delimiter so this script stays valid
+# Go-template input on the hub side.
+if printf '%s\n' "$HUB_URL" | grep -q "HubURL"; then
+  HUB_URL=""
+fi
 AGENT_HOST=""
 AGENT_TOKEN=""
 AGENT_INTERVAL="5s"
