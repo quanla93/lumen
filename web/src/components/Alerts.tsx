@@ -35,6 +35,7 @@ import {
   PrimaryButton,
 } from "@/components/CenterCard";
 import { EmptyState, IconButton, Popover, SegmentedControl, StatusPill, Surface, Switch } from "@/components/ui";
+import { useConfirm } from "@/components/ConfirmDialog";
 import { AlertTags } from "@/components/AlertTags";
 import { useI18n } from "@/i18n/useI18n";
 import type { TranslationKey } from "@/i18n/types";
@@ -675,6 +676,7 @@ function severityStripeClass(tone: "ok" | "warn" | "danger" | "muted"): string {
 
 function RulesPanel() {
   const { t } = useI18n();
+  const confirm = useConfirm();
   const [rules, setRules] = useState<AlertRule[] | null>(null);
   const [channels, setChannels] = useState<NotificationChannel[]>([]);
   const [hosts, setHosts] = useState<Host[]>([]);
@@ -788,7 +790,13 @@ function RulesPanel() {
   }
 
   async function remove(r: AlertRule) {
-    if (!window.confirm(t("alerts.deleteRuleConfirm", { name: r.name }))) return;
+    const ok = await confirm({
+      title: t("alerts.deleteRuleTitle"),
+      message: t("alerts.deleteRuleConfirm", { name: r.name }),
+      confirmLabel: t("common.delete"),
+      destructive: true,
+    });
+    if (!ok) return;
     try {
       await alertsApi.rules.remove(r.id);
       await refresh();
@@ -1121,6 +1129,7 @@ function channelToWrite(c: NotificationChannel): NotificationChannelWrite {
 
 function ChannelsPanel() {
   const { t } = useI18n();
+  const confirm = useConfirm();
   const [channels, setChannels] = useState<NotificationChannel[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<number | "new" | null>(null);
@@ -1189,7 +1198,13 @@ function ChannelsPanel() {
   }
 
   async function remove(c: NotificationChannel) {
-    if (!window.confirm(t("alerts.deleteChannelConfirm", { name: c.name }))) return;
+    const ok = await confirm({
+      title: t("alerts.deleteChannelTitle"),
+      message: t("alerts.deleteChannelConfirm", { name: c.name }),
+      confirmLabel: t("common.delete"),
+      destructive: true,
+    });
+    if (!ok) return;
     try {
       await alertsApi.channels.remove(c.id);
       await refresh();

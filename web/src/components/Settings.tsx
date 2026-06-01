@@ -13,6 +13,7 @@ import { relativeTime } from "@/lib/time";
 import { ErrorText, Field, FieldInput, GhostButton, PrimaryButton } from "@/components/CenterCard";
 import { Surface } from "@/components/ui";
 import { TokenReveal } from "@/components/TokenReveal";
+import { useConfirm } from "@/components/ConfirmDialog";
 import { useI18n } from "@/i18n/useI18n";
 
 type SettingsTab = "hosts" | "account" | "runtime" | "retention" | "downsample" | "logs";
@@ -273,11 +274,16 @@ function HostRow({
   t: ReturnType<typeof useI18n>["t"];
 }) {
   const [busy, setBusy] = useState(false);
+  const confirm = useConfirm();
 
   async function rotate() {
-    if (!window.confirm(t("settings.rotateConfirm", { name: host.name }))) {
-      return;
-    }
+    const ok = await confirm({
+      title: t("settings.rotateTitle"),
+      message: t("settings.rotateConfirm", { name: host.name }),
+      confirmLabel: t("settings.rotateAction"),
+      destructive: true,
+    });
+    if (!ok) return;
     setBusy(true);
     try {
       const res = await hostsApi.rotate(host.id);
@@ -291,9 +297,13 @@ function HostRow({
   }
 
   async function remove() {
-    if (!window.confirm(t("settings.deleteConfirm", { name: host.name }))) {
-      return;
-    }
+    const ok = await confirm({
+      title: t("settings.deleteTitle"),
+      message: t("settings.deleteConfirm", { name: host.name }),
+      confirmLabel: t("common.delete"),
+      destructive: true,
+    });
+    if (!ok) return;
     setBusy(true);
     try {
       await hostsApi.remove(host.id);

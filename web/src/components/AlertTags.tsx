@@ -15,6 +15,7 @@ import {
   PrimaryButton,
 } from "@/components/CenterCard";
 import { EmptyState, IconButton, Surface } from "@/components/ui";
+import { useConfirm } from "@/components/ConfirmDialog";
 import { useI18n } from "@/i18n/useI18n";
 
 // AlertTags is the Tags tab inside Alerts. Two panes:
@@ -168,6 +169,7 @@ function TagRow({
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const confirm = useConfirm();
 
   async function deleteTag() {
     setError(null);
@@ -178,12 +180,17 @@ function TagRow({
       setError(err instanceof ApiError ? err.message : String(err));
       return;
     }
-    const msg = t("alerts.tagsTab.deleteTagConfirm", {
-      key: tag.key,
-      hosts: impact.host_count,
-      rules: impact.rule_count,
+    const ok = await confirm({
+      title: t("alerts.tagsTab.deleteTagTitle"),
+      message: t("alerts.tagsTab.deleteTagConfirm", {
+        key: tag.key,
+        hosts: impact.host_count,
+        rules: impact.rule_count,
+      }),
+      confirmLabel: t("common.delete"),
+      destructive: true,
     });
-    if (!window.confirm(msg)) return;
+    if (!ok) return;
     setBusy(true);
     try {
       const res = await tagsApi.remove(tag.key);
@@ -282,6 +289,7 @@ function TagEditPanel({
   const [newValue, setNewValue] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const confirm = useConfirm();
 
   async function saveDesc() {
     setBusy(true);
@@ -321,13 +329,18 @@ function TagEditPanel({
       setError(err instanceof ApiError ? err.message : String(err));
       return;
     }
-    const msg = t("alerts.tagsTab.deleteValueConfirm", {
-      key: tag.key,
-      value: v,
-      hosts: impact.host_count,
-      rules: impact.rule_count,
+    const ok = await confirm({
+      title: t("alerts.tagsTab.deleteValueTitle"),
+      message: t("alerts.tagsTab.deleteValueConfirm", {
+        key: tag.key,
+        value: v,
+        hosts: impact.host_count,
+        rules: impact.rule_count,
+      }),
+      confirmLabel: t("common.delete"),
+      destructive: true,
     });
-    if (!window.confirm(msg)) return;
+    if (!ok) return;
     setBusy(true);
     try {
       const res = await tagsApi.removeValue(tag.key, v);
