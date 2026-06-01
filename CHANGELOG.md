@@ -23,9 +23,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - `/api/v1/version` and `/api/v1/hosts` with Bearer auth + per-key in-memory token bucket (100/min) + public envelope `{success, data, error, request_id}` + `X-RateLimit-*` headers.
 - Migration 0016: `api_keys` table, SHA-256 hex hash, unique index on hash for the verify hot path.
 
+### Documentation
+
+- **[RFC 0003 — Public Read API](docs/rfcs/0003-public-api.md)**: design record covering the auth model, scope choice, envelope shape, rate-limit decisions, host filter probing protection, and the deferred-feature pickup order.
+- **[Public Read API reference](docs/src/content/docs/reference/public-api.md)**: endpoint catalog with curl examples, error code table, rate-limit headers, Grafana JSON datasource recipe, shell-script + n8n integration patterns, stability promise.
+
 ### Notes
 
-- **RFC + reference docs land in v0.5.1** (`docs/rfcs/0002-public-api.md`, `docs/src/content/docs/reference/public-api.md` EN + VI, Grafana JSON datasource recipe).
 - Phase 7 reorder logged in ACTION_PLAN: Public API ships ahead of Cold tier because (a) it's a lower-risk expose layer over data we already have, (b) homelab fleets bounded by the v0.4.1 retention sweep don't need Cold tier yet. Cold tier becomes v0.6.0 if real demand for >7d queries surfaces via the new metrics endpoint.
 - Smoke test once shipped:
   ```bash

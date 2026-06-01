@@ -161,7 +161,7 @@ Docs are a Starlight site under [docs/](docs/) (English + Vietnamese).
 - **[Hosts & tokens](docs/src/content/docs/configure/hosts-and-tokens.md)** · **[Runtime settings](docs/src/content/docs/configure/runtime-settings.md)** · **[Retention](docs/src/content/docs/configure/retention.md)** · **[Reliability](docs/src/content/docs/configure/reliability.md)**
 
 **Reference**
-- **[Architecture](docs/src/content/docs/reference/architecture.md)** · **[API](docs/src/content/docs/reference/api.md)** · **[Metrics catalog](docs/src/content/docs/reference/metrics-catalog.md)** · **[FAQ](docs/src/content/docs/faq.md)**
+- **[Architecture](docs/src/content/docs/reference/architecture.md)** · **[API](docs/src/content/docs/reference/api.md)** · **[Public Read API](docs/src/content/docs/reference/public-api.md)** · **[Metrics catalog](docs/src/content/docs/reference/metrics-catalog.md)** · **[FAQ](docs/src/content/docs/faq.md)**
 - **[ADR-0001: Storage](docs/adr/0001-storage-architecture.md)** · **[ADR-0002: Transport](docs/adr/0002-transport-choice.md)** · **[ADR-0003: Language](docs/adr/0003-language-choice.md)**
 
 **Develop**
