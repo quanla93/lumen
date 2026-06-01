@@ -89,8 +89,7 @@ esac
 case "$(uname -m)" in
   x86_64|amd64)  ARCH="amd64" ;;
   aarch64|arm64) ARCH="arm64" ;;
-  armv7l|armv7)  ARCH="armv7" ;;
-  *)             die "unsupported arch: $(uname -m). Supported: x86_64, aarch64, armv7l." ;;
+  *)             die "unsupported arch: $(uname -m). Supported: x86_64, aarch64. (armv7 dropped for faster image builds — open an issue if you need it back.)" ;;
 esac
 
 ARTIFACT="lumen-agent-${OS}-${ARCH}"

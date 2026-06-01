@@ -28,16 +28,16 @@ RUN CGO_ENABLED=0 go build \
       -ldflags="-s -w -X main.Version=${VERSION}" \
       -o /out/lumen-hub \
       ./cmd/lumen-hub
-# Cross-build the agent for every Linux arch the install one-liner
-# needs to deliver to. ~45 MB to the hub image total (3 binaries ×
-# ~15 MB each). Matrix has to stay in sync with allowedBinaries in
-# internal/hub/install/install.go and the OS/arch detection in
-# scripts/install-agent.sh. macOS not bundled — Lumen agents target
-# servers (LXC/VM), not workstations.
+# Cross-build the agent for amd64 + arm64 only. Covers Proxmox/VPS
+# (amd64) and Pi 4/5 / Ampere / Graviton (arm64) — the 99% of Lumen
+# homelab targets. armv7 (Pi 2/3 32-bit, BeagleBone, older NAS)
+# temporarily dropped to speed up the hub image build; re-add by
+# appending the GOARM=7 line if a real user needs it. Matrix has to
+# stay in sync with allowedBinaries in internal/hub/install/install.go
+# and the OS/arch detection in scripts/install-agent.sh.
 ARG LDFLAGS="-s -w -X main.Version=${VERSION}"
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64        go build -trimpath -ldflags="${LDFLAGS}" -o /install/lumen-agent-linux-amd64 ./cmd/lumen-agent && \
-    CGO_ENABLED=0 GOOS=linux GOARCH=arm64        go build -trimpath -ldflags="${LDFLAGS}" -o /install/lumen-agent-linux-arm64 ./cmd/lumen-agent && \
-    CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7  go build -trimpath -ldflags="${LDFLAGS}" -o /install/lumen-agent-linux-armv7 ./cmd/lumen-agent && \
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="${LDFLAGS}" -o /install/lumen-agent-linux-amd64 ./cmd/lumen-agent && \
+    CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags="${LDFLAGS}" -o /install/lumen-agent-linux-arm64 ./cmd/lumen-agent && \
     cp scripts/install-agent.sh /install/install.sh
 # Stage a /data dir owned by uid 65532 (the distroless `nonroot` user) so
 # the final image has a writable mount point for the SQLite DB without a

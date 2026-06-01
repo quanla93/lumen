@@ -80,7 +80,6 @@ func (h *Handler) ServeBinary(w http.ResponseWriter, r *http.Request) {
 var allowedBinaries = map[string]bool{
 	"lumen-agent-linux-amd64": true,
 	"lumen-agent-linux-arm64": true,
-	"lumen-agent-linux-armv7": true,
 }
 
 func isAllowedBinary(name string) bool {
