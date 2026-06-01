@@ -6,6 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.4.7] - 2026-06-01
+
+No-Docker install path + smarter per-core CPU on virtualized hosts + silence UX bigger. Closes three operator-pain gaps left from the v0.4.6 round.
+
+### Added
+
+- **Binary + systemd install one-liner.** Lumen no longer requires Docker on the agent side. After minting/rotating a token, the reveal panel grows a `Binary + systemd` tab next to the existing Docker tab, with two prefilled `curl … | sudo bash` commands: one fetched from the hub itself (`http://<hub>/install.sh` — HUB_URL is templated in from the request Host header so the snippet works as-is on whatever address you loaded the UI from) and a backup fetched from the public GitHub repo (script's `{{ .HubURL }}` placeholder is detected and cleared when fetched from GitHub raw, so the existing `--hub required` check fires with a clear error instead of a silent broken download). The hub Docker image cross-builds `lumen-agent-linux-{amd64,arm64}` and serves them at `/install/{binary}`; `scripts/install-agent.sh` detects arch, drops a systemd unit, enables it. Cuts the "but my LXC doesn't have Docker" friction to zero — same UI as Docker, one extra tab.
+- **VirtualizationSystem reported by the agent.** New `system.virt_type` field (`"kvm"`, `"lxc"`, `"docker"`, `"wsl"`, … or empty on bare metal) populated from gopsutil's `host.Info().VirtualizationSystem`. Migration 0015 adds the storage column. Used by the next item.
+- **"Until I lift it" silence preset.** Both the HostDetail SilencePanel select and the per-alert-row silence popover gain a 5th preset — sends the new server cap (1 year) as a practical indefinite. Old 7-day cap bumped because the operator pain ("forgot to unsilence") is dwarfed by the operator pain of having to renew silences during long-running maintenance projects; an abandoned silence still self-expires before drifting into a "why didn't we get paged?" post-mortem.
+- **Silence visibility on Dashboard + HostDetail.** Dashboard polls hostsApi.list() every 30s, builds a name→silenced_until map, threads it to each HostCard so silenced hosts render a small VolumeX icon next to the name (tooltip = silenced-until timestamp). HostDetail header gains a prominent warn-tinted pill ("Alerts silenced" / "Đang im lặng cảnh báo") next to the host title with the same tooltip. Operators no longer have to open the SilencePanel to find out why an agent went quiet.
+
+### Changed
+
+- **Per-core CPU hidden on guest hosts.** HostDetail's per-core CPU strip now collapses to a one-line dashed note on any host whose `system.virt_type` is non-empty. Reason: LXC containers share the kernel with the Proxmox host so per-core data actually reflects the host's physical cores including load from sibling LXCs (operator sees "Core 3: 80%" and thinks this agent is hammering core 3, but the real culprit is a different LXC on the same node); KVM/Qemu VMs see vCPUs that don't isolate from sibling guests on oversubscribed nodes. Bare-metal hosts (empty/missing virt_type) keep the per-core grid. Older agents that don't report virt_type are treated as bare-metal — safe default.
+- **Hub image cross-build matrix trimmed to amd64 + arm64.** Lumen homelab targets (Proxmox, VPS, Pi 4/5 64-bit) are amd64 or arm64; armv7 (Pi 2/3 32-bit, BeagleBone, older NAS) had zero real demand. ~30% faster hub image build, ~15 MB smaller image. CI matrix and `make build-all` / `release-agents` / `release-hub-tarballs` aggregates also drop armv7. Per-arch Makefile targets (`build-linux-armv7`, `release-hub-tarball-armv7`) stay so anyone can still build armv7 one-off if needed.
+
 ## [0.4.6] - 2026-06-01
 
 Stuck-alerts fix + Alerts UI full pass. A real operator-pain bug (firing events that never auto-resolved after the underlying rule was disabled or the hub restarted mid-firing) is closed at the source, and every tab of the Alerts section gets the visual + interaction treatment Rules already got in v0.4.5 — inline Switch toggles, quick-create templates, sectioned forms, and per-row quick actions (silence host from Active, retry from Deliveries).

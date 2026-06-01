@@ -11,7 +11,7 @@ metrics — designed to run comfortably on a Raspberry Pi.
 [Documentation](docs/src/content/docs/getting-started/overview.md) ·
 [Roadmap](ACTION_PLAN.md)
 
-> ⚠️ **Pre-1.0.** Latest tag is **v0.4.6**. Breaking changes are allowed in
+> ⚠️ **Pre-1.0.** Latest tag is **v0.4.7**. Breaking changes are allowed in
 > minor releases until v1.0. The project is staged at
 > [`quanla93/lumen`](https://github.com/quanla93/lumen); the `quanla.org`
 > site, Discord, and any hosted installer URLs are placeholders and don't
