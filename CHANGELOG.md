@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.4.9] - 2026-06-01
+
+Retention settings UX polish.
+
+### Fixed
+
+- **Settings → Retention no longer rejects valid-looking input.** The "Interval" dropdown offered "days" even though the backend caps the sweep heartbeat at 24h, so picking "10 days" failed validation with a cryptic `retention_interval: must be <= 24h0m0s`. The unit dropdown for Interval is now restricted to minutes/hours only — invalid values can't be picked in the first place.
+
+### Changed
+
+- **Retention field labels rewritten to self-explain.** "Window" / "Interval" / "Alert history window" became "Keep raw snapshots for" / "Cleanup runs every" / "Keep alert history for". Each field carries its own help text directly underneath, instead of a mixed paragraph at the top — you don't have to map field-to-sentence anymore. Bilingual (EN + VI).
+
 ## [0.4.8] - 2026-06-01
 
 Hotfix for v0.4.7 — `/install.sh` returned 500 on the hub.

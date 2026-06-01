@@ -489,13 +489,14 @@ const DURATION_UNITS: { value: DurationUnit; labelKey: "common.seconds" | "commo
   { value: "d", labelKey: "common.days", seconds: 24 * 60 * 60 },
 ];
 
-function parseDurationInput(duration: string): DurationInput {
+function parseDurationInput(duration: string, allowed?: DurationUnit[]): DurationInput {
   const match = duration.match(/^(\d+)(s|m|h)$/);
   if (!match) {
     return { value: duration, unit: "h" };
   }
   const amount = Number(match[1]);
-  if (match[2] === "h" && amount % 24 === 0) {
+  const canUseDay = !allowed || allowed.includes("d");
+  if (match[2] === "h" && amount % 24 === 0 && canUseDay) {
     return { value: String(amount / 24), unit: "d" };
   }
   return { value: match[1], unit: match[2] as DurationUnit };
@@ -519,12 +520,19 @@ function DurationField({
   label,
   value,
   onChange,
+  units,
+  help,
 }: {
   label: string;
   value: DurationInput;
   onChange: (value: DurationInput) => void;
+  units?: DurationUnit[];
+  help?: string;
 }) {
   const { t } = useI18n();
+  const allowed = units
+    ? DURATION_UNITS.filter((u) => units.includes(u.value))
+    : DURATION_UNITS;
   return (
     <Field label={label}>
       <div className="flex gap-2">
@@ -543,11 +551,14 @@ function DurationField({
           value={value.unit}
           onChange={(e) => onChange({ ...value, unit: e.target.value as DurationUnit })}
         >
-          {DURATION_UNITS.map((unit) => (
+          {allowed.map((unit) => (
             <option key={unit.value} value={unit.value}>{t(unit.labelKey)}</option>
           ))}
         </select>
       </div>
+      {help && (
+        <p className="mt-1 text-xs text-[color:var(--color-muted)]">{help}</p>
+      )}
     </Field>
   );
 }
@@ -791,7 +802,7 @@ function RetentionSettings() {
     settingsApi.get().then((s) => {
       setSettings(s);
       setWindow(parseDurationInput(s.retention_window));
-      setInterval(parseDurationInput(s.retention_interval));
+      setInterval(parseDurationInput(s.retention_interval, ["m", "h"]));
       setAlertsWindow(parseDurationInput(s.retention_alerts_window));
     }).catch((err) => {
       setError(err instanceof ApiError ? err.message : String(err));
@@ -817,7 +828,7 @@ function RetentionSettings() {
       });
       setSettings(next);
       setWindow(parseDurationInput(next.retention_window));
-      setInterval(parseDurationInput(next.retention_interval));
+      setInterval(parseDurationInput(next.retention_interval, ["m", "h"]));
       setAlertsWindow(parseDurationInput(next.retention_alerts_window));
       setSavedAt(Date.now());
     } catch (err) {
@@ -843,33 +854,31 @@ function RetentionSettings() {
         <p className="text-sm text-[color:var(--color-muted)]">
           {t("settings.retentionDescription")}
         </p>
-        <p className="mt-2 text-sm text-[color:var(--color-muted)]">
-          {t("settings.retentionWindowHelp")} {t("settings.retentionIntervalHelp")}
-        </p>
       </section>
 
       {!settings ? (
         <p className="text-sm text-[color:var(--color-muted)]">{t("common.loading")}</p>
       ) : (
-        <form onSubmit={submit} className="space-y-3">
+        <form onSubmit={submit} className="space-y-4">
           <DurationField
-            label={t("settings.window")}
+            label={t("settings.retentionWindowLabel")}
             value={window}
             onChange={setWindow}
+            help={t("settings.retentionWindowHelp")}
           />
           <DurationField
-            label={t("settings.interval")}
+            label={t("settings.retentionIntervalLabel")}
             value={interval}
             onChange={setInterval}
+            units={["m", "h"]}
+            help={t("settings.retentionIntervalHelp")}
           />
           <DurationField
             label={t("settings.retentionAlertsWindowLabel")}
             value={alertsWindow}
             onChange={setAlertsWindow}
+            help={t("settings.retentionAlertsWindowHelp")}
           />
-          <p className="text-xs text-[color:var(--color-muted)]">
-            {t("settings.retentionAlertsWindowHelp")}
-          </p>
           {error && <ErrorText message={error} />}
           {savedAt && !dirty && (
             <p role="status" className="text-sm text-[color:var(--color-accent)]">
