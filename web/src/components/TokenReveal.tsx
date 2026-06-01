@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { GhostButton } from "@/components/CenterCard";
+import { SegmentedControl } from "@/components/ui";
 import { copyToClipboard } from "@/lib/clipboard";
 import { useI18n } from "@/i18n/useI18n";
 
@@ -28,7 +29,8 @@ export function TokenReveal({
   onDismiss: () => void;
 }) {
   const { t } = useI18n();
-  const [copied, setCopied] = useState<"token" | "compose" | "commands" | null>(null);
+  const [copied, setCopied] = useState<"token" | "compose" | "commands" | "binary" | null>(null);
+  const [method, setMethod] = useState<"docker" | "binary">("docker");
   const hubUrl =
     typeof window !== "undefined"
       ? `${window.location.protocol}//${window.location.host}`
@@ -36,6 +38,16 @@ export function TokenReveal({
 
   const dockerHubUrl = dockerReachableHubUrl(hubUrl);
   const safeHostName = hostName.replace(/[^A-Za-z0-9_.-]/g, "-");
+
+  // Binary install one-liner. The hub's /install.sh endpoint bakes
+  // HUB_URL into the script (templated from request Host header), so
+  // the operator only needs to pass --token + --host. install-agent.sh
+  // detects arch, downloads the matching binary from /install/<name>,
+  // drops a systemd unit, enables it.
+  const binaryCommand =
+    `curl -fsSL ${hubUrl}/install.sh | sudo bash -s -- \\\n` +
+    `    --token ${token} \\\n` +
+    `    --host ${hostName}`;
 
   const agentImage = "ghcr.io/quanla93/lumen-agent:latest";
   const compose = `services:
@@ -69,7 +81,7 @@ sudo docker compose logs -f
 sudo docker compose pull
 sudo docker compose up -d`;
 
-  async function copy(text: string, which: "token" | "compose" | "commands") {
+  async function copy(text: string, which: "token" | "compose" | "commands" | "binary") {
     if (await copyToClipboard(text)) {
       setCopied(which);
       setTimeout(() => setCopied(null), 1500);
@@ -101,33 +113,67 @@ sudo docker compose up -d`;
       </div>
 
       <div className="mb-4">
-        <div className="flex items-center justify-between gap-2 mb-1">
-          <p className="text-xs font-semibold">{t("token.composeCommandsTitle")}</p>
-          <GhostButton onClick={() => copy(composeCommands, "commands")}>
-            {copied === "commands" ? t("common.copied") : t("common.copy")}
-          </GhostButton>
-        </div>
-        <pre className="text-xs font-mono bg-[color:var(--color-card)] border border-[color:var(--color-border)] rounded p-3 overflow-x-auto whitespace-pre-wrap">{composeCommands}</pre>
-        <p className="text-xs text-[color:var(--color-muted)] mt-2">
-          {t("token.composeCommandsDescription")}
-        </p>
+        <SegmentedControl
+          value={method}
+          onChange={setMethod}
+          options={[
+            { value: "docker", label: t("token.methodDocker") },
+            { value: "binary", label: t("token.methodBinary") },
+          ]}
+          ariaLabel={t("token.installTitle")}
+        />
       </div>
 
-      <div className="mb-4">
-        <div className="flex items-center justify-between gap-2 mb-1">
-          <p className="text-xs font-semibold">{t("token.composeTitle")}</p>
-          <div className="flex items-center gap-2">
-            <GhostButton onClick={downloadCompose}>{t("common.download")}</GhostButton>
-            <GhostButton onClick={() => copy(compose, "compose")}>
-              {copied === "compose" ? t("common.copied") : t("common.copy")}
+      {method === "docker" && (
+        <>
+          <div className="mb-4">
+            <div className="flex items-center justify-between gap-2 mb-1">
+              <p className="text-xs font-semibold">{t("token.composeCommandsTitle")}</p>
+              <GhostButton onClick={() => copy(composeCommands, "commands")}>
+                {copied === "commands" ? t("common.copied") : t("common.copy")}
+              </GhostButton>
+            </div>
+            <pre className="text-xs font-mono bg-[color:var(--color-card)] border border-[color:var(--color-border)] rounded p-3 overflow-x-auto whitespace-pre-wrap">{composeCommands}</pre>
+            <p className="text-xs text-[color:var(--color-muted)] mt-2">
+              {t("token.composeCommandsDescription")}
+            </p>
+          </div>
+
+          <div className="mb-4">
+            <div className="flex items-center justify-between gap-2 mb-1">
+              <p className="text-xs font-semibold">{t("token.composeTitle")}</p>
+              <div className="flex items-center gap-2">
+                <GhostButton onClick={downloadCompose}>{t("common.download")}</GhostButton>
+                <GhostButton onClick={() => copy(compose, "compose")}>
+                  {copied === "compose" ? t("common.copied") : t("common.copy")}
+                </GhostButton>
+              </div>
+            </div>
+            <pre className="text-xs font-mono bg-[color:var(--color-card)] border border-[color:var(--color-border)] rounded p-3 overflow-x-auto whitespace-pre-wrap">{compose}</pre>
+            <p className="text-xs text-[color:var(--color-muted)] mt-2">
+              {t("token.composeDescription")}
+            </p>
+          </div>
+        </>
+      )}
+
+      {method === "binary" && (
+        <div className="mb-4">
+          <div className="flex items-center justify-between gap-2 mb-1">
+            <p className="text-xs font-semibold">{t("token.binaryTitle")}</p>
+            <GhostButton onClick={() => copy(binaryCommand, "binary")}>
+              {copied === "binary" ? t("common.copied") : t("common.copy")}
             </GhostButton>
           </div>
+          <pre className="text-xs font-mono bg-[color:var(--color-card)] border border-[color:var(--color-border)] rounded p-3 overflow-x-auto whitespace-pre-wrap">{binaryCommand}</pre>
+          <p className="text-xs text-[color:var(--color-muted)] mt-2">
+            {t("token.binaryDescription")}
+          </p>
+          <p className="text-xs text-[color:var(--color-muted)] mt-1">
+            {t("token.binaryRequirements")}
+          </p>
         </div>
-        <pre className="text-xs font-mono bg-[color:var(--color-card)] border border-[color:var(--color-border)] rounded p-3 overflow-x-auto whitespace-pre-wrap">{compose}</pre>
-        <p className="text-xs text-[color:var(--color-muted)] mt-2">
-          {t("token.composeDescription")}
-        </p>
-      </div>
+      )}
 
       <div>
         <div className="flex items-center justify-between gap-2 mb-1">

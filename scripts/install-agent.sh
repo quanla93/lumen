@@ -75,8 +75,9 @@ fi
 [ -n "$AGENT_HOST" ] || AGENT_HOST="$(hostname)"
 
 case "$(uname -s)" in
-  Linux) OS="linux" ;;
-  *)     die "unsupported OS: $(uname -s) (only Linux is supported via this installer; native binary works on macOS/Windows manually)" ;;
+  Linux)  OS="linux"  ;;
+  Darwin) OS="darwin" ;;
+  *)      die "unsupported OS: $(uname -s) (supported: Linux, Darwin)" ;;
 esac
 
 case "$(uname -m)" in
@@ -85,6 +86,11 @@ case "$(uname -m)" in
   armv7l|armv7)  ARCH="armv7" ;;
   *)             die "unsupported arch: $(uname -m). Supported: x86_64, aarch64, armv7l." ;;
 esac
+
+# Darwin doesn't ship armv7 builds — gopsutil + go runtime don't support it.
+if [ "$OS" = "darwin" ] && [ "$ARCH" = "armv7" ]; then
+  die "darwin/armv7 not supported. Use a 64-bit Mac."
+fi
 
 ARTIFACT="lumen-agent-${OS}-${ARCH}"
 DOWNLOAD_URL="${HUB_URL%/}/install/${ARTIFACT}"

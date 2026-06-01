@@ -262,6 +262,11 @@ export const en = {
     manualTitle: "Manual token fallback",
     manualTokenTitle: "Plain token for manual fallback",
     manualDescription: "Use this token only if you cannot use the generated Compose file.",
+    methodDocker: "Docker",
+    methodBinary: "Binary + systemd",
+    binaryTitle: "Run on the target host",
+    binaryDescription: "One-liner — downloads the binary, registers a systemd service, starts it. Hub URL is baked in. Works on any Linux LXC/VM without Docker.",
+    binaryRequirements: "Requires: root (sudo), systemd, curl. Linux amd64/arm64/armv7.",
   },
   alerts: {
     title: "Alerts",
@@ -758,6 +763,11 @@ export const vi: WidenStrings<typeof en> = {
     manualTitle: "Token thủ công dự phòng",
     manualTokenTitle: "Token plaintext cho dự phòng thủ công",
     manualDescription: "Chỉ dùng token này nếu bạn không thể dùng file Compose được tạo sẵn.",
+    methodDocker: "Docker",
+    methodBinary: "Binary + systemd",
+    binaryTitle: "Chạy trên máy đích",
+    binaryDescription: "1 dòng — tải binary, đăng ký systemd service, khởi động. Hub URL được nhúng sẵn. Chạy được trên LXC/VM Linux không có Docker.",
+    binaryRequirements: "Yêu cầu: root (sudo), systemd, curl. Linux amd64/arm64/armv7.",
   },
   alerts: {
     title: "Cảnh báo",

@@ -28,14 +28,17 @@ RUN CGO_ENABLED=0 go build \
       -ldflags="-s -w -X main.Version=${VERSION}" \
       -o /out/lumen-hub \
       ./cmd/lumen-hub
-# Cross-build the agent for amd64 only — the install one-liner served
-# by the hub at /install only needs to deliver to x86 hosts in this
-# deployment. ~15 MB in the final image. To re-add arm64/armv7 install
-# delivery: append the matching `go build` invocations here (release.yml
-# was simplified at the same time; both need to agree on arch coverage).
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
-      -trimpath -ldflags="-s -w -X main.Version=${VERSION}" \
-      -o /install/lumen-agent-linux-amd64 ./cmd/lumen-agent && \
+# Cross-build the agent for every arch the install one-liner needs to
+# deliver to. Adds ~75 MB to the hub image total (5 binaries × ~15 MB
+# each); acceptable for a self-hosted homelab tool. The matrix needs
+# to stay in sync with allowedBinaries in internal/hub/install/install.go
+# and the OS/arch detection in scripts/install-agent.sh.
+ARG LDFLAGS="-s -w -X main.Version=${VERSION}"
+RUN CGO_ENABLED=0 GOOS=linux  GOARCH=amd64        go build -trimpath -ldflags="${LDFLAGS}" -o /install/lumen-agent-linux-amd64  ./cmd/lumen-agent && \
+    CGO_ENABLED=0 GOOS=linux  GOARCH=arm64        go build -trimpath -ldflags="${LDFLAGS}" -o /install/lumen-agent-linux-arm64  ./cmd/lumen-agent && \
+    CGO_ENABLED=0 GOOS=linux  GOARCH=arm GOARM=7  go build -trimpath -ldflags="${LDFLAGS}" -o /install/lumen-agent-linux-armv7  ./cmd/lumen-agent && \
+    CGO_ENABLED=0 GOOS=darwin GOARCH=amd64        go build -trimpath -ldflags="${LDFLAGS}" -o /install/lumen-agent-darwin-amd64 ./cmd/lumen-agent && \
+    CGO_ENABLED=0 GOOS=darwin GOARCH=arm64        go build -trimpath -ldflags="${LDFLAGS}" -o /install/lumen-agent-darwin-arm64 ./cmd/lumen-agent && \
     cp scripts/install-agent.sh /install/install.sh
 # Stage a /data dir owned by uid 65532 (the distroless `nonroot` user) so
 # the final image has a writable mount point for the SQLite DB without a
