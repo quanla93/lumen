@@ -15,16 +15,18 @@ import (
 	"github.com/quanla93/lumen/internal/hub/storage"
 )
 
-// Handlers groups the v1 endpoint handlers. Pr2 ships /version and
-// /hosts only; metrics + alerts land in pr3.
+// Handlers groups the v1 endpoint handlers. BuildVersion is the hub's
+// build-time version string (passed through to /api/v1/version) — kept
+// distinct from the Version method below so the two don't collide at
+// compile time.
 type Handlers struct {
-	DB      *sql.DB
-	Logger  *slog.Logger
-	Version string
+	DB           *sql.DB
+	Logger       *slog.Logger
+	BuildVersion string
 }
 
-func NewHandlers(db *sql.DB, version string, logger *slog.Logger) *Handlers {
-	return &Handlers{DB: db, Logger: logger, Version: version}
+func NewHandlers(db *sql.DB, buildVersion string, logger *slog.Logger) *Handlers {
+	return &Handlers{DB: db, Logger: logger, BuildVersion: buildVersion}
 }
 
 // ─── GET /api/v1/version ─────────────────────────────────────────────────
@@ -36,7 +38,7 @@ type versionResp struct {
 // Version is the public ping. Auth required (so revoked keys can't poll
 // it), but no specific scope — any authenticated caller succeeds.
 func (h *Handlers) Version(w http.ResponseWriter, r *http.Request) {
-	WriteSuccess(w, r, http.StatusOK, versionResp{Version: h.Version})
+	WriteSuccess(w, r, http.StatusOK, versionResp{Version: h.BuildVersion})
 }
 
 // ─── GET /api/v1/hosts ───────────────────────────────────────────────────
