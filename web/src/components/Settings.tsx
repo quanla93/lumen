@@ -1,24 +1,29 @@
 import { useCallback, useEffect, useState } from "react";
-import { Server, User as UserIcon, Gauge, Archive, BarChart3, ScrollText, Activity } from "lucide-react";
+import { Server, User as UserIcon, Gauge, Archive, BarChart3, ScrollText, Activity, KeyRound, Trash2, Copy, Check } from "lucide-react";
 import {
   hostsApi,
   authApi,
   settingsApi,
   hubStatsApi,
+  apiKeysApi,
   ApiError,
   type Host,
   type User,
   type SettingsResponse,
   type HubStatsResponse,
+  type ApiKey,
+  type ApiKeyCreated,
+  type ApiKeyScope,
 } from "@/lib/api";
 import { relativeTime } from "@/lib/time";
+import { copyToClipboard } from "@/lib/clipboard";
 import { ErrorText, Field, FieldInput, GhostButton, PrimaryButton } from "@/components/CenterCard";
-import { Surface } from "@/components/ui";
+import { IconButton, Surface } from "@/components/ui";
 import { TokenReveal } from "@/components/TokenReveal";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { useI18n } from "@/i18n/useI18n";
 
-type SettingsTab = "hosts" | "account" | "runtime" | "retention" | "downsample" | "logs" | "hub-status";
+type SettingsTab = "hosts" | "account" | "runtime" | "retention" | "downsample" | "logs" | "hub-status" | "api-keys";
 
 const TABS: {
   id: SettingsTab;
@@ -29,7 +34,8 @@ const TABS: {
     | "settings.tabs.retention"
     | "settings.tabs.downsample"
     | "settings.tabs.logs"
-    | "settings.tabs.hubStatus";
+    | "settings.tabs.hubStatus"
+    | "settings.tabs.apiKeys";
   icon: typeof Server;
 }[] = [
   { id: "hosts",      labelKey: "settings.tabs.hosts",      icon: Server },
@@ -39,6 +45,7 @@ const TABS: {
   { id: "downsample", labelKey: "settings.tabs.downsample", icon: BarChart3 },
   { id: "logs",       labelKey: "settings.tabs.logs",       icon: ScrollText },
   { id: "hub-status", labelKey: "settings.tabs.hubStatus",  icon: Activity },
+  { id: "api-keys",   labelKey: "settings.tabs.apiKeys",    icon: KeyRound },
 ];
 
 export function Settings({ user }: { user: User }) {
@@ -80,6 +87,7 @@ export function Settings({ user }: { user: User }) {
           {tab === "downsample" && <DownsampleSettings />}
           {tab === "logs"       && <LogManagementSettings />}
           {tab === "hub-status" && <HubStatusSettings />}
+          {tab === "api-keys"   && <ApiKeysSettings />}
         </div>
       </div>
     </div>
@@ -1039,6 +1047,223 @@ function StatRow({ label, value, mono }: { label: string; value: string; mono?: 
       <span className={mono ? "font-mono text-xs text-[color:var(--color-fg)] break-all text-right" : "text-[color:var(--color-fg)]"}>
         {value}
       </span>
+    </div>
+  );
+}
+
+// ─── API Keys sub-tab ─────────────────────────────────────────────────────
+
+const ALL_SCOPES: ApiKeyScope[] = ["read:hosts", "read:metrics", "read:alerts"];
+const DEFAULT_SCOPES: ApiKeyScope[] = ["read:hosts", "read:metrics"];
+
+function ApiKeysSettings() {
+  const { t, locale } = useI18n();
+  const confirm = useConfirm();
+  const [keys, setKeys] = useState<ApiKey[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  const [name, setName] = useState("");
+  const [scopes, setScopes] = useState<ApiKeyScope[]>(DEFAULT_SCOPES);
+  const [hostFilter, setHostFilter] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [revealed, setRevealed] = useState<ApiKeyCreated | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    apiKeysApi.list()
+      .then((rows) => setKeys(rows ?? []))
+      .catch((err) => setLoadError(err instanceof ApiError ? err.message : String(err)))
+      .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), 30_000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  function toggleScope(scope: ApiKeyScope) {
+    setScopes((prev) => prev.includes(scope) ? prev.filter((s) => s !== scope) : [...prev, scope]);
+  }
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setFormError(null);
+    if (!name.trim()) {
+      setFormError(t("settings.apikeysNameRequired"));
+      return;
+    }
+    if (scopes.length === 0) {
+      setFormError(t("settings.apikeysScopesRequired"));
+      return;
+    }
+    setBusy(true);
+    try {
+      const created = await apiKeysApi.create({
+        name: name.trim(),
+        scopes,
+        host_filter: hostFilter.trim() ? hostFilter.trim() : null,
+      });
+      setKeys((prev) => [created, ...prev]);
+      setRevealed(created);
+      setCopied(false);
+      setName("");
+      setScopes(DEFAULT_SCOPES);
+      setHostFilter("");
+    } catch (err) {
+      setFormError(err instanceof ApiError ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function remove(key: ApiKey) {
+    const ok = await confirm({
+      title: t("settings.apikeysRevokeTitle"),
+      message: t("settings.apikeysRevokeMessage", { name: key.name }),
+      confirmLabel: t("settings.apikeysRevokeConfirm"),
+      destructive: true,
+    });
+    if (!ok) return;
+    try {
+      await apiKeysApi.remove(key.id);
+      setKeys((prev) => prev.filter((k) => k.id !== key.id));
+      if (revealed?.id === key.id) setRevealed(null);
+    } catch (err) {
+      setLoadError(err instanceof ApiError ? err.message : String(err));
+    }
+  }
+
+  async function copyPlaintext() {
+    if (!revealed) return;
+    const ok = await copyToClipboard(revealed.plaintext);
+    if (ok) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      <header>
+        <h2 className="text-base font-semibold tracking-tight">{t("settings.apikeysTitle")}</h2>
+        <p className="mt-1 text-sm text-[color:var(--color-muted)]">{t("settings.apikeysDescription")}</p>
+      </header>
+
+      {revealed && (
+        <Surface as="section" className="border-[color:var(--lumen-teal)]/40 bg-[color-mix(in_oklch,var(--lumen-teal)_8%,transparent)]">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-semibold">{t("settings.apikeysRevealTitle")}</h3>
+              <p className="mt-1 text-xs text-[color:var(--color-muted)]">{t("settings.apikeysRevealHelp")}</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setRevealed(null)}
+              className="text-xs text-[color:var(--color-muted)] hover:text-[color:var(--color-fg)]"
+            >
+              {t("common.dismiss")}
+            </button>
+          </div>
+          <div className="mt-3 flex items-center gap-2">
+            <code className="flex-1 break-all rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-3 py-2 font-mono text-xs">
+              {revealed.plaintext}
+            </code>
+            <GhostButton type="button" onClick={copyPlaintext}>
+              {copied ? <><Check size={14} /> {t("common.copied")}</> : <><Copy size={14} /> {t("common.copy")}</>}
+            </GhostButton>
+          </div>
+        </Surface>
+      )}
+
+      <Surface as="section">
+        <h3 className="text-sm font-semibold tracking-tight">{t("settings.apikeysCreateTitle")}</h3>
+        <form onSubmit={submit} className="mt-3 space-y-3">
+          <Field label={t("settings.apikeysNameLabel")}>
+            <FieldInput
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder={t("settings.apikeysNamePlaceholder")}
+              maxLength={64}
+              required
+            />
+          </Field>
+          <Field label={t("settings.apikeysScopesLabel")}>
+            <div className="flex flex-wrap gap-3">
+              {ALL_SCOPES.map((scope) => (
+                <label key={scope} className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={scopes.includes(scope)}
+                    onChange={() => toggleScope(scope)}
+                  />
+                  <span className="font-mono text-xs">{scope}</span>
+                </label>
+              ))}
+            </div>
+          </Field>
+          <Field label={t("settings.apikeysHostFilterLabel")}>
+            <FieldInput
+              value={hostFilter}
+              onChange={(e) => setHostFilter(e.target.value)}
+              placeholder={t("settings.apikeysHostFilterPlaceholder")}
+              maxLength={256}
+            />
+            <p className="mt-1 text-xs text-[color:var(--color-muted)]">{t("settings.apikeysHostFilterHelp")}</p>
+          </Field>
+          {formError && <ErrorText message={formError} />}
+          <PrimaryButton disabled={busy}>
+            {busy ? t("common.saving") : t("settings.apikeysCreateSubmit")}
+          </PrimaryButton>
+        </form>
+      </Surface>
+
+      <Surface as="section">
+        <h3 className="text-sm font-semibold tracking-tight">{t("settings.apikeysListTitle")}</h3>
+        {loadError && <div className="mt-2"><ErrorText message={loadError} /></div>}
+        {loading ? (
+          <p className="mt-3 text-sm text-[color:var(--color-muted)]">{t("common.loading")}</p>
+        ) : keys.length === 0 ? (
+          <p className="mt-3 text-sm text-[color:var(--color-muted)]">{t("settings.apikeysEmpty")}</p>
+        ) : (
+          <ul className="mt-3 divide-y divide-[color:var(--color-border)]">
+            {keys.map((k) => (
+              <li key={k.id} className="flex items-start justify-between gap-3 py-3">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-[color:var(--color-fg)]">{k.name}</span>
+                    <code className="font-mono text-xs text-[color:var(--color-muted)]">{k.preview}…</code>
+                  </div>
+                  <div className="mt-1 flex flex-wrap gap-1.5">
+                    {k.scopes.map((s) => (
+                      <span key={s} className="rounded-md border border-[color:var(--color-border)] px-1.5 py-0.5 font-mono text-[10px] text-[color:var(--color-muted)]">
+                        {s}
+                      </span>
+                    ))}
+                    {k.host_filter && (
+                      <span className="rounded-md border border-[color:var(--color-border)] px-1.5 py-0.5 font-mono text-[10px] text-[color:var(--color-muted)]">
+                        host:{k.host_filter}
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-1 text-xs text-[color:var(--color-muted)]">
+                    {t("settings.apikeysLastUsed")}: {k.last_used_at ? relativeTime(k.last_used_at, now, locale) : t("common.never")} ·{" "}
+                    {t("settings.apikeysCreatedAt")}: {relativeTime(k.created_at, now, locale)}
+                  </p>
+                </div>
+                <IconButton
+                  label={t("settings.apikeysRevokeAria", { name: k.name })}
+                  onClick={() => remove(k)}
+                >
+                  <Trash2 size={14} />
+                </IconButton>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Surface>
     </div>
   );
 }

@@ -17,12 +17,14 @@ import (
 
 	hubagent "github.com/quanla93/lumen/internal/hub/agent"
 	"github.com/quanla93/lumen/internal/hub/alerts"
+	"github.com/quanla93/lumen/internal/hub/apikey"
 	"github.com/quanla93/lumen/internal/hub/auth"
 	"github.com/quanla93/lumen/internal/hub/hosts"
 	"github.com/quanla93/lumen/internal/hub/hubstats"
 	"github.com/quanla93/lumen/internal/hub/ingest"
 	"github.com/quanla93/lumen/internal/hub/install"
 	"github.com/quanla93/lumen/internal/hub/meta"
+	"github.com/quanla93/lumen/internal/hub/publicapi"
 	"github.com/quanla93/lumen/internal/hub/retention"
 	"github.com/quanla93/lumen/internal/hub/settings"
 	"github.com/quanla93/lumen/internal/hub/storage"
@@ -146,6 +148,10 @@ func Run(ctx context.Context, cfg Config) error {
 		StartedAt: time.Now(),
 		Logger:    logger.With("subsys", "hubstats"),
 	}
+	apiKeysHandlers := apikey.NewHandlers(db, logger.With("subsys", "apikeys"))
+	publicAPIHandlers := publicapi.NewHandlers(db, cfg.Version, logger.With("subsys", "publicapi"))
+	publicAPILimiter := publicapi.NewLimiter(100, 100) // 100 burst, 100/min refill
+	publicAPIAuthn := publicapi.Authn(db, logger.With("subsys", "publicapi"))
 	requireSession := auth.RequireSession(cfg.Secret)
 
 	r := chi.NewRouter()
@@ -194,6 +200,10 @@ func Run(ctx context.Context, cfg Config) error {
 
 		r.Get("/api/admin/hub-stats", hubStatsHandler.ServeHTTP)
 
+		r.Get("/api/apikeys", apiKeysHandlers.List)
+		r.Post("/api/apikeys", apiKeysHandlers.Create)
+		r.Delete("/api/apikeys/{id}", apiKeysHandlers.Delete)
+
 		r.Get("/api/alerts/rules", alertsHandlers.ListRules)
 		r.Post("/api/alerts/rules", alertsHandlers.CreateRule)
 		r.Put("/api/alerts/rules/{id}", alertsHandlers.UpdateRule)
@@ -220,6 +230,16 @@ func Run(ctx context.Context, cfg Config) error {
 		r.Post("/api/tags/{key}/values", alertsHandlers.AddTagValue)
 		r.Delete("/api/tags/{key}/values/{value}", alertsHandlers.DeleteTagValue)
 		r.Get("/api/tags/{key}/values/{value}/impact", alertsHandlers.TagValueImpact)
+	})
+
+	// Public Read API — Bearer-key authenticated, per-key rate limited,
+	// rich envelope on every response. Versioned at /api/v1/*.
+	r.Group(func(r chi.Router) {
+		r.Use(publicAPIAuthn)
+		r.Use(publicAPILimiter.Middleware)
+		r.Get("/api/v1/version", publicAPIHandlers.Version)
+		r.With(publicapi.RequireScope(apikey.ScopeReadHosts)).
+			Get("/api/v1/hosts", publicAPIHandlers.Hosts)
 	})
 
 	// Everything else falls to the embedded web bundle (SPA-style), except

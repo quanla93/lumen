@@ -201,6 +201,31 @@ export const hubStatsApi = {
   get: () => api<HubStatsResponse>("/api/admin/hub-stats"),
 };
 
+export type ApiKeyScope = "read:hosts" | "read:metrics" | "read:alerts";
+
+export type ApiKey = {
+  id: string;
+  name: string;
+  preview: string;
+  scopes: ApiKeyScope[];
+  host_filter: string | null;
+  last_used_at: string | null;
+  created_at: string;
+};
+
+export type ApiKeyCreated = ApiKey & { plaintext: string };
+
+export const apiKeysApi = {
+  list: () => api<ApiKey[]>("/api/apikeys"),
+  create: (input: { name: string; scopes: ApiKeyScope[]; host_filter: string | null }) =>
+    api<ApiKeyCreated>("/api/apikeys", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  remove: (id: string) =>
+    api<void>(`/api/apikeys/${encodeURIComponent(id)}`, { method: "DELETE" }),
+};
+
 // ----- Alerts (Phase 6 / RFC 0001) -----
 
 export type AlertMetric =

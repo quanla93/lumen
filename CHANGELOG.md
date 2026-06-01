@@ -6,6 +6,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.4.11] - 2026-06-01
+
+Public Read API foundation (Phase 7 / v0.5.0, patch 1+2 of 4). API keys mint, list, revoke + the first two `/api/v1/*` endpoints with Bearer auth + rate limit.
+
+### Added
+
+- **`Settings → API Keys` tab + `/api/apikeys` admin endpoints.** Operator mints bearer keys (`lumk_<32 bytes base64url>`), picks scopes (`read:hosts`, `read:metrics`, `read:alerts`), and optionally restricts a key to a glob host filter (e.g. `*pve*`). Keys are stored as SHA-256 hex hash — plaintext is shown exactly once on create with a copy button, then never persisted. List view shows preview (`lumk_AbCdEfGh…`), scopes, last-used, created-at. Revoke uses the in-app confirm dialog. Migration 0016 with unique index on `hash` for the verify hot path.
+- **`GET /api/v1/version`** — public ping. Auth required (any valid key) but no scope check.
+- **`GET /api/v1/hosts`** — host list filtered by the key's host_filter glob. Requires `read:hosts` scope.
+- **Public API envelope.** Every `/api/v1/*` response wraps data in `{success, data, error: {code, message}, request_id}`. Internal `/api/*` keeps its terse shape; the two surfaces are now cleanly separated.
+- **Per-key rate limit.** In-memory token bucket — 100 burst / 100 per minute refill. `X-RateLimit-Limit` + `X-RateLimit-Remaining` headers on every response; 429 + `Retry-After` when exhausted. No Redis — single-binary discipline.
+
+### Notes
+
+- Metrics (`/api/v1/hosts/{name}/metrics`) and alerts (`/api/v1/alerts/*`) endpoints land in v0.4.12. RFC + reference docs in v0.4.13. v0.5.0 cuts the sum.
+- Quick smoke test once shipped:
+  ```bash
+  # Mint a key in Settings → API Keys, then:
+  curl -H "Authorization: Bearer lumk_..." http://hub:8090/api/v1/version
+  curl -H "Authorization: Bearer lumk_..." http://hub:8090/api/v1/hosts
+  ```
+
 ## [0.4.10] - 2026-06-01
 
 Hub self-visibility — a new **Settings → Hub status** tab.

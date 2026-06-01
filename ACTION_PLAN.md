@@ -427,23 +427,46 @@ Wrap-up patch. Originally planned as Email-only (was v0.4.2 slot); absorbed Flap
 
 ---
 
-### Phase 7 — v0.6: Cold tier + retention ▶ NEXT (Phase 6 closed v0.4.5)
+### Phase 7 — v0.5/v0.6: External API + Cold tier 🚧 (Public API in flight; Cold tier deferred behind demand signal)
 
-**Goal**: Make Lumen viable for fleets that want >24h history without ballooning SQLite, plus the multi-user / 2FA basics that gate self-hosting at a small team. Cold tier is the centerpiece — everything else clusters around it (retention compaction reads/writes the same Parquet files; external API serves them; multi-user/2FA are gating UX changes that pair naturally with the storage rewrite). DuckDB spike comes first because the answer ("yes/no/defer") shapes the query-layer design.
+**Goal**: Open Lumen's data to external integrations (Grafana, automation, scripts) without forcing Cold tier first. Ship Cold tier only if SQLite + the v0.4.1 retention sweep proves insufficient for real homelab fleets.
 
-- [ ] **DuckDB feasibility spike + ADR** (do this first): validate practicality, packaging (cgo or native distro pkg), memory footprint on a Pi, query latency vs raw SQLite, and whether DuckDB should be default-on / optional / off-by-default for homelab installs.
-- [ ] Parquet writer (parquet-go)
-- [ ] Compaction job: SQLite > configurable hot window → Parquet using configurable downsample bucket/policy
-- [ ] Compaction job: SQLite > configurable hot window → Parquet using configurable downsample bucket/policy
-- [ ] Query layer transparent over SQLite + Parquet
-- [ ] DuckDB feasibility spike + ADR before implementation: validate practicality, packaging, memory footprint, query latency, and whether DuckDB should be optional/default/off by default
-- [ ] Optional DuckDB cold-query layer only if spike confirms it is practical for homelab installs
-- [ ] Multi-user (admin + read-only viewer)
-- [ ] TOTP 2FA
-- [ ] Docs: `how-to/reduce-disk-writes-further.md`
-- [ ] Benchmark: ghi IOPS/ngày so với Beszel + Prometheus, post lên docs
-- [ ] External data API/export RFC: define supported consumers (Grafana first), auth model, query shape, rate limits, and whether to expose Prometheus-compatible endpoints, Grafana datasource plugin, or plain REST/SQL-over-HTTP style API
-- [ ] Grafana integration spike: prove a user can build Grafana dashboards from Lumen monitoring data without using Lumen's web UI
+**Reorder rationale (2026-06-01)**: original plan had Cold tier as the centerpiece with external API downstream (because cold tier serves long-range queries). Flipped because:
+- Public API is a low-risk expose-layer over data we already have; ships in ~1 week.
+- Cold tier is a multi-week storage rewrite with cgo / DuckDB unknowns.
+- Demand-driven: ship Public API first, measure if anyone actually queries >7d ranges, then decide if Cold tier is justified.
+- Fleet math: homelab (≤30 hosts, 30-90d retention) is already comfortably bounded by the v0.4.1 retention sweep — Cold tier only matters for power users above that.
+
+See the **Public API / External API — Module Plan** section below for the detailed PAPI Phase 1..5 surface mapping; Phase 7's v0.5.0 ships PAPI Phase 1.
+
+#### v0.5.0 — Public Read API 🚧 (in flight)
+
+Four small patches under v0.4.x, then cut v0.5.0 as the sum.
+- [x] **v0.4.11** — `Settings → API Keys` admin UI + `/api/apikeys` CRUD (mint / list / revoke, plaintext-shown-once flow, glob host_filter, scopes). `/api/v1/version` + `/api/v1/hosts` skeleton endpoints with Bearer auth middleware + per-key in-memory token bucket (100/min) + public envelope `{success, data, error, request_id}`. Migration 0016. Bilingual.
+- [ ] **v0.4.12** — `/api/v1/hosts/{name}`, `/api/v1/hosts/{name}/metrics?from=&to=&bucket=` (≤7d, bucket required, cap 1000 points), `/api/v1/alerts/events`, `/api/v1/alerts/rules`. Host filter + scope checks honored on every endpoint.
+- [ ] **v0.4.13** — `docs/rfcs/0002-public-api.md` + `docs/src/content/docs/reference/public-api.md` (EN + VI) + Grafana JSON datasource recipe + curl examples per endpoint.
+- [ ] **v0.5.0** — cut release: combined CHANGELOG, README banner, docs site updated.
+
+#### v0.6.0 — Cold tier (deferred behind demand signal)
+
+Only ship if v0.5.0 surfaces real demand for >7d queries via Public API metrics endpoint, OR if SQLite size on a real deployment crosses ~10 GB. If neither happens, skip to v0.7 polish.
+
+- [ ] **DuckDB feasibility spike + ADR** (do this first): packaging (cgo or native distro pkg), memory footprint on a Pi, query latency vs raw SQLite, whether DuckDB should be default-on / optional / off-by-default for homelab installs.
+- [ ] Parquet writer (parquet-go).
+- [ ] Compaction job: SQLite > configurable hot window → Parquet using configurable downsample bucket/policy.
+- [ ] Query layer transparent over SQLite + Parquet (this is where DuckDB or hand-rolled merge logic lives, decided by the spike).
+- [ ] Optional DuckDB cold-query layer only if spike confirms it is practical for homelab installs.
+- [ ] Docs: `how-to/reduce-disk-writes-further.md`.
+- [ ] Benchmark: write IOPS/day vs Beszel + Prometheus, post on docs.
+
+#### v0.6.x — Multi-user + Grafana integration (independent of Cold tier)
+
+These were originally lumped with Cold tier in the old Phase 7 because they were the same Phase 7 box. They're actually unblocked once the Public API surface exists, so they slot in alongside Cold tier (and ship even if Cold tier is skipped).
+
+- [ ] Multi-user (admin + read-only viewer).
+- [ ] TOTP 2FA.
+- [ ] Grafana integration spike: prove a user can build Grafana dashboards from Lumen Public API data without using Lumen's web UI (start with the community JSON datasource plugin).
+- [ ] Decide Prometheus-compatible endpoint vs Grafana datasource plugin vs plain REST/SQL-over-HTTP style API based on the spike output.
 
 ---
 
@@ -861,8 +884,12 @@ Nếu bạn (hoặc Claude) mở session mới:
 
 > Cập nhật mục này mỗi session.
 
-**Session**: 2026-05-30
-**Đang làm**: **v0.4.1 retention sweep — code complete on `main`, awaiting server-test validation.** New `retention.delete_alerts_after` setting (default 30d / 720h, env override `LUMEN_HUB_RETENTION_ALERTS_WINDOW`) feeds a sweep that reuses the same retention heartbeat as snapshots: `alert_events` with `state='resolved'` and `COALESCE(resolved_at, started_at) < cutoff` are deleted (firing events always survive); `notification_deliveries` with `status IN ('sent','failed','dropped')` and `COALESCE(sent_at, created_at) < cutoff` are deleted (pending/inflight always survive). Two helpers in `internal/hub/storage/query.go` (`DeleteResolvedAlertsBefore`, `DeleteTerminalDeliveriesBefore`) — both use `datetime()` to normalise the two timestamp formats SQLite holds (CURRENT_TIMESTAMP `YYYY-MM-DD HH:MM:SS` vs. driver-rendered RFC3339Nano). The sweep is wired into `retention.Run` as `sweepAlerts` next to the existing `sweepSnapshots`; a failure in one logs but doesn't stop the other. Settings UI field + i18n (`retentionAlertsWindowLabel/Help`) on `Settings → Retention`. Tests: `storage/retention_alerts_test.go` (6 cases), `retention/retention_test.go` (sweep + disabled), and `settings/handlers_test.go` (update + bounds). Docs: `configure/alerts.md` gains a **Retention** section; removed from "What's not in" list. Go + tsc verification deferred — Go isn't installed locally, push to CI to confirm. **Next**: ship v0.4.1 once CI is green + user validates the sweep on the deployed v0.4.0 instance, then pick up either Email (v0.4.2) or any server-test bugfixes that surfaced from real traffic.
+**Session**: 2026-06-01
+**Đang làm**: **Phase 7 v0.5.0 Public Read API — patch 1+2 shipped as v0.4.11.** Reordered Phase 7 to ship Public API before Cold tier (rationale logged above on Phase 7 section). Today's session output:
+- v0.4.6–v0.4.10: Alerts UX redesign (inline Switch toggle, quick-templates, sectioned form); HostDetail per-core CPU auto-hide on virtualised guests (gopsutil `VirtualizationSystem`); SilencePanel "Until I lift" 1-year option + Hero pill; HostCard update badge + silence indicator; in-app ConfirmDialog replacing six `window.confirm()` callsites; TokenReveal Docker + Binary tabs (no-Docker install path) with hub-served + GitHub-raw fallback; ARMv7 dropped from CI/Dockerfile/Makefile for faster image builds; `/install.sh` 500 hotfix (literal `{{` in shell comment tripped Go template); Retention settings UX rewrite (self-explanatory labels, Interval dropdown restricted to s/m/h to enforce 24h cap); Hub Status panel (SQLite + WAL size, row counts on 6 tables, Go runtime counters, agent connected count, delivery queue depth — cached 15s, refreshed 30s).
+- v0.4.11 (this commit): `Settings → API Keys` admin UI + CRUD + `/api/v1/version` + `/api/v1/hosts` with Bearer auth + per-key in-memory token bucket (100/min) + public envelope. Migration 0016. Bilingual.
+
+**Next**: **v0.4.12** — add read endpoints `/api/v1/hosts/{name}`, `/api/v1/hosts/{name}/metrics?from=&to=&bucket=`, `/api/v1/alerts/events`, `/api/v1/alerts/rules`. Then v0.4.13 docs + RFC, then v0.5.0 cut sum.
 
 **Previous (2026-05-29)**: **Phase 6 SHIPPED end-to-end — release v0.4.0.** Milestones A–D delivered (rules/channels/engine + per-rule routing + Telegram + delivery queue with severity-aware retry + Deliveries tab). Tag inventory upgraded to first-class: migration 0012 + `tags`/`tag_values` tables, new **Alerts → Tags** tab (CRUD inventory on the left, host assignment on the right; Settings → Hosts is read-only for tags now), per-key dropdowns in the rule selector picker, cascade-delete with impact dry-run + confirm. Offline-rule double-clamp fixed (`for_seconds=0` now fires at ~60s, not 120s). DoD met: `cpu_pct>90% for 5m` → ntfy/Discord/Telegram → resolve, all visible in UI. Docs synced (CHANGELOG 0.4.0, ACTION_PLAN decisions log, RFC 0001 Milestone C, `configure/alerts.md`). Go test green, web `tsc --noEmit` clean.
 **Phase 4 complete (2026-05-29):**
