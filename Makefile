@@ -107,14 +107,13 @@ build-linux-armv7: build-web
 	CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 $(GO) build -trimpath -ldflags '$(LDFLAGS)' -o $(DIST)/lumen-agent-linux-armv7 ./cmd/lumen-agent
 
 .PHONY: build-all
-build-all: build-linux-amd64 build-linux-arm64 build-linux-armv7 ## Build for all target platforms
+build-all: build-linux-amd64 build-linux-arm64 ## Build for all default targets (amd64 + arm64). armv7 still buildable via `make build-linux-armv7`.
 
 .PHONY: release-agents
 release-agents: ## Cross-build agent binaries + stage install.sh for hub /install endpoint
 	mkdir -p $(DIST)
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64       $(GO) build -trimpath -ldflags '$(LDFLAGS)' -o $(DIST)/lumen-agent-linux-amd64 ./cmd/lumen-agent
-	CGO_ENABLED=0 GOOS=linux GOARCH=arm64       $(GO) build -trimpath -ldflags '$(LDFLAGS)' -o $(DIST)/lumen-agent-linux-arm64 ./cmd/lumen-agent
-	CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 $(GO) build -trimpath -ldflags '$(LDFLAGS)' -o $(DIST)/lumen-agent-linux-armv7 ./cmd/lumen-agent
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 $(GO) build -trimpath -ldflags '$(LDFLAGS)' -o $(DIST)/lumen-agent-linux-amd64 ./cmd/lumen-agent
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 $(GO) build -trimpath -ldflags '$(LDFLAGS)' -o $(DIST)/lumen-agent-linux-arm64 ./cmd/lumen-agent
 	cp scripts/install-agent.sh $(DIST)/install.sh
 
 # Tarball recipe shared by per-arch release-hub-tarball targets below.
@@ -150,7 +149,7 @@ release-hub-tarball-armv7: ## Tarball lumen-hub for linux/armv7 — Pi 2/3 (buil
 	$(call HUB_TARBALL_RECIPE,armv7,arm,GOARM=7)
 
 .PHONY: release-hub-tarballs
-release-hub-tarballs: release-hub-tarball-amd64 release-hub-tarball-arm64 release-hub-tarball-armv7 ## All hub tarballs (amd64 + arm64 + armv7)
+release-hub-tarballs: release-hub-tarball-amd64 release-hub-tarball-arm64 ## All hub tarballs (amd64 + arm64). armv7 available via `make release-hub-tarball-armv7`.
 
 # ============================================================
 # Docker

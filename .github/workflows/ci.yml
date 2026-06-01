@@ -73,7 +73,6 @@ jobs:
         target:
           - linux-amd64
           - linux-arm64
-          - linux-armv7
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
