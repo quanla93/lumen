@@ -29,7 +29,7 @@ export function TokenReveal({
   onDismiss: () => void;
 }) {
   const { t } = useI18n();
-  const [copied, setCopied] = useState<"token" | "compose" | "commands" | "binary" | null>(null);
+  const [copied, setCopied] = useState<"token" | "compose" | "commands" | "binary" | "binaryGithub" | null>(null);
   const [method, setMethod] = useState<"docker" | "binary">("docker");
   const hubUrl =
     typeof window !== "undefined"
@@ -46,6 +46,16 @@ export function TokenReveal({
   // drops a systemd unit, enables it.
   const binaryCommand =
     `curl -fsSL ${hubUrl}/install.sh | sudo bash -s -- \\\n` +
+    `    --token ${token} \\\n` +
+    `    --host ${hostName}`;
+
+  // Same script fetched from the public GitHub repo — for cases where
+  // the target LXC can reach github.com but can't (yet) reach the hub
+  // URL (firewall, split DNS, etc.). Script's `{{ .HubURL }}` template
+  // isn't rendered when fetched from raw, so --hub is mandatory here.
+  const binaryGithubCommand =
+    `curl -fsSL https://raw.githubusercontent.com/quanla93/lumen/main/scripts/install-agent.sh | sudo bash -s -- \\\n` +
+    `    --hub ${hubUrl} \\\n` +
     `    --token ${token} \\\n` +
     `    --host ${hostName}`;
 
@@ -158,21 +168,35 @@ sudo docker compose up -d`;
       )}
 
       {method === "binary" && (
-        <div className="mb-4">
-          <div className="flex items-center justify-between gap-2 mb-1">
-            <p className="text-xs font-semibold">{t("token.binaryTitle")}</p>
-            <GhostButton onClick={() => copy(binaryCommand, "binary")}>
-              {copied === "binary" ? t("common.copied") : t("common.copy")}
-            </GhostButton>
+        <>
+          <div className="mb-4">
+            <div className="flex items-center justify-between gap-2 mb-1">
+              <p className="text-xs font-semibold">{t("token.binaryTitle")}</p>
+              <GhostButton onClick={() => copy(binaryCommand, "binary")}>
+                {copied === "binary" ? t("common.copied") : t("common.copy")}
+              </GhostButton>
+            </div>
+            <pre className="text-xs font-mono bg-[color:var(--color-card)] border border-[color:var(--color-border)] rounded p-3 overflow-x-auto whitespace-pre-wrap">{binaryCommand}</pre>
+            <p className="text-xs text-[color:var(--color-muted)] mt-2">
+              {t("token.binaryDescription")}
+            </p>
+            <p className="text-xs text-[color:var(--color-muted)] mt-1">
+              {t("token.binaryRequirements")}
+            </p>
           </div>
-          <pre className="text-xs font-mono bg-[color:var(--color-card)] border border-[color:var(--color-border)] rounded p-3 overflow-x-auto whitespace-pre-wrap">{binaryCommand}</pre>
-          <p className="text-xs text-[color:var(--color-muted)] mt-2">
-            {t("token.binaryDescription")}
-          </p>
-          <p className="text-xs text-[color:var(--color-muted)] mt-1">
-            {t("token.binaryRequirements")}
-          </p>
-        </div>
+          <div className="mb-4">
+            <div className="flex items-center justify-between gap-2 mb-1">
+              <p className="text-xs font-semibold">{t("token.binaryGithubTitle")}</p>
+              <GhostButton onClick={() => copy(binaryGithubCommand, "binaryGithub")}>
+                {copied === "binaryGithub" ? t("common.copied") : t("common.copy")}
+              </GhostButton>
+            </div>
+            <pre className="text-xs font-mono bg-[color:var(--color-card)] border border-[color:var(--color-border)] rounded p-3 overflow-x-auto whitespace-pre-wrap">{binaryGithubCommand}</pre>
+            <p className="text-xs text-[color:var(--color-muted)] mt-2">
+              {t("token.binaryGithubDescription")}
+            </p>
+          </div>
+        </>
       )}
 
       <div>
