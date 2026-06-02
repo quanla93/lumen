@@ -1,20 +1,20 @@
 # Deploying the Lumen landing page
 
-The landing page (`brand/index.html`) is pure static HTML — no build step. Cloudflare Pages is the canonical deployment target. Production URL: <https://lumen.quanla.org/>.
+The landing page (`brand/index.html`) is pure static HTML — no build step. Cloudflare's unified Workers + Pages dashboard reads the `wrangler.toml` at the repo root and serves `./brand/` as static assets. Production URL: <https://lumen.quanla.org/>.
 
-## One-time setup on Cloudflare Pages
+## One-time setup
 
-1. Cloudflare Dashboard → **Workers & Pages** → **Create application** → **Pages** tab → **Connect to Git**.
+1. Cloudflare Dashboard → **Workers & Pages** → **Create application** → **Connect to Git**.
 2. Pick the `quanla93/lumen` repository (authorise the Cloudflare GitHub app if needed).
-3. Set up build:
+3. The connect form pre-fills from `wrangler.toml`:
    - **Production branch:** `main`
-   - **Framework preset:** *None* (this is plain HTML)
-   - **Build command:** *(leave empty)*
-   - **Build output directory:** `brand`
-   - **Root directory:** *(leave empty — repository root)*
-   - **Environment variables:** *(none)*
-4. Save & Deploy. The first build attaches `*.pages.dev` automatically.
-5. **Custom domain:** Pages project → **Custom domains** → **Set up a custom domain** → enter `lumen.quanla.org`. Cloudflare adds the CNAME automatically if the apex domain (`quanla.org`) is already on Cloudflare DNS.
+   - **Builds for non-production branches:** ✓ (preview deploys on PRs)
+   - **Build command:** *(leave empty — pure HTML, no build)*
+   - **Deploy command:** *(leave empty — `[assets]` in `wrangler.toml` handles publishing)*
+4. **Connect**. Cloudflare clones the repo, reads `wrangler.toml`, and publishes `./brand/` as static assets. First deploy attaches `*.workers.dev` automatically.
+5. **Custom domain:** project → **Settings** → **Domains & Routes** → **Add** → enter `lumen.quanla.org`. Cloudflare adds the CNAME automatically if the apex domain (`quanla.org`) is already on Cloudflare DNS.
+
+> ℹ️ Older `*.pages.dev` projects (created before the unified Workers + Pages dashboard launched) work the same way conceptually — they don't read `wrangler.toml`, instead expect `Build output directory: brand` on the Pages "Builds" tab. The Workers-with-Assets flow above is the recommended path for new projects.
 
 ## What auto-deploys do
 
