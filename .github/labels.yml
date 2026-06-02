@@ -1,0 +1,156 @@
+# Lumen GitHub labels — single source of truth.
+#
+# Sync this file to GitHub with the EndBug/label-sync action:
+#   https://github.com/EndBug/label-sync
+#
+# Or apply manually one-time via gh CLI from repo root:
+#   yq -o=j '.[]' .github/labels.yml | while read -r row; do
+#     name=$(echo "$row" | jq -r .name)
+#     color=$(echo "$row" | jq -r .color)
+#     desc=$(echo "$row" | jq -r .description)
+#     gh label create "$name" -c "$color" -d "$desc" --force
+#   done
+#
+# Conventions:
+#   - type:* — what kind of change it is (one per issue/PR)
+#   - area:* — which subsystem it touches (zero or more)
+#   - status:* — current lifecycle position (one per issue)
+#   - priority:* — operator urgency (set by triagers, not reporters)
+#   - flag labels — "good first issue", "help wanted", "rfc", "breaking-change", "regression"
+#
+# Color palette (hex without `#`):
+#   - red    d73a4a  → critical / breaking / bug
+#   - orange e4a83e  → priority high / regression
+#   - yellow fbca04  → status: needs-triage
+#   - green  0e8a16  → feature / accepted / shipped
+#   - teal   14b8a6  → brand (good first issue)
+#   - blue   1f6feb  → area:*
+#   - purple a371f7  → docs / rfc
+#   - grey   6e7681  → wontfix / duplicate / chore
+
+# ─── Type ──────────────────────────────────────────────────────────────
+- name: "type:bug"
+  color: "d73a4a"
+  description: "Something is broken — reproduce, fix, regression-test."
+- name: "type:feature"
+  color: "0e8a16"
+  description: "New user-visible capability."
+- name: "type:docs"
+  color: "a371f7"
+  description: "Documentation only — no code change."
+- name: "type:refactor"
+  color: "6e7681"
+  description: "Internal cleanup with no behavior change."
+- name: "type:performance"
+  color: "e4a83e"
+  description: "Speed, RAM, binary size, or wall-clock improvement."
+- name: "type:security"
+  color: "d73a4a"
+  description: "Public-facing security fix — coordinate with SECURITY.md before opening publicly."
+- name: "type:test"
+  color: "0e8a16"
+  description: "Test additions or stability fixes for flaky tests."
+
+# ─── Area (subsystem) ──────────────────────────────────────────────────
+- name: "area:hub"
+  color: "1f6feb"
+  description: "Hub server (auth, ingest, storage, stream, settings)."
+- name: "area:agent"
+  color: "1f6feb"
+  description: "Agent collectors, buffer, sender, install."
+- name: "area:web"
+  color: "1f6feb"
+  description: "React UI under web/."
+- name: "area:docs"
+  color: "1f6feb"
+  description: "Starlight site under docs/."
+- name: "area:alerts"
+  color: "1f6feb"
+  description: "Alert rules, channels, notification engine."
+- name: "area:api"
+  color: "1f6feb"
+  description: "Public Read API (/api/v1/*) — Bearer keys, scopes, envelope."
+- name: "area:i18n"
+  color: "1f6feb"
+  description: "Translations (EN / VI) and i18n infrastructure."
+- name: "area:install"
+  color: "1f6feb"
+  description: "install.sh, Dockerfile, systemd units, agent compose generator."
+- name: "area:ci"
+  color: "1f6feb"
+  description: "GitHub Actions workflows, release pipeline."
+
+# ─── Status (lifecycle) ────────────────────────────────────────────────
+- name: "status:needs-triage"
+  color: "fbca04"
+  description: "Awaiting maintainer review and label assignment."
+- name: "status:accepted"
+  color: "0e8a16"
+  description: "Scope approved — safe to start implementation work."
+- name: "status:in-progress"
+  color: "1f6feb"
+  description: "Someone is actively working on this — leave a comment if you intend to take over."
+- name: "status:blocked"
+  color: "d73a4a"
+  description: "Waiting on an external dependency, decision, or upstream fix."
+- name: "status:needs-info"
+  color: "fbca04"
+  description: "Reporter, please provide more detail (logs, version, repro)."
+- name: "status:wontfix"
+  color: "6e7681"
+  description: "Conscious decision not to address — see comment for rationale."
+- name: "status:duplicate"
+  color: "6e7681"
+  description: "Already tracked elsewhere — see linked issue."
+
+# ─── Priority ──────────────────────────────────────────────────────────
+- name: "priority:critical"
+  color: "d73a4a"
+  description: "Data loss / security / hub crash — ship a patch fast."
+- name: "priority:high"
+  color: "e4a83e"
+  description: "Notable functionality broken or major UX regression."
+- name: "priority:medium"
+  color: "fbca04"
+  description: "Default — should land in the next minor."
+- name: "priority:low"
+  color: "0e8a16"
+  description: "Polish, edge case, or nice-to-have."
+
+# ─── Flags ─────────────────────────────────────────────────────────────
+- name: "good first issue"
+  color: "14b8a6"
+  description: "Welcoming on-ramp for new contributors — scope is small and well-defined."
+- name: "help wanted"
+  color: "0e8a16"
+  description: "Maintainers are open to PRs but won't actively pursue this themselves."
+- name: "rfc"
+  color: "a371f7"
+  description: "Larger scope change — discuss the design before coding (see docs/rfcs/)."
+- name: "breaking-change"
+  color: "d73a4a"
+  description: "Removes / renames an API or wire format. Bump minor pre-1.0, major post-1.0."
+- name: "regression"
+  color: "e4a83e"
+  description: "Worked in a prior release — bisect, fix, add a test."
+- name: "discussion"
+  color: "a371f7"
+  description: "Not actionable yet — gathering input before deciding."
+
+# ─── Wedges (north star alignment) ─────────────────────────────────────
+# Match the PULL_REQUEST_TEMPLATE.md alignment section.
+- name: "wedge:proxmox"
+  color: "14b8a6"
+  description: "Proxmox / LXC first-class integration work."
+- name: "wedge:storage"
+  color: "14b8a6"
+  description: "HDD-friendly storage (SQLite tuning, Parquet cold tier)."
+- name: "wedge:transport"
+  color: "14b8a6"
+  description: "HTTPS / WebSocket push transport."
+- name: "wedge:ux"
+  color: "14b8a6"
+  description: "Personalization / dashboard builder / i18n."
+- name: "wedge:api"
+  color: "14b8a6"
+  description: "Public Read API and external integrations."

@@ -29,6 +29,8 @@ Closes #
 - [ ] Proxmox / LXC first-class
 - [ ] HDD-friendly storage
 - [ ] HTTPS-only push transport
+- [ ] Personalization / UX polish (per-user prefs, dashboard builder, i18n)
+- [ ] Public Read API / external integrations
 - [ ] Other / N/A (justify below)
 
 ## How was this tested?
