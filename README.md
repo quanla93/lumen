@@ -7,8 +7,15 @@
 Lightweight self-hosted server monitoring with realtime dashboards and historical
 metrics — designed to run comfortably on a Raspberry Pi.
 
+[![CI](https://github.com/quanla93/lumen/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/quanla93/lumen/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/quanla93/lumen?sort=semver)](https://github.com/quanla93/lumen/releases/latest)
+[![License: MIT](https://img.shields.io/badge/license-MIT-14b8a6.svg)](LICENSE)
+[![Discussions](https://img.shields.io/github/discussions/quanla93/lumen)](https://github.com/quanla93/lumen/discussions)
+[![Good first issues](https://img.shields.io/github/issues/quanla93/lumen/good%20first%20issue?label=good%20first%20issues)](https://github.com/quanla93/lumen/labels/good%20first%20issue)
+
 [Quickstart](docs/src/content/docs/getting-started/quickstart.md) ·
 [Documentation](docs/src/content/docs/getting-started/overview.md) ·
+[Public API](docs/src/content/docs/reference/public-api.md) ·
 [Roadmap](ACTION_PLAN.md)
 
 > ⚠️ **Pre-1.0.** Latest tag is **v0.6.3**. Breaking changes are allowed in

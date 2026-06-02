@@ -726,7 +726,12 @@ function DownsampleSettings() {
   return (
     <div className="max-w-md space-y-4">
       <section>
-        <h2 className="text-base font-semibold tracking-tight mb-3">{t("settings.downsampleTitle")}</h2>
+        <div className="mb-3 flex items-center gap-2 flex-wrap">
+          <h2 className="text-base font-semibold tracking-tight">{t("settings.downsampleTitle")}</h2>
+          <span className="inline-flex items-center rounded-full border border-[color:var(--lumen-teal)]/40 bg-[color:var(--lumen-teal)]/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-[color:var(--lumen-teal)]">
+            {t("settings.statusBadgeRoadmap")}
+          </span>
+        </div>
         <p className="text-sm text-[color:var(--color-muted)]">
           {t("settings.downsampleDescription")}
         </p>
@@ -775,14 +780,24 @@ function SettingsPanel({
   title,
   description,
   children,
+  roadmap,
 }: {
   title: string;
   description: string;
   children?: React.ReactNode;
+  roadmap?: boolean;
 }) {
+  const { t } = useI18n();
   return (
     <Surface as="section">
-      <h2 className="text-base font-semibold tracking-tight">{title}</h2>
+      <div className="flex items-center gap-2 flex-wrap">
+        <h2 className="text-base font-semibold tracking-tight">{title}</h2>
+        {roadmap && (
+          <span className="inline-flex items-center rounded-full border border-[color:var(--lumen-teal)]/40 bg-[color:var(--lumen-teal)]/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-[color:var(--lumen-teal)]">
+            {t("settings.statusBadgeRoadmap")}
+          </span>
+        )}
+      </div>
       <p className="mt-2 text-sm text-[color:var(--color-muted)]">{description}</p>
       {children && <div className="mt-4">{children}</div>}
     </Surface>
@@ -796,6 +811,7 @@ function LogManagementSettings() {
       <SettingsPanel
         title={t("settings.logsTitle")}
         description={t("settings.logsDescription")}
+        roadmap
       >
         <ul className="space-y-2 text-sm text-[color:var(--color-muted)]">
           <li><strong className="text-[color:var(--color-fg)]">{t("common.sources")}:</strong> {t("settings.logsSources")}</li>

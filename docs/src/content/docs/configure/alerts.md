@@ -9,8 +9,8 @@ Lumen alerts you when a host goes off-spec. Rules evaluate every ~15s
 against the in-memory snapshot store; transitions persist to SQLite and
 fan out to every enabled notification channel.
 
-This page covers all of v0.4.0 / [RFC 0001](https://github.com/quanla93/lumen/blob/main/docs/rfcs/0001-alerting.md) Milestones A–D plus v0.4.x follow-ups:
-**ntfy + Discord + Telegram + Email (SMTP) + generic webhook**, **threshold rules + offline rule**, **host name/glob patterns**, **host tag inventory + label selectors** (Alerts → Tags tab), **per-rule channel routing**, **per-channel severity floor**, and a **persisted delivery queue** with severity-aware retry (Active / History / Rules / Channels / Deliveries / Tags sub-tabs). v0.4.1 added the **alert history retention sweep** (see [Retention](#retention) below); v0.4.5 added the **Email (SMTP) channel** (see [Email](#email-smtp) below). HMAC on webhooks and cooldown/flap suppression are still deferred (see "What's not in v0.4.x" below).
+This page covers all of v0.4.x / [RFC 0001](https://github.com/quanla93/lumen/blob/main/docs/rfcs/0001-alerting.md) Milestones A–D plus follow-ups:
+**ntfy + Discord + Telegram + Email (SMTP) + generic webhook**, **threshold rules + offline rule**, **host name/glob patterns**, **host tag inventory + label selectors** (Alerts → Tags tab), **per-rule channel routing**, **per-channel severity floor**, a **persisted delivery queue** with severity-aware retry (Active / History / Rules / Channels / Deliveries / Tags sub-tabs), the **alert-history retention sweep**, **per-rule flap cooldown**, and **per-host maintenance silence**. HMAC signing on the webhook channel is the only Phase-6 follow-up still on the backlog — see [What's not in v0.4.x](#whats-not-in-v04x-post-phase-6-backlog).
 
 ## What you can alert on
 
@@ -414,7 +414,7 @@ keeps evaluating at its 15 s tick.
 If the queue grows past 10 000 pending rows the hub logs a warning so
 the operator knows throughput is the bottleneck. Tunable knobs (worker
 count, poll interval, backoff schedule) live in the dispatcher config
-today; they'll be exposed in Settings → Runtime in a follow-up.
+today. UI exposure in Settings → Runtime is a deferred follow-up — file an issue if you hit the dispatch ceiling in practice.
 
 ## Noise control
 
