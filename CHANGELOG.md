@@ -6,6 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.6.2] - 2026-06-02
+
+**Saved views UI for the Dashboard customize popover.** The schema was reserved in v0.6.0 (`dashboard_prefs.views[]` + `activeViewId`, max 5 per server validator) — v0.6.2 adds the UI to actually use them. Operators can now bundle their current sort + hidden host list as a named view, switch between views with one click, and delete views they no longer want.
+
+### Added
+
+- **`Dashboard → Customize → Saved views` section.** Below the existing sort + hide controls. Lists every saved view with a bookmark icon, name, and an active badge on the one most recently applied. Click the view body to apply (loads sort + sortDir + defaultMetric + hidden hosts in one write). × to delete.
+- **`Save as new` form.** Name input (1–32 chars, server-validated) + button. Saving captures the current dashboard state into a new view, sets it active, then clears the input. Disabled when at 5/5 view cap (server hard limit).
+- **Active-view auto-divergence.** Any direct mutation to sort/sortDir/hide while a view is active clears `activeViewId` — the bookmark highlight reflects whether the dashboard still matches its saved state. Re-clicking the view re-applies.
+- **i18n keys (EN + VI):** `savedViews`, `savedViewsEmpty`, `savedViewNamePlaceholder`, `savedViewSave`, `savedViewSaveAria`, `savedViewApplyAria`, `savedViewDeleteAria`, `savedViewActive`, `savedViewCapHint`. Removed unused placeholder strings (`customizeSavedViewsSoon`, `customizeStub`, `customizeViews`) — the section it gated is now real.
+
+### Notes
+
+- ID generation uses `crypto.randomUUID()` with a `Date.now()/Math.random()` fallback for any browser that lacks the API. Server doesn't care about the ID format — only uniqueness within the user's `views[]` (validator already rejects duplicates).
+- `defaultMetric` is captured into saved views even though the customize popover doesn't expose it yet — the schema-validated field rides along so a future "default metric on host cards" toggle can use it without breaking saved views from this release.
+
 ## [0.6.1] - 2026-06-02
 
 **Per-core CPU + Containers join the Host detail builder grid.** v0.6.0 shipped the dashboard builder but kept per-core CPU and the Containers table rendered outside the grid (above and below) because their live-only data lifecycles were felt to be a poor fit. With the catalog and persistence layer settled, both now slot into the grid like the historical charts — operators can hide, place, and resize them per host.

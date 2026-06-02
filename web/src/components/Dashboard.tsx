@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { Server, AlertTriangle, Cpu, MemoryStick, HardDrive, Settings2, Search, EyeOff, Eye } from "lucide-react";
+import { Server, AlertTriangle, Cpu, MemoryStick, HardDrive, Settings2, Search, EyeOff, Eye, Trash2, Bookmark } from "lucide-react";
 import { HostCard, type Snapshot } from "@/components/HostCard";
 import { AppButton, EmptyState, IconButton, Popover, SegmentedControl, StatusPill, TooltipProvider } from "@/components/ui";
-import { hostsApi, settingsApi, versionApi, type SortBy, type SortDir } from "@/lib/api";
+import { hostsApi, settingsApi, versionApi, type SavedView, type SortBy, type SortDir } from "@/lib/api";
 import { cpuTone, TONE_CLASS, type StatusTone } from "@/lib/status";
 import { isStale, staleAfterForIntervalMs } from "@/lib/time";
 import { useStreamConnection, type WsStatus } from "@/lib/useStreamConnection";
@@ -207,12 +207,17 @@ export function Dashboard({
   );
 }
 
-// CustomizeButton wires Dashboard prefs (sort + hidden hosts) through
-// usePrefs. Saved views are a Phase 7+ follow-up — schema is reserved
-// but no UI yet.
+// MAX_SAVED_VIEWS mirrors the server cap (`maxSavedViews` in
+// internal/hub/userprefs). Keep these in lockstep.
+const MAX_SAVED_VIEWS = 5;
+
+// CustomizeButton wires Dashboard prefs (sort + hidden hosts + saved
+// views) through usePrefs. Saved views bundle a sort+hide combination
+// the operator can re-apply later; max 5 per server validator.
 function CustomizeButton({ snapshots }: { snapshots: Snapshot[] }) {
   const { t } = useI18n();
   const { dashboard, updateDashboard } = usePrefs();
+  const [viewName, setViewName] = useState("");
 
   const hiddenSet = new Set(dashboard.hiddenHostIds);
   const visibleNames = snapshots.map((s) => s.host).filter((n) => !hiddenSet.has(n));
@@ -221,8 +226,53 @@ function CustomizeButton({ snapshots }: { snapshots: Snapshot[] }) {
   // still un-hide them without re-adding the host first.
   const hiddenNames = [...dashboard.hiddenHostIds];
 
+  // patch() handles direct mutations from the sort/hide controls. Any
+  // such change diverges the dashboard from whatever view is "active"
+  // — clear activeViewId so the highlight reflects reality.
   function patch(next: Partial<typeof dashboard>) {
-    updateDashboard({ ...dashboard, ...next }).catch(() => {});
+    updateDashboard({ ...dashboard, ...next, activeViewId: null }).catch(() => {});
+  }
+
+  function applyView(view: SavedView) {
+    updateDashboard({
+      ...dashboard,
+      sortBy: view.sortBy,
+      sortDir: view.sortDir,
+      defaultMetric: view.defaultMetric,
+      hiddenHostIds: [...view.hiddenHostIds],
+      activeViewId: view.id,
+    }).catch(() => {});
+  }
+
+  function saveAsNew() {
+    const name = viewName.trim();
+    if (!name || name.length > 32) return;
+    if (dashboard.views.length >= MAX_SAVED_VIEWS) return;
+    const id = (typeof crypto !== "undefined" && "randomUUID" in crypto)
+      ? crypto.randomUUID()
+      : `view-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+    const view: SavedView = {
+      id,
+      name,
+      sortBy: dashboard.sortBy === "tag" ? "name" : dashboard.sortBy,
+      sortDir: dashboard.sortDir,
+      defaultMetric: dashboard.defaultMetric,
+      hiddenHostIds: [...dashboard.hiddenHostIds],
+    };
+    updateDashboard({
+      ...dashboard,
+      views: [...dashboard.views, view],
+      activeViewId: id,
+    }).catch(() => {});
+    setViewName("");
+  }
+
+  function deleteView(id: string) {
+    updateDashboard({
+      ...dashboard,
+      views: dashboard.views.filter((v) => v.id !== id),
+      activeViewId: dashboard.activeViewId === id ? null : dashboard.activeViewId,
+    }).catch(() => {});
   }
 
   return (
@@ -305,7 +355,79 @@ function CustomizeButton({ snapshots }: { snapshots: Snapshot[] }) {
           )}
         </div>
 
-        <p className="text-[10px] text-[color:var(--color-muted)]">{t("dashboard.customizeSavedViewsSoon")}</p>
+        <div className="space-y-1.5 border-t border-[color:var(--color-border)] pt-3">
+          <div className="flex items-center justify-between gap-2">
+            <label className="block text-xs font-medium text-[color:var(--color-muted)]">
+              {t("dashboard.savedViews")}
+            </label>
+            <span className="text-[10px] text-[color:var(--color-muted)]">
+              {t("dashboard.savedViewCapHint", { used: dashboard.views.length, max: MAX_SAVED_VIEWS })}
+            </span>
+          </div>
+          {dashboard.views.length === 0 ? (
+            <p className="text-xs text-[color:var(--color-muted)]">{t("dashboard.savedViewsEmpty")}</p>
+          ) : (
+            <ul className="space-y-1">
+              {dashboard.views.map((v) => {
+                const active = v.id === dashboard.activeViewId;
+                return (
+                  <li
+                    key={v.id}
+                    className={`flex items-center justify-between gap-2 rounded-md border px-2 py-1 text-xs ${
+                      active
+                        ? "border-[color:var(--lumen-teal)] bg-[color:var(--color-bg)]"
+                        : "border-[color:var(--color-border)]"
+                    }`}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => applyView(v)}
+                      aria-label={t("dashboard.savedViewApplyAria", { name: v.name })}
+                      className="flex flex-1 items-center gap-1.5 truncate text-left hover:text-[color:var(--lumen-teal)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--lumen-teal)]"
+                    >
+                      <Bookmark size={12} strokeWidth={1.75} className={active ? "text-[color:var(--lumen-teal)]" : "text-[color:var(--color-muted)]"} />
+                      <span className="truncate">{v.name}</span>
+                      {active && (
+                        <span className="text-[10px] uppercase tracking-wide text-[color:var(--lumen-teal)]">
+                          {t("dashboard.savedViewActive")}
+                        </span>
+                      )}
+                    </button>
+                    <IconButton
+                      label={t("dashboard.savedViewDeleteAria", { name: v.name })}
+                      onClick={() => deleteView(v.id)}
+                    >
+                      <Trash2 size={12} strokeWidth={1.75} />
+                    </IconButton>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+          {dashboard.views.length < MAX_SAVED_VIEWS && (
+            <form
+              onSubmit={(e) => { e.preventDefault(); saveAsNew(); }}
+              className="flex gap-1.5 pt-0.5"
+            >
+              <input
+                type="text"
+                value={viewName}
+                onChange={(e) => setViewName(e.target.value)}
+                placeholder={t("dashboard.savedViewNamePlaceholder")}
+                maxLength={32}
+                className="flex-1 rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2 py-1 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--lumen-teal)]"
+              />
+              <button
+                type="submit"
+                disabled={!viewName.trim()}
+                aria-label={t("dashboard.savedViewSaveAria")}
+                className="rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] px-2 py-1 text-xs disabled:opacity-50 hover:border-[color:var(--lumen-teal)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--lumen-teal)]"
+              >
+                {t("dashboard.savedViewSave")}
+              </button>
+            </form>
+          )}
+        </div>
       </div>
     </Popover>
   );
