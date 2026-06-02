@@ -1,0 +1,26 @@
+# Cloudflare Workers Static Assets config for the public landing page.
+#
+# This file is read by the Cloudflare "Connect to Git" flow (Workers +
+# Pages unified dashboard). It tells Cloudflare to publish the contents
+# of `./brand/` as static assets — no Worker code, no build step.
+#
+# Production URL is wired via the Cloudflare dashboard:
+#   Workers & Pages → lumen-landing → Settings → Domains & Routes →
+#   Add custom domain → lumen.quanla.org
+#
+# See brand/DEPLOY.md for the full setup walkthrough.
+
+name = "lumen-landing"
+compatibility_date = "2026-06-02"
+
+[assets]
+# Source directory: pure HTML + SVG + DEPLOY.md (markdown isn't served,
+# CF ignores it).
+directory = "./brand"
+
+# Behaviour when a requested path doesn't map to a file in the assets
+# directory. `single-page-application` re-serves /index.html so anchor
+# links and direct hits to non-existent paths land on the home page
+# rather than a bare 404. For our single-page landing this is the
+# right default.
+not_found_handling = "single-page-application"
