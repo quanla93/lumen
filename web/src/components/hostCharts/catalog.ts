@@ -67,21 +67,22 @@ export type LayoutItem = {
   h: number;
 };
 
-// V0.6.0 ships drag/resize for the 8 historical/percent charts. Per-core
-// CPU (live ring buffer) and Containers (live table) stay rendered above
-// and below the grid respectively — their data lifecycles differ enough
-// from the historical charts that mixing them inside one grid created
-// more friction than it removed. Both are still listed in CATALOG_IDS so
-// dashboard_prefs round-trips them for future-compat.
+// All 10 catalog entries participate in the builder grid as of v0.6.1.
+// Per-core CPU (live ring buffer) and Containers (live table) gate on
+// per-host availability (bare-metal + has Docker respectively) — the
+// HostLayout filter drops them from the default layout when absent so
+// the grid never reserves space for an empty card.
 export const DEFAULT_LAYOUT_LG: LayoutItem[] = [
-  { i: "cpu",         x: 0, y: 0, w: 6, h: 4 },
-  { i: "ram",         x: 6, y: 0, w: 6, h: 4 },
-  { i: "disk",        x: 0, y: 4, w: 4, h: 4 },
-  { i: "swap",        x: 4, y: 4, w: 4, h: 4 },
-  { i: "load",        x: 8, y: 4, w: 4, h: 4 },
-  { i: "network",     x: 0, y: 8, w: 4, h: 4 },
-  { i: "disk-io",     x: 4, y: 8, w: 4, h: 4 },
-  { i: "temperature", x: 8, y: 8, w: 4, h: 4 },
+  { i: "cpu",          x: 0, y: 0,  w: 6,  h: 4 },
+  { i: "ram",          x: 6, y: 0,  w: 6,  h: 4 },
+  { i: "cpu-per-core", x: 0, y: 4,  w: 12, h: 4 },
+  { i: "disk",         x: 0, y: 8,  w: 4,  h: 4 },
+  { i: "swap",         x: 4, y: 8,  w: 4,  h: 4 },
+  { i: "load",         x: 8, y: 8,  w: 4,  h: 4 },
+  { i: "network",      x: 0, y: 12, w: 4,  h: 4 },
+  { i: "disk-io",      x: 4, y: 12, w: 4,  h: 4 },
+  { i: "temperature",  x: 8, y: 12, w: 4,  h: 4 },
+  { i: "containers",   x: 0, y: 16, w: 12, h: 6 },
 ];
 
 // CATALOG_IDS is the explicit ordered list of catalog IDs — used by

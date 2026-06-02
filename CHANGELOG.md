@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-06-02
+
+**Per-core CPU + Containers join the Host detail builder grid.** v0.6.0 shipped the dashboard builder but kept per-core CPU and the Containers table rendered outside the grid (above and below) because their live-only data lifecycles were felt to be a poor fit. With the catalog and persistence layer settled, both now slot into the grid like the historical charts — operators can hide, place, and resize them per host.
+
+### Changed
+
+- **`cpu-per-core` and `containers` are now first-class grid items.** Both appear in the Edit-Layout Add-chart picker, support the × remove button, drag-by-header, and resize-by-handle. Layouts persist into `dashboard_prefs.hostDetailLayouts[hostName]` like any other chart. Default layout now places per-core full-width below CPU/RAM and Containers full-width at the bottom; the catalog availability gate hides per-core on virtualised guests and hides Containers on hosts with no Docker workload.
+- **Containers card now scrolls within the grid cell.** Header is the standard chart-card strip (icon, count, running badge); the table body uses `overflow-auto` so a long container list doesn't blow the card height. Column padding tightened from `px-4` to `px-2` to match the standard chart card body inset.
+- **Per-core CPU card fills its grid cell.** Previous fixed `h-[200px]` swapped for `h-full` so resizing it taller via the grid handle actually shows more of the lines.
+
+### Notes
+
+- The standalone "Per-core CPU hidden on guest" notice still surfaces above the grid when the agent reports a `virt_type`, so operators understand why the chart is missing from the picker rather than seeing a silent gap.
+- Saved layouts from v0.6.0 round-trip unchanged — neither chart was reserved a position before, so existing layouts simply gain the option without losing anything. Users who want the new defaults can hit Reset.
+
 ## [0.6.0] - 2026-06-01
 
 **Level 3 personalization + Host detail dashboard builder.** RFC 0002 PR2 ([`docs/rfcs/0002-ui-polish-and-personalization.md`](docs/rfcs/0002-ui-polish-and-personalization.md)) moves per-user prefs off `localStorage` onto the hub. RFC 0004 ([`docs/rfcs/0004-host-detail-builder.md`](docs/rfcs/0004-host-detail-builder.md)) turns the per-host detail page into a drag/resize/add/remove grid — operators can shape every host's view to the metrics they actually care about, persistent per-user.

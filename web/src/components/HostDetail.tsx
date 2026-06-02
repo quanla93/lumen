@@ -202,16 +202,22 @@ export function HostDetail({
     return null;
   }, [live, resp]);
 
-  // availableIds gates which chart IDs are *renderable* for this host —
-  // temperature only when sensors report > 0°C in the current window.
-  // Per-core CPU and Containers are excluded here because they're
-  // rendered outside the grid (live ring buffer / live table); the
-  // catalog lists them for forward-compat with future ranking.
+  // availableIds gates which chart IDs are *renderable* for this host.
+  // Temperature needs sensors reporting > 0°C in the current window.
+  // Per-core CPU is bare-metal only — virt guests would mislead operators
+  // about cross-core contention they can't actually observe.
+  // Containers shows up only when the agent reports any Docker workload.
+  const hasPerCore = !!live?.cpu_per_core && live.cpu_per_core.length > 0;
+  const hasContainers = !!live?.containers && live.containers.length > 0;
+  const virt = (live?.system?.virt_type ?? host?.system?.virt_type ?? "").trim();
+  const isGuest = virt !== "";
   const availableIds = useMemo<Set<ChartId>>(() => {
     const set = new Set<ChartId>(["cpu", "ram", "swap", "disk", "disk-io", "network", "load"]);
     if (hasTemp) set.add("temperature");
+    if (hasPerCore && !isGuest) set.add("cpu-per-core");
+    if (hasContainers) set.add("containers");
     return set;
-  }, [hasTemp]);
+  }, [hasTemp, hasPerCore, isGuest, hasContainers]);
 
   const savedLayout = dashboard.hostDetailLayouts?.[hostName];
   // Filter the saved (or default) layout down to the charts we can
@@ -434,6 +440,14 @@ export function HostDetail({
             />
           </ChartCard>
         ) : null;
+      case "cpu-per-core":
+        return hasPerCore && !isGuest ? (
+          <PerCoreChart cores={live!.cpu_per_core!} t={t} editing={editMode} onRemove={removeFn} />
+        ) : null;
+      case "containers":
+        return hasContainers ? (
+          <ContainersTable containers={live!.containers!} t={t} editing={editMode} onRemove={removeFn} />
+        ) : null;
       default:
         return null;
     }
@@ -461,22 +475,15 @@ export function HostDetail({
         <HeroStat icon={Clock}       label={t("host.uptime")} valueText={formatUptime(live?.system?.uptime_seconds) ?? "—"} tone="muted" />
       </div>
 
-      {live?.cpu_per_core && live.cpu_per_core.length > 0 && (() => {
-        // Hide per-core on guest hosts (LXC / KVM / Docker / WSL / …) —
-        // the data either reflects the hypervisor's shared physical
-        // cores (LXC kernel-share) or vCPUs that don't isolate from
-        // sibling guests on the same physical core (oversubscribed VM).
-        // Showing it would make operators chase ghost contention.
-        const virt = (live?.system?.virt_type ?? host?.system?.virt_type ?? "").trim();
-        if (virt !== "") {
-          return (
-            <div className="mb-6 rounded-md border border-dashed border-[color:var(--color-border)] bg-[color:var(--color-card)] px-3 py-2 text-xs text-[color:var(--color-muted)]">
-              {t("host.perCoreHiddenOnGuest", { virt })}
-            </div>
-          );
-        }
-        return <PerCoreChart cores={live.cpu_per_core} t={t} />;
-      })()}
+      {hasPerCore && isGuest && (
+        // Per-core CPU on guests reflects the hypervisor's shared physical
+        // cores (LXC) or non-isolated vCPUs (oversubscribed VM); the
+        // catalog already hides the chart in that case, but a one-line
+        // notice tells the operator why it's missing from the picker.
+        <div className="mb-6 rounded-md border border-dashed border-[color:var(--color-border)] bg-[color:var(--color-card)] px-3 py-2 text-xs text-[color:var(--color-muted)]">
+          {t("host.perCoreHiddenOnGuest", { virt })}
+        </div>
+      )}
 
       {err && (
         <div className="mb-4 rounded-md border border-[color:var(--color-danger)] bg-[color:var(--color-card)] px-3 py-2 text-sm text-[color:var(--color-danger)]">
@@ -576,10 +583,6 @@ export function HostDetail({
             ))}
           </ResponsiveGridLayout>
         </>
-      )}
-
-      {live?.containers && live.containers.length > 0 && (
-        <ContainersTable containers={live.containers} t={t} />
       )}
 
       {host && (
@@ -883,7 +886,17 @@ function formatUptime(seconds?: number): string | null {
 // live snapshot. Live-only (no historical query); sorted: running first,
 // then alphabetical, so the top of the list is always the things actually
 // burning CPU/RAM right now.
-function ContainersTable({ containers, t }: { containers: ContainerInfo[]; t: ReturnType<typeof useI18n>["t"] }) {
+function ContainersTable({
+  containers,
+  t,
+  editing,
+  onRemove,
+}: {
+  containers: ContainerInfo[];
+  t: ReturnType<typeof useI18n>["t"];
+  editing?: boolean;
+  onRemove?: () => void;
+}) {
   const sorted = useMemo(() => {
     return [...containers].sort((a, b) => {
       if (a.state === "running" && b.state !== "running") return -1;
@@ -893,26 +906,27 @@ function ContainersTable({ containers, t }: { containers: ContainerInfo[]; t: Re
   }, [containers]);
   const running = sorted.filter((c) => c.state === "running").length;
   return (
-    <Surface as="section" padded={false} className="mt-6 rounded-lg overflow-hidden">
-      <header className="flex items-center justify-between px-4 py-3 border-b border-[color:var(--color-border)]">
-        <span className="inline-flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide text-[color:var(--color-muted)]">
-          <Boxes size={12} strokeWidth={1.75} />
-          {t("host.containers")} · {containers.length} {t("common.total")}
-        </span>
-        <span className="lumen-num text-xs">
+    <ChartCard
+      title={`${t("host.containers")} · ${containers.length} ${t("common.total")}`}
+      icon={Boxes}
+      editing={editing}
+      onRemove={onRemove}
+      badges={[
+        <span key="running" className="lumen-num">
           <span className="text-[color:var(--color-muted)]">{t("common.running")}</span>{" "}
           {running}
-        </span>
-      </header>
-      <div className="overflow-x-auto">
+        </span>,
+      ]}
+    >
+      <div className="h-full w-full overflow-auto">
         <table className="w-full text-sm">
           <thead>
             <tr className="text-left text-[10px] uppercase tracking-wide text-[color:var(--color-muted)]">
-              <th className="px-4 py-2 font-normal">{t("common.name")}</th>
+              <th className="px-2 py-2 font-normal">{t("common.name")}</th>
               <th className="px-2 py-2 font-normal">{t("common.state")}</th>
               <th className="px-2 py-2 font-normal">{t("common.image")}</th>
               <th className="px-2 py-2 font-normal text-right">{t("host.cpu")}</th>
-              <th className="px-4 py-2 font-normal text-right">{t("common.memory")}</th>
+              <th className="px-2 py-2 font-normal text-right">{t("common.memory")}</th>
             </tr>
           </thead>
           <tbody>
@@ -922,7 +936,7 @@ function ContainersTable({ containers, t }: { containers: ContainerInfo[]; t: Re
           </tbody>
         </table>
       </div>
-    </Surface>
+    </ChartCard>
   );
 }
 
@@ -1100,7 +1114,7 @@ function ContainerRow({ c }: { c: ContainerInfo }) {
     <tr
       className={`border-t border-[color:var(--color-border)] ${dim ? "opacity-60" : ""}`}
     >
-      <td className="px-4 py-2 font-mono text-xs">
+      <td className="px-2 py-2 font-mono text-xs">
         <div>{c.name}</div>
         <div className="text-[10px] text-[color:var(--color-muted)]">
           {c.id}
@@ -1115,7 +1129,7 @@ function ContainerRow({ c }: { c: ContainerInfo }) {
       <td className="px-2 py-2 text-right font-mono text-xs tabular-nums">
         {c.state === "running" ? `${c.cpu_pct.toFixed(1)}%` : "—"}
       </td>
-      <td className="px-4 py-2 text-right font-mono text-xs tabular-nums">
+      <td className="px-2 py-2 text-right font-mono text-xs tabular-nums">
         {c.state === "running" ? (
           <div className="flex items-center justify-end gap-2">
             <span>{formatBytes(c.mem_used_bytes)}</span>
@@ -1164,7 +1178,17 @@ function StateBadge({ state }: { state: string }) {
 // Legend is hidden above 8 cores — the hover tooltip already lists
 // per-core values and a 32-row legend is unreadable.
 const PER_CORE_RING = 120;
-function PerCoreChart({ cores, t }: { cores: number[]; t: ReturnType<typeof useI18n>["t"] }) {
+function PerCoreChart({
+  cores,
+  t,
+  editing,
+  onRemove,
+}: {
+  cores: number[];
+  t: ReturnType<typeof useI18n>["t"];
+  editing?: boolean;
+  onRemove?: () => void;
+}) {
   const bufRef = useRef<{ ts: number; cores: number[] }[]>([]);
   const [tick, setTick] = useState(0);
   const themeKey = useThemeKey();
@@ -1200,6 +1224,8 @@ function PerCoreChart({ cores, t }: { cores: number[]; t: ReturnType<typeof useI
     <ChartCard
       title={t("host.perCoreCpu")}
       icon={Cpu}
+      editing={editing}
+      onRemove={onRemove}
       badges={[
         <span key="cores">{t("host.cores", { count: n, coreLabel })}</span>,
         <span key="avg" className="text-[color:var(--color-muted)]">avg <span className="text-[color:var(--color-fg)]">{avg.toFixed(1)}%</span></span>,
@@ -1209,7 +1235,7 @@ function PerCoreChart({ cores, t }: { cores: number[]; t: ReturnType<typeof useI
         key={`per-core-${n}-${themeKey}`}
         data={data}
         options={perCoreOpts(n)}
-        className="h-[200px] w-full"
+        className="h-full w-full"
       />
     </ChartCard>
   );
