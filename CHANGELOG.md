@@ -6,6 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.6.4] - 2026-06-02
+
+**arm64 back in the release pipeline.** The 2026-06-02 OSS-flip smoke test caught a real adoption blocker — `ghcr.io/quanla93/lumen-hub:latest` and `lumen-agent:latest` only carried amd64 manifests, even though the README + CI matrix + `internal/hub/install/install.go` allowedBinaries all assumed arm64 worked. The original removal (release.yml comment block, pre-OSS-flip) made sense when the repo was private and the operator fleet was 100% x86; once the repo is public the dropped arch hits anyone on Apple Silicon dev, Raspberry Pi 4/5, Ampere, Graviton, RK3566 NAS — exactly the homelab population the README claims as audience.
+
+### Fixed
+
+- `release.yml` now builds **both linux/amd64 and linux/arm64** for the hub image, agent image, hub tarball, and standalone agent binary. The multi-arch image is produced via `docker/setup-qemu-action` + a single `docker/build-push-action` call with `platforms: linux/amd64,linux/arm64`. amd64 builds native on `ubuntu-latest`; arm64 builds under QEMU emulation. Total release time goes from ~3–5 min back to ~10–15 min — acceptable for OSS adoption gain.
+- Hub-side `allowedBinaries` (`internal/hub/install/install.go`) already accepted `lumen-agent-linux-arm64`, so the `/install/<arch>` endpoint will start serving arm64 binaries the moment the next release ships.
+- Release notes generation now labels the container images as **multi-arch**.
+
+### Notes
+
+- **No code change.** Hub binary, agent binary, and Docker images are bit-for-bit identical to v0.6.3 for amd64 — only the release pipeline changes.
+- **armv7 stays dropped** (CI matrix only ships amd64 + arm64 per CHANGELOG v0.4.7). RPi 2/3 32-bit users can still build from source; bring armv7 back if anyone files an issue.
+- Existing v0.6.3 images / tarballs are unchanged. Pull `lumen-hub:0.6.4` (or `:latest` once tagged) for the first multi-arch artifacts.
+
 ## [0.6.3] - 2026-06-02
 
 **Density toggle on `Settings → Display`.** RFC 0002 reserved this in v0.6.0 (`display.density: comfortable | compact`, server validator already accepting both) — v0.6.3 ships the toggle plus the global CSS hook that actually makes the page denser.
