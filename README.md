@@ -188,7 +188,7 @@ We welcome contributions of every kind: code, docs, bug reports, ideas, and help
 
 By participating you agree to our [Code of Conduct](CODE_OF_CONDUCT.md). See also
 [GOVERNANCE.md](GOVERNANCE.md), [SECURITY.md](SECURITY.md), and [SUPPORT.md](SUPPORT.md).
-A dedicated UI-translation contribution guide is still on the [roadmap](ACTION_PLAN.md).
+Translating the UI to a new locale? Walk through the [translation guide](docs/src/content/docs/contributing/translating.md).
 
 ---
 

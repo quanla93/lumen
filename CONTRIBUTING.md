@@ -8,6 +8,7 @@ This document tells you the fastest way to be useful.
 ## Table of contents
 
 - [Ways to contribute](#ways-to-contribute)
+- [Your first PR in 10 minutes](#your-first-pr-in-10-minutes)
 - [Before you start](#before-you-start)
 - [Code contribution workflow](#code-contribution-workflow)
 - [Merge criteria](#merge-criteria)
@@ -35,6 +36,74 @@ You don't need to write code to help:
 
 ---
 
+## Your first PR in 10 minutes
+
+If you've never opened a Lumen PR before, here's the fastest legitimate on-ramp. Pick any open ticket labeled [`good first issue`](https://github.com/quanla93/lumen/labels/good%20first%20issue) and follow this — most of them are scoped to one component + a few i18n strings.
+
+### 1. Fork + clone (~1 min)
+
+```bash
+gh repo fork quanla93/lumen --clone --remote
+cd lumen
+```
+
+### 2. Stand up the dev loop (~3 min)
+
+```bash
+pnpm install                  # web + docs deps
+make dev-hub                  # http://localhost:8090
+# In another shell:
+make dev-web                  # http://localhost:5173 — Vite hot reload
+```
+
+Sign in once (the hub seeds a first-admin you create on first visit), mint a host in `Settings → Hosts`, and either generate a per-agent Compose file from the UI or skip the agent for UI-only changes.
+
+### 3. Find the file (~1 min)
+
+Lumen is a small surface. Pointers:
+
+| You're touching… | Most likely file |
+|---|---|
+| A page or button label | `web/src/i18n/messages.ts` (EN + VI in one file) |
+| A chart on the Host detail page | `web/src/components/HostDetail.tsx` |
+| A host card on the Dashboard | `web/src/components/HostCard.tsx` |
+| The Alerts UI | `web/src/components/Alerts.tsx` |
+| Anything operator-facing under Settings | `web/src/components/Settings.tsx` |
+| A hub HTTP endpoint | `internal/hub/<area>/handlers.go` |
+| Agent collectors | `internal/agent/collectors/` |
+
+Code-walkthrough callout: open `web/src/components/HostCard.tsx` — it's ~150 lines and uses `useI18n`, `usePrefs`, lucide icons, and the standard `<Surface>` primitive from `@/components/ui`. Reading that one file teaches the patterns the rest of the web app follows.
+
+### 4. Make the change
+
+Keep edits surgical. The CI gate that catches most "oops" cases:
+
+```bash
+pnpm lint                     # tsc --noEmit + biome (docs)
+make test                     # Go unit tests
+```
+
+`tsc` will tell you if you added an i18n key to `en` but forgot the matching `vi` entry — see the [translation guide](docs/src/content/docs/contributing/translating.md).
+
+### 5. Commit + open PR (~2 min)
+
+```bash
+git checkout -b feat/your-change
+git commit -am "feat(web): your change"
+git push -u origin feat/your-change
+gh pr create --fill
+```
+
+PRs auto-fill from `.github/PULL_REQUEST_TEMPLATE.md`. Add a screenshot for any UI change — it speeds up review by a lot.
+
+### 6. Wait for CI + reviewer
+
+CI runs `Lint (Go)`, `Lint (Web + Docs)`, `Test (Go)`, `Build (linux-amd64)`, `Build (linux-arm64)`, and Docker smoke builds. A maintainer reviews within ~7 days; polite ping welcome after that.
+
+That's the whole loop. The first PR is the hardest — the second is muscle memory.
+
+---
+
 ## Before you start
 
 **Discuss large changes first.** Anything beyond a small fix should have an issue or RFC accepted before you write code. This protects your time — we'd rather say "let's adjust the approach" before the PR than reject finished work.
@@ -47,7 +116,7 @@ You don't need to write code to help:
 
 - New dependencies that significantly increase binary size or RAM. Lightweight is core value.
 - Enterprise complexity: multi-tenancy, RBAC roles, SAML/SSO, federation.
-- General-purpose dashboard builder (Grafana already exists).
+- General-purpose dashboard builder with a query editor or user-defined metrics (Grafana already exists). The **Host detail page** has drag/resize over a curated chart catalog — adding **new chart types** to that catalog is welcome; **arbitrary panels / query editors** are not.
 - Full-text log search engines (Loki exists).
 - AI/ML anomaly detection.
 - Cloud-only features that require external services to function.
