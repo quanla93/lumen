@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import { Server, AlertTriangle, Cpu, MemoryStick, HardDrive, Settings2, Search, EyeOff, Eye, Trash2, Bookmark } from "lucide-react";
+import { Server, AlertTriangle, Cpu, MemoryStick, HardDrive, Settings2, Search, EyeOff, Eye, Trash2, Bookmark, Sparkles, CheckCircle2, ArrowRight, Circle } from "lucide-react";
 import { HostCard, type Snapshot } from "@/components/HostCard";
-import { AppButton, EmptyState, IconButton, Popover, SegmentedControl, StatusPill, TooltipProvider } from "@/components/ui";
+import { AppButton, EmptyState, IconButton, Popover, SegmentedControl, StatusPill, Surface, TooltipProvider } from "@/components/ui";
 import { hostsApi, settingsApi, versionApi, type SavedView, type SortBy, type SortDir } from "@/lib/api";
 import { cpuTone, TONE_CLASS, type StatusTone } from "@/lib/status";
 import { isStale, staleAfterForIntervalMs } from "@/lib/time";
@@ -18,8 +18,10 @@ const STATUS_META: Record<WsStatus, { tone: StatusTone; labelKey: "dashboard.wsC
 
 export function Dashboard({
   onSelectHost,
+  onNavigateToSettings,
 }: {
   onSelectHost?: (hostName: string) => void;
+  onNavigateToSettings?: () => void;
 }) {
   const { t } = useI18n();
   const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
@@ -170,10 +172,7 @@ export function Dashboard({
             </div>
           </div>
           {snapshots.length === 0 ? (
-            <EmptyState
-              title={t("dashboard.noHostDataTitle")}
-              detail={t("dashboard.noHostDataDescription")}
-            />
+            <WelcomeCard onAddHost={onNavigateToSettings} t={t} />
           ) : sorted.length === 0 ? (
             <EmptyState
               title={t("dashboard.allHiddenTitle")}
@@ -505,5 +504,106 @@ function SummaryCard({
       <div className="mt-2 text-3xl font-bold lumen-num text-[color:var(--color-fg)]">{value}</div>
       <div className="mt-1 truncate text-xs text-[color:var(--color-muted)]">{detail}</div>
     </div>
+  );
+}
+
+// WelcomeCard renders the first-run onboarding wizard — replaces the
+// bare "no host data" empty state with a numbered 4-step guide that
+// tells a fresh operator exactly what to do next. Step 2 (Add host)
+// is the only actionable step and routes to Settings → Hosts via the
+// onAddHost callback. Auto-disappears the moment any host registers,
+// no schema flag needed — `snapshots.length === 0` is the gate.
+function WelcomeCard({
+  onAddHost,
+  t,
+}: {
+  onAddHost?: () => void;
+  t: ReturnType<typeof useI18n>["t"];
+}) {
+  const steps = [
+    {
+      done: true,
+      title: t("dashboard.welcomeStep1Title"),
+      detail: t("dashboard.welcomeStep1Detail"),
+    },
+    {
+      done: false,
+      title: t("dashboard.welcomeStep2Title"),
+      detail: t("dashboard.welcomeStep2Detail"),
+      cta: onAddHost
+        ? { label: t("dashboard.welcomeStep2Cta"), onClick: onAddHost }
+        : undefined,
+    },
+    {
+      done: false,
+      title: t("dashboard.welcomeStep3Title"),
+      detail: t("dashboard.welcomeStep3Detail"),
+    },
+    {
+      done: false,
+      title: t("dashboard.welcomeStep4Title"),
+      detail: t("dashboard.welcomeStep4Detail"),
+    },
+  ];
+  return (
+    <Surface as="section" className="mx-auto max-w-2xl px-6 py-7">
+      <div className="mb-4 flex items-center gap-2 text-[color:var(--lumen-teal)]">
+        <Sparkles size={18} strokeWidth={1.75} />
+        <h2 className="text-lg font-semibold tracking-tight text-[color:var(--color-fg)]">
+          {t("dashboard.welcomeTitle")}
+        </h2>
+      </div>
+      <p className="mb-6 text-sm text-[color:var(--color-muted)]">
+        {t("dashboard.welcomeSubtitle")}
+      </p>
+      <ol className="space-y-4">
+        {steps.map((step, i) => (
+          <li key={i} className="flex gap-3">
+            <span
+              className={`mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border ${
+                step.done
+                  ? "border-[color:var(--lumen-teal)] bg-[color:var(--lumen-teal)] text-[color:var(--color-bg)]"
+                  : "border-[color:var(--color-border)] text-[color:var(--color-muted)]"
+              }`}
+              aria-hidden
+            >
+              {step.done ? (
+                <CheckCircle2 size={14} strokeWidth={2} />
+              ) : (
+                <Circle size={14} strokeWidth={2} />
+              )}
+            </span>
+            <div className="flex-1">
+              <h3 className="text-sm font-medium text-[color:var(--color-fg)]">
+                {step.title}
+              </h3>
+              <p className="mt-0.5 text-xs text-[color:var(--color-muted)]">
+                {step.detail}
+              </p>
+              {step.cta && (
+                <button
+                  type="button"
+                  onClick={step.cta.onClick}
+                  className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-[color:var(--lumen-teal)] bg-[color:var(--lumen-teal)] px-3 py-1.5 text-xs font-medium text-[color:var(--color-bg)] transition-colors hover:bg-[color:var(--lumen-teal)]/85 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--lumen-teal)]/40"
+                >
+                  {step.cta.label}
+                  <ArrowRight size={13} strokeWidth={1.75} />
+                </button>
+              )}
+            </div>
+          </li>
+        ))}
+      </ol>
+      <div className="mt-6 border-t border-[color:var(--color-border)] pt-4 text-xs">
+        <a
+          href="https://github.com/quanla93/lumen/blob/main/docs/src/content/docs/getting-started/quickstart.md"
+          target="_blank"
+          rel="noreferrer noopener"
+          className="inline-flex items-center gap-1 text-[color:var(--color-muted)] hover:text-[color:var(--lumen-teal)]"
+        >
+          {t("dashboard.welcomeDocsLink")}
+        </a>
+      </div>
+    </Surface>
   );
 }

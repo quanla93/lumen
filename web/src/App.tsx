@@ -66,7 +66,7 @@ export default function App() {
         body = view.detailHost ? (
           <HostDetail hostName={view.detailHost} onBack={onBack} />
         ) : (
-          <Dashboard onSelectHost={onSelectHost} />
+          <Dashboard onSelectHost={onSelectHost} onNavigateToSettings={() => onTabChange("settings")} />
         );
       } else if (view.tab === "alerts") {
         body = <Alerts />;
