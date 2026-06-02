@@ -150,9 +150,9 @@ takes ~50 lines.
 
 ## Is there a Prometheus exporter?
 
-Not yet. The hub will grow a `/metrics` endpoint at v0.2 that
-exposes its own internal counters; per-host metric scraping is a
-v0.3 conversation if user demand surfaces.
+Not as a native `/metrics` endpoint today. Lumen's **[Public Read API](https://github.com/quanla93/lumen/blob/main/docs/src/content/docs/reference/public-api.md)** (`/api/v1/*`, shipped in v0.5.0) is the integration surface — it works directly with the **Grafana Infinity datasource** (recipe in the Public API reference) so Grafana / n8n / scripts can pull host metrics with a Bearer key.
+
+A native `/metrics` endpoint that exposes the hub's *own* counters in Prometheus exposition format is on the backlog — open an issue if you'd find it valuable.
 
 ## Why is X measured this way?
 

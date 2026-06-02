@@ -119,8 +119,11 @@ GOOS=linux GOARCH=arm64 CGO_ENABLED=0 \
 `CGO_ENABLED=0` makes the binary fully static — no glibc/musl mismatch,
 runs on Alpine/Ubuntu/Debian/Arch identically.
 
-> 🚧 Pre-built release binaries (`lumen-agent_<version>_linux_amd64.tar.gz`)
-> ship with release packaging. For long-running Docker-based agents, prefer the generated Compose file above.
+> Pre-built release binaries (`lumen-agent_<version>_linux_{amd64,arm64}.tar.gz`)
+> are attached to every [GitHub Release](https://github.com/quanla93/lumen/releases) —
+> grab them directly instead of cross-compiling, unless you want a specific
+> commit. For long-running Docker-based agents, prefer the generated Compose
+> file above.
 
 ### Mint a token
 
