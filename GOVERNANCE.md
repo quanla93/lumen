@@ -13,7 +13,7 @@ Lumen uses a lightweight, gradual-trust governance model. The project should mov
 | Maintainer | Merge PRs, cut releases, moderate project spaces | Nominated by Core and accepted by consensus |
 | Core Team | Roadmap, architecture, governance changes | Promoted from Maintainers by consensus |
 
-The current pre-public staging repo is owned by `quanla93`. Once the project moves to an organization, Core membership and maintainer permissions should be made explicit in this file.
+The repository lives at `github.com/quanla93/lumen`. As more maintainers join, the Core membership and maintainer permissions will be listed explicitly in this file. Until then, the repository owner acts as Core.
 
 ## Decision making
 

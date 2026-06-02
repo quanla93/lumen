@@ -33,9 +33,9 @@ Maintainers who violate this Code of Conduct may be removed from the project lea
 
 ## Reporting
 
-Report Code of Conduct violations privately to the maintainers at `conduct@quanla.org`.
+Report Code of Conduct violations privately via **[GitHub Security Advisories](https://github.com/quanla93/lumen/security/advisories/new)** on this repository. The advisory form is also the project's only private channel for community-conduct reports until a dedicated address is set up — GitHub keeps it confidential between you and the maintainers.
 
-If that address is not active yet, contact the current repository owner directly through GitHub and include:
+Please include:
 
 - What happened.
 - Where it happened.
@@ -46,7 +46,7 @@ We will acknowledge reports within 7 days and handle them confidentially.
 
 ## Scope
 
-This Code of Conduct applies in all project spaces, including GitHub, Discussions, chat, events, and any public space where someone represents the Lumen project.
+This Code of Conduct applies in all project spaces, including GitHub Issues, Discussions, pull requests, RFCs, future chat / community channels, events, and any public space where someone represents the Lumen project.
 
 ## Attribution
 

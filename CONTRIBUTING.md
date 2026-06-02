@@ -28,7 +28,7 @@ You don't need to write code to help:
 | 💡 Feature ideas | Start a [Discussion](https://github.com/quanla93/lumen/discussions/categories/ideas) |
 | 📖 Docs | PR directly into `docs/` — small fixes don't need an issue first |
 | 🌍 Translations | See [translating.md](docs/src/content/docs/contributing/translating.md) |
-| 💬 Help others | Answer Discussions / Discord questions |
+| 💬 Help others | Answer questions in Discussions |
 | 🧪 Test pre-releases | Try `next` tag, report regressions |
 | 🛠️ Code | Read the rest of this document |
 | ⭐ Star + share | Genuinely helps |
@@ -195,8 +195,8 @@ We use a gradual-trust model. Nobody is gatekept by a test or interview — trus
 |---|---|---|
 | **Visitor** | Open issues, post in Discussions | — |
 | **Triager** | Label & close duplicate issues, support newcomers | 5+ helpful comments, invited by a maintainer |
-| **Contributor** | Open PRs (everyone can), get the `contributor` Discord role after first merge | 1 merged PR |
-| **Trusted Contributor** | Advisory PR reviews, vote on RFCs, contributors-only Discord channel | 5+ merged PRs across code + docs/tests, sustained over 1+ month |
+| **Contributor** | Open PRs (everyone can), recognised in release notes after first merge | 1 merged PR |
+| **Trusted Contributor** | Advisory PR reviews, vote on RFCs | 5+ merged PRs across code + docs/tests, sustained over 1+ month |
 | **Maintainer** | Merge PRs, cut releases, set roadmap | Nominated by Core after ~6 months of steady, high-judgment contribution; consensus of Core team |
 | **Core Team** | Architecture decisions, project direction | Promoted from Maintainer by consensus |
 
@@ -205,7 +205,7 @@ We use a gradual-trust model. Nobody is gatekept by a test or interview — trus
 **What gets you noticed for higher tiers** (not a checklist — guidance):
 - Consistently high-quality PRs (not just quantity)
 - Good judgment in reviews — what to push back on, what to let go
-- Helping others in Discussions/Discord
+- Helping others in Discussions
 - Owning a subsystem (becoming the de-facto expert on, e.g., the Proxmox collector)
 - Writing & shipping an RFC
 
@@ -217,7 +217,6 @@ See [GOVERNANCE.md](GOVERNANCE.md) for how decisions get made.
 
 - **Bug / feature** → GitHub Issues / Discussions
 - **Usage help** → Discussions → Q&A category
-- **Realtime chat** → [Discord](#) (link TBD)
 - **Security issue** → see [SECURITY.md](SECURITY.md) — do NOT open a public issue
 
 ---

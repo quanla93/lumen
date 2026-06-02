@@ -11,11 +11,8 @@ metrics — designed to run comfortably on a Raspberry Pi.
 [Documentation](docs/src/content/docs/getting-started/overview.md) ·
 [Roadmap](ACTION_PLAN.md)
 
-> ⚠️ **Pre-1.0.** Latest tag is **v0.6.0**. Breaking changes are allowed in
-> minor releases until v1.0. The project is staged at
-> [`quanla93/lumen`](https://github.com/quanla93/lumen); the `quanla.org`
-> site, Discord, and any hosted installer URLs are placeholders and don't
-> exist yet.
+> ⚠️ **Pre-1.0.** Latest tag is **v0.6.3**. Breaking changes are allowed in
+> minor releases until v1.0.
 
 </div>
 
@@ -40,9 +37,9 @@ Each line is tagged **✅ shipped** or **🛣️ roadmap** so you know what work
 - **Mobile-ready PWA** ✅ — Installable to your phone's homescreen; app shell paints instantly
   on cold start. Web Push notifications are roadmap.
 - **Bilingual UI + docs** ✅ — Both the web app and the docs ship in English and Vietnamese.
-- **Proxmox / LXC first-class** 🛣️ — Read the Proxmox API directly (agentless), see cluster
-  topology, ZFS pools, PBS backups, and LXC vs QEMU. Planned for v0.4.
-- **Built-in public status page** 🛣️ — Share a read-only URL of your homelab health. Planned for v0.6.
+- **Proxmox / LXC first-class** 🛣️ — Direct Proxmox API reads (agentless cluster/ZFS/PBS view)
+  are roadmap. Proxmox guests (LXC, QEMU, Docker) work today via the agent.
+- **Built-in public status page** 🛣️ — Share a read-only URL of your homelab health. Roadmap (post-v1.0).
 
 ### What Lumen is NOT
 
@@ -72,10 +69,12 @@ If those are dealbreakers, look at [Grafana + Prometheus](https://grafana.com) o
 | Auth | First-admin register, JWT (HS256), Argon2id, per-host bearer tokens | ✅ |
 | Settings | Runtime agent interval, retention window/interval, downsample policy | ✅ |
 | UI | Dashboard, host detail charts (uPlot), dark/light, EN + VI | ✅ |
+| Personalization | Theme / language / units / reduce-motion / density saved per-user on the hub; Dashboard saved views (up to 5); per-host dashboard builder over a 10-entry chart catalog | ✅ |
+| Public Read API | `/api/v1/*` Bearer-key authenticated endpoints (version / hosts / metrics / alerts) with scopes + host-glob filter + per-key rate limit; Grafana JSON datasource recipe in docs | ✅ |
 | Deploy | Docker Compose (primary), single binary + systemd, install script | ✅ |
 | Agent lifecycle | Per-agent Docker Compose, version awareness, in-UI "Update agent" guidance | ✅ |
 | Auto-discovery | LXC, Proxmox VMs | 🛣️ |
-| Alerts | Threshold rules + offline detection; ntfy / Discord / webhook / Telegram / Email (SMTP) delivery; per-rule routing, per-channel severity floor, host glob + tag selectors, persisted delivery queue with severity-aware retry, history + delivery scrollback, retention sweep, per-rule flap cooldown, per-host maintenance silence | ✅ (Phase 6 closed) |
+| Alerts | Threshold rules + offline detection; ntfy / Discord / webhook / Telegram / Email (SMTP) delivery; per-rule routing, per-channel severity floor, host glob + tag selectors, persisted delivery queue with severity-aware retry, history + delivery scrollback, retention sweep, per-rule flap cooldown, per-host maintenance silence | ✅ |
 | TOTP 2FA / multi-user | Optional second factor, read-only viewer role | 🛣️ |
 
 ---
@@ -134,10 +133,11 @@ Lumen is **pre-1.0**. Expect breaking changes until v1.0. We aim for stable APIs
 | v0.1 | ✅ Released | MVP: hub + agent, auth, Docker collector, realtime dashboard, history API, PWA |
 | v0.2 | ✅ Released | Runtime settings, downsample policy, UI polish, bilingual (EN/VI) UI |
 | v0.3 | ✅ Released | Docker Compose agent lifecycle: generated per-agent compose, agent version awareness, in-UI "Update agent" guidance |
-| v0.4 | ✅ Released | Phase 6 alert engine end-to-end (rules, **five** channel types — ntfy/Discord/webhook/Telegram/**Email (SMTP)** — per-rule routing, host tag inventory, persisted delivery queue). v0.4.1: alert history retention sweep + scrollback, dashboard KPI rework (hottest host per metric, +disk), `agent_interval`-derived offline threshold. v0.4.2: WebSocket auto-reconnect + server-side keepalive. v0.4.5 closed Phase 6.x with per-rule flap cooldown + per-host maintenance silence. Proxmox / LXC / ZFS / PBS integration deferred to a later release. |
-| v0.5 | Planned | Parquet cold tier, retention compaction, multi-user, TOTP 2FA |
-| v0.6 | Planned | Self-hosted SSO (OIDC), public status page, Web Push |
-| v1.0 | Planned | API freeze (`/api/v1`), plugin SDK, Beszel migration tool |
+| v0.4 | ✅ Released | Phase 6 alert engine end-to-end (rules, five channel types — ntfy/Discord/webhook/Telegram/Email — per-rule routing, host tag inventory, persisted delivery queue, retention sweep, flap cooldown, per-host maintenance silence). v0.4.7+ added no-Docker agent install + virt-aware UI + retention settings polish + Hub Status panel. |
+| v0.5 | ✅ Released | Public Read API (`/api/v1/*` with Bearer keys, scopes, host-glob filter, in-memory rate limit, public envelope). Settings → API Keys mint/list/revoke. Grafana JSON datasource recipe in docs. |
+| v0.6 | ✅ Released | Personalization (theme / language / units / reduce-motion / **density** on the hub, replacing localStorage), Dashboard **saved views** (up to 5 per user), per-host **dashboard builder** — drag/resize/add/remove charts over a 10-entry curated catalog (CPU, per-core, RAM, swap, disk, disk I/O, network, load, temperature, containers). |
+| v0.7+ | Roadmap | Parquet cold tier (>7d queries), self-hosted SSO (OIDC first), public status page, Web Push notifications. |
+| v1.0 | Planned | API freeze (`/api/v1`), plugin SDK, Beszel migration tool. |
 
 See the full [roadmap](ACTION_PLAN.md) (phase-by-phase plan, decisions log, anti-features).
 

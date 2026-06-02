@@ -15,9 +15,7 @@ After `v0.1.0`, we support:
 
 Please do not open a public issue for suspected vulnerabilities.
 
-Report security issues privately to `security@quanla.org`.
-
-If that address is not active yet, contact the current repository owner directly through GitHub and include `SECURITY` in the subject or first line.
+Report privately via **[GitHub Security Advisories](https://github.com/quanla93/lumen/security/advisories/new)** on this repository. GitHub keeps the report confidential between you and the maintainers, and lets us collaborate on a fix in a private fork before disclosure.
 
 Include as much detail as you can:
 

@@ -13,7 +13,7 @@ This document explains where to ask for help and what information to include.
 | Security issue | See [SECURITY.md](SECURITY.md); do not open a public issue |
 | Code contribution question | GitHub Discussions or the relevant PR |
 
-Realtime chat is planned but not active yet. The README may contain a placeholder Discord link until the community space is created.
+Realtime chat (Discord, Matrix, or similar) is not active yet. Open a Discussion or Issue for now — a community-chat space may land later, but it is not a blocker.
 
 ## Before asking
 
