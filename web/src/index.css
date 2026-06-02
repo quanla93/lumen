@@ -66,6 +66,14 @@
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
   }
+  /* Compact density — drops the root font-size from the default 16px to
+   * 15px (-6.25%). Tailwind v4's spacing/padding/gap utilities are all
+   * rem-based, so they scale proportionally; explicit `text-xs` / `text-sm`
+   * paragraphs also shrink by the same ratio. PrefsApply writes
+   * data-density onto <html> from display prefs. */
+  html[data-density="compact"] {
+    font-size: 15px;
+  }
 }
 
 @layer utilities {

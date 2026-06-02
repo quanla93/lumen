@@ -17,6 +17,7 @@ import {
   type Theme,
   type UnitsMode,
   type ReduceMotion,
+  type Density,
 } from "@/lib/api";
 import { relativeTime } from "@/lib/time";
 import { copyToClipboard } from "@/lib/clipboard";
@@ -1357,6 +1358,20 @@ function DisplaySettings() {
               ]}
             />
             <p className="text-xs text-[color:var(--color-muted)]">{t("settings.displayReduceMotionHelp")}</p>
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="block text-sm font-medium">{t("settings.displayDensityLabel")}</label>
+            <SegmentedControl<Density>
+              ariaLabel={t("settings.displayDensityLabel")}
+              value={display.density}
+              onChange={(v) => set("density", v)}
+              options={[
+                { value: "comfortable", label: t("settings.displayDensityComfortable") },
+                { value: "compact",     label: t("settings.displayDensityCompact") },
+              ]}
+            />
+            <p className="text-xs text-[color:var(--color-muted)]">{t("settings.displayDensityHelp")}</p>
           </div>
 
           {error && <ErrorText message={error} />}

@@ -6,6 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.6.3] - 2026-06-02
+
+**Density toggle on `Settings → Display`.** RFC 0002 reserved this in v0.6.0 (`display.density: comfortable | compact`, server validator already accepting both) — v0.6.3 ships the toggle plus the global CSS hook that actually makes the page denser.
+
+### Added
+
+- **`Settings → Display → Density` segmented control.** Two values: Comfortable (default) and Compact. Auto-saves on change like the other Display settings.
+- **`html[data-density="compact"]` CSS rule** in `web/src/index.css` (base layer): drops the root font-size from 16 px to 15 px. Tailwind v4's spacing/padding/gap utilities are rem-based, so a single root-size flip cascades through every padding-, gap-, and text-* class proportionally. Explicit `text-xs` / `text-sm` typography also shrinks by the same ratio. No component-specific overrides needed.
+- **i18n keys (EN + VI):** `displayDensityLabel`, `displayDensityComfortable`, `displayDensityCompact`, `displayDensityHelp`. Removed four orphan stub strings on the `host.customize*` namespace (`customizeStub`, `customizeShowHide`, `customizeDefaultRange`, `customizeCompact`) — the Host detail "customize coming soon" hint they backed has been live as the builder for two releases now.
+
+### Notes
+
+- 16 → 15 px is a ~6.25% shrink — noticeable but readable. Picked deliberately over 14 px (12.5%) which felt cramped during a quick eyeball test of the host card hero stat and the metric tables.
+- `PrefsApply` already writes `data-density` onto `<html>` from display prefs (since v0.6.0); v0.6.3 just gives the attribute something to do.
+- Per-component compact rules (e.g. tighter host card hero, smaller per-core legend) are deliberately not in this release — the root-font flip already covers the high-leverage spacing. Add targeted rules in a follow-up only if specific components feel wrong after real use.
+
 ## [0.6.2] - 2026-06-02
 
 **Saved views UI for the Dashboard customize popover.** The schema was reserved in v0.6.0 (`dashboard_prefs.views[]` + `activeViewId`, max 5 per server validator) — v0.6.2 adds the UI to actually use them. Operators can now bundle their current sort + hidden host list as a named view, switch between views with one click, and delete views they no longer want.
