@@ -487,9 +487,10 @@ These were originally lumped with Cold tier in the old Phase 7 because they were
 - [ ] Translation docs and contribution guide for adding/changing UI copy
 
 #### Public landing / marketing site
-- [ ] Keep `brand/index.html` as a standalone coming-soon/landing page, separate from the authenticated hub dashboard
-- [ ] Evolve landing page into Lumen's public home: product positioning, screenshots, install CTA, docs link, GitHub link, and roadmap highlights
-- [ ] Decide deployment target for the static landing page (GitHub Pages / Cloudflare Pages / other) without coupling it to hub runtime
+- [x] Keep `brand/index.html` as a standalone landing page, separate from the authenticated hub dashboard
+- [x] Evolve landing page into Lumen's public home: product positioning, install CTA, docs link, GitHub link, roadmap highlights — bilingual EN/VI (2026-06-02)
+- [x] Deployment target chosen: **Cloudflare Pages** (auto-deploy from `main` branch, build output `brand/`), production URL `https://lumen.quanla.org/`. Setup notes in `brand/DEPLOY.md`.
+- [ ] Add screenshots of Dashboard / Host detail / Alerts (placeholder pending first user feedback round)
 
 ---
 
