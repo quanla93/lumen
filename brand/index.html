@@ -1,455 +1,513 @@
 <!doctype html>
-<html lang="vi">
+<html lang="en" data-locale="en" class="scroll-smooth">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="theme-color" content="#0f172a" />
-  <meta
-    name="description"
-    content="Lumen đang được xây dựng — một nền tảng observability nhẹ, rõ ràng và hiện đại cho hạ tầng của bạn."
-  />
+  <meta name="theme-color" content="#020617" />
 
-  <title>Lumen | Sắp ra mắt</title>
+  <title>Lumen — Proxmox-native homelab monitoring</title>
+  <meta name="description" content="Lightweight self-hosted server monitoring built for homelabs. HTTPS-only push transport, HDD-friendly storage, mobile-ready PWA. Single Go binary, MIT-licensed." />
 
+  <link rel="canonical" href="https://lumen.quanla.org/" />
   <link rel="icon" href="favicon.svg" type="image/svg+xml" />
-  <link rel="preload" href="logo.svg" as="image" type="image/svg+xml" />
 
-  <meta property="og:title" content="Lumen | Sắp ra mắt" />
-  <meta
-    property="og:description"
-    content="Lumen đang được xây dựng — theo dõi hệ thống, máy chủ và môi trường chạy trong một giao diện gọn gàng."
-  />
   <meta property="og:type" content="website" />
-  <meta property="og:image" content="logo.svg" />
+  <meta property="og:url" content="https://lumen.quanla.org/" />
+  <meta property="og:title" content="Lumen — Proxmox-native homelab monitoring" />
+  <meta property="og:description" content="Lightweight self-hosted server monitoring built for homelabs. HTTPS-only push transport, HDD-friendly storage, mobile-ready PWA. Single Go binary, MIT-licensed." />
+  <meta property="og:image" content="https://lumen.quanla.org/logo.svg" />
+  <meta property="og:image:type" content="image/svg+xml" />
+
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Lumen — Proxmox-native homelab monitoring" />
+  <meta name="twitter:description" content="Lightweight self-hosted server monitoring built for homelabs. Single Go binary, MIT-licensed." />
+  <meta name="twitter:image" content="https://lumen.quanla.org/logo.svg" />
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "Lumen",
+    "operatingSystem": "Linux, macOS, Windows (agent); Linux (hub)",
+    "applicationCategory": "DeveloperApplication",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+    "license": "https://github.com/quanla93/lumen/blob/main/LICENSE",
+    "url": "https://lumen.quanla.org/",
+    "sameAs": ["https://github.com/quanla93/lumen"]
+  }
+  </script>
+
+  <script src="https://cdn.tailwindcss.com?plugins=typography"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: { lumen: { teal: "#14b8a6", "teal-soft": "#5eead4" } },
+          fontFamily: {
+            sans: ["Inter", "ui-sans-serif", "system-ui", "-apple-system", "Segoe UI", "Roboto", "sans-serif"],
+            mono: ["JetBrains Mono", "ui-monospace", "SF Mono", "Menlo", "Consolas", "monospace"],
+          },
+        },
+      },
+    };
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
 
   <style>
-    :root {
-      color-scheme: dark;
-      --bg: #020617;
-      --bg-soft: #0f172a;
-      --card: rgba(15, 23, 42, 0.72);
-      --card-border: rgba(148, 163, 184, 0.18);
-      --text: #f8fafc;
-      --muted: #94a3b8;
-      --muted-strong: #cbd5e1;
-      --teal: #14b8a6;
-      --teal-light: #5eead4;
-      --blue: #38bdf8;
-      --shadow: 0 28px 90px rgba(2, 6, 23, 0.58);
-    }
-
-    * {
-      box-sizing: border-box;
-    }
-
-    html {
-      min-height: 100%;
-      background: var(--bg);
-    }
-
-    body {
-      min-height: 100vh;
-      margin: 0;
-      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      color: var(--text);
-      background:
-        radial-gradient(circle at 15% 15%, rgba(20, 184, 166, 0.24), transparent 32rem),
-        radial-gradient(circle at 82% 18%, rgba(56, 189, 248, 0.18), transparent 30rem),
-        radial-gradient(circle at 55% 95%, rgba(20, 184, 166, 0.12), transparent 28rem),
-        linear-gradient(145deg, #020617 0%, #08111f 46%, #0f172a 100%);
-      overflow-x: hidden;
-    }
-
-    body::before {
-      content: "";
-      position: fixed;
-      inset: 0;
-      pointer-events: none;
-      background-image:
-        linear-gradient(rgba(148, 163, 184, 0.07) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(148, 163, 184, 0.07) 1px, transparent 1px);
-      background-size: 56px 56px;
-      mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.9), transparent 78%);
-    }
-
-    .page {
-      position: relative;
-      display: grid;
-      min-height: 100vh;
-      padding: 28px;
-    }
-
-    .shell {
-      width: min(1120px, 100%);
-      margin: auto;
-    }
-
-    .nav {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 24px;
-      margin-bottom: 48px;
-    }
-
-    .brand {
-      display: inline-flex;
-      align-items: center;
-      gap: 14px;
-      text-decoration: none;
-      color: var(--text);
-    }
-
-    .brand img {
-      width: 164px;
-      height: auto;
-      color: var(--text);
-    }
-
-    .domain {
-      display: inline-flex;
-      align-items: center;
-      min-height: 36px;
-      padding: 0 14px;
-      border: 1px solid rgba(94, 234, 212, 0.24);
-      border-radius: 999px;
-      color: var(--teal-light);
-      background: rgba(20, 184, 166, 0.08);
-      font-size: 14px;
-      font-weight: 600;
-      letter-spacing: 0.01em;
-      white-space: nowrap;
-    }
-
-    .hero {
-      display: grid;
-      grid-template-columns: minmax(0, 1.05fr) minmax(320px, 0.95fr);
-      gap: 40px;
-      align-items: center;
-    }
-
-    .eyebrow {
-      display: inline-flex;
-      align-items: center;
-      gap: 10px;
-      margin: 0 0 22px;
-      color: var(--teal-light);
-      font-size: 14px;
-      font-weight: 700;
-      letter-spacing: 0.14em;
-      text-transform: uppercase;
-    }
-
-    .eyebrow::before {
-      content: "";
-      width: 10px;
-      height: 10px;
-      border-radius: 999px;
-      background: var(--teal-light);
-      box-shadow: 0 0 28px rgba(94, 234, 212, 0.9);
-    }
-
-    h1 {
-      max-width: 760px;
-      margin: 0;
-      font-size: clamp(48px, 8vw, 92px);
-      line-height: 0.92;
-      letter-spacing: -0.075em;
-    }
-
-    .gradient-text {
-      display: inline-block;
-      background: linear-gradient(90deg, #f8fafc 0%, #99f6e4 52%, #7dd3fc 100%);
-      -webkit-background-clip: text;
-      background-clip: text;
-      color: transparent;
-    }
-
-    .lead {
-      max-width: 650px;
-      margin: 26px 0 0;
-      color: var(--muted-strong);
-      font-size: clamp(18px, 2.2vw, 22px);
-      line-height: 1.65;
-    }
-
-    .actions {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 14px;
-      margin-top: 34px;
-    }
-
-    .pill {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      min-height: 46px;
-      padding: 0 18px;
-      border: 1px solid var(--card-border);
-      border-radius: 999px;
-      color: var(--muted-strong);
-      background: rgba(15, 23, 42, 0.52);
-      font-size: 15px;
-      font-weight: 650;
-      backdrop-filter: blur(14px);
-    }
-
-    .pill.primary {
-      border-color: rgba(94, 234, 212, 0.34);
-      color: #042f2e;
-      background: linear-gradient(135deg, var(--teal-light), var(--blue));
-      box-shadow: 0 18px 48px rgba(20, 184, 166, 0.24);
-    }
-
-    .preview-card {
-      position: relative;
-      min-height: 520px;
-      border: 1px solid var(--card-border);
-      border-radius: 32px;
-      background:
-        linear-gradient(180deg, rgba(15, 23, 42, 0.88), rgba(15, 23, 42, 0.52)),
-        radial-gradient(circle at 50% 18%, rgba(20, 184, 166, 0.22), transparent 18rem);
-      box-shadow: var(--shadow);
-      overflow: hidden;
-      backdrop-filter: blur(22px);
-    }
-
-    .preview-card::before {
-      content: "";
-      position: absolute;
-      inset: 1px;
-      border-radius: 31px;
-      background: linear-gradient(135deg, rgba(255,255,255,0.13), transparent 38%);
-      pointer-events: none;
-    }
-
-    .card-topbar {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      height: 54px;
-      padding: 0 22px;
-      border-bottom: 1px solid rgba(148, 163, 184, 0.12);
-    }
-
-    .dot {
-      width: 10px;
-      height: 10px;
-      border-radius: 50%;
-      background: rgba(148, 163, 184, 0.45);
-    }
-
-    .dot:first-child {
-      background: #5eead4;
-    }
-
-    .dashboard {
-      position: relative;
-      padding: 28px;
-    }
-
-    .status-row {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 14px;
-      margin-bottom: 18px;
-    }
-
-    .metric {
-      min-height: 108px;
-      padding: 18px;
-      border: 1px solid rgba(148, 163, 184, 0.13);
-      border-radius: 22px;
-      background: rgba(2, 6, 23, 0.32);
-    }
-
-    .metric span {
-      color: var(--muted);
-      font-size: 12px;
-      font-weight: 700;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-    }
-
-    .metric strong {
-      display: block;
-      margin-top: 18px;
-      font-size: 26px;
-      letter-spacing: -0.04em;
-    }
-
-    .pulse {
-      position: relative;
-      display: grid;
-      place-items: center;
-      height: 260px;
-      margin-top: 18px;
-      border: 1px solid rgba(148, 163, 184, 0.13);
-      border-radius: 26px;
-      background:
-        radial-gradient(circle, rgba(20, 184, 166, 0.17), transparent 38%),
-        rgba(2, 6, 23, 0.28);
-      overflow: hidden;
-    }
-
-    .pulse img {
-      width: 142px;
-      height: 142px;
-      filter: drop-shadow(0 0 42px rgba(94, 234, 212, 0.38));
-      animation: float 5s ease-in-out infinite;
-    }
-
-    .rings,
-    .rings::before,
-    .rings::after {
-      position: absolute;
-      width: 170px;
-      height: 170px;
-      border: 1px solid rgba(94, 234, 212, 0.18);
-      border-radius: 50%;
-    }
-
-    .rings {
-      animation: ping 3.4s ease-out infinite;
-    }
-
-    .rings::before,
-    .rings::after {
-      content: "";
-      inset: -30px;
-    }
-
-    .rings::after {
-      inset: -62px;
-      opacity: 0.55;
-    }
-
-    .footer-note {
-      display: flex;
-      justify-content: space-between;
-      gap: 16px;
-      margin-top: 24px;
-      color: var(--muted);
-      font-size: 14px;
-    }
-
-    @keyframes float {
-      0%, 100% { transform: translateY(0); }
-      50% { transform: translateY(-10px); }
-    }
-
-    @keyframes ping {
-      0% { transform: scale(0.86); opacity: 0.85; }
-      100% { transform: scale(1.16); opacity: 0; }
-    }
-
-    @media (max-width: 900px) {
-      .page {
-        padding: 22px;
-      }
-
-      .nav {
-        margin-bottom: 36px;
-      }
-
-      .hero {
-        grid-template-columns: 1fr;
-      }
-
-      .preview-card {
-        min-height: auto;
-      }
-    }
-
-    @media (max-width: 560px) {
-      .nav,
-      .footer-note {
-        align-items: flex-start;
-        flex-direction: column;
-      }
-
-      .brand img {
-        width: 142px;
-      }
-
-      .status-row {
-        grid-template-columns: 1fr;
-      }
-
-      .dashboard {
-        padding: 18px;
-      }
-
-      .pulse {
-        height: 220px;
-      }
-    }
+    body { font-feature-settings: "cv11", "ss03"; }
+    pre, code { font-feature-settings: "tnum" 1; }
+    .gradient-text { background: linear-gradient(135deg, #14b8a6 0%, #5eead4 50%, #99f6e4 100%); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+    .glass { background: rgba(15, 23, 42, 0.6); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+    @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
   </style>
 </head>
-<body>
-  <main class="page">
-    <section class="shell" aria-label="Lumen sắp ra mắt">
-      <nav class="nav" aria-label="Điều hướng chính">
-        <a class="brand" href="/" aria-label="Trang chủ Lumen">
-          <img src="logo.svg" alt="Lumen" />
-        </a>
-        <span class="domain">lumen.quanla.org</span>
-      </nav>
 
-      <div class="hero">
-        <section>
-          <p class="eyebrow">Sắp ra mắt</p>
-          <h1>
-            Ánh sáng mới cho việc quan sát
-            <span class="gradient-text">hạ tầng.</span>
-          </h1>
-          <p class="lead">
-            Lumen đang được xây dựng để giúp bạn theo dõi máy chủ, môi trường chạy, chính sách thu thập dữ liệu
-            và tín hiệu hệ thống trong một giao diện nhanh, rõ ràng và dễ vận hành.
-          </p>
-          <div class="actions" aria-label="Điểm nổi bật">
-            <span class="pill primary">Đang hoàn thiện</span>
-            <span class="pill">Quan sát hệ thống</span>
-            <span class="pill">Thông tin hạ tầng</span>
-          </div>
-        </section>
+<body class="bg-slate-950 text-slate-100 font-sans antialiased">
 
-        <aside class="preview-card" aria-label="Minh họa giao diện Lumen">
-          <div class="card-topbar" aria-hidden="true">
-            <span class="dot"></span>
-            <span class="dot"></span>
-            <span class="dot"></span>
-          </div>
-          <div class="dashboard">
-            <div class="status-row">
-              <div class="metric">
-                <span>Máy chủ</span>
-                <strong>Ổn định</strong>
-              </div>
-              <div class="metric">
-                <span>Môi trường</span>
-                <strong>Đang chạy</strong>
-              </div>
-              <div class="metric">
-                <span>Tín hiệu</span>
-                <strong>Rõ ràng</strong>
-              </div>
-            </div>
+<!-- ─── Header ──────────────────────────────────────────────────────── -->
+<header class="sticky top-0 z-30 glass border-b border-slate-800/60">
+  <div class="mx-auto max-w-6xl px-6 py-3 flex items-center justify-between gap-4">
+    <a href="#" class="flex items-center gap-2.5">
+      <img src="logo-mark.svg" alt="" class="h-7 w-7" />
+      <span class="text-lg font-semibold tracking-tight">Lumen</span>
+    </a>
+    <nav class="hidden md:flex items-center gap-6 text-sm text-slate-300">
+      <a href="#wedges" class="hover:text-lumen-teal-soft transition-colors" data-i18n="nav.why">Why Lumen</a>
+      <a href="#install" class="hover:text-lumen-teal-soft transition-colors" data-i18n="nav.install">Install</a>
+      <a href="#highlights" class="hover:text-lumen-teal-soft transition-colors" data-i18n="nav.features">Features</a>
+      <a href="#roadmap" class="hover:text-lumen-teal-soft transition-colors" data-i18n="nav.roadmap">Roadmap</a>
+      <a href="https://github.com/quanla93/lumen/blob/main/docs/src/content/docs/getting-started/quickstart.md" class="hover:text-lumen-teal-soft transition-colors" data-i18n="nav.docs">Docs</a>
+    </nav>
+    <div class="flex items-center gap-2">
+      <button id="lang-toggle" type="button" class="rounded-md border border-slate-700 px-2.5 py-1 text-xs font-medium text-slate-200 hover:border-lumen-teal hover:text-lumen-teal-soft transition-colors" aria-label="Switch language">EN · VI</button>
+      <a href="https://github.com/quanla93/lumen" class="hidden sm:inline-flex items-center gap-1.5 rounded-md border border-slate-700 px-3 py-1.5 text-xs font-medium hover:border-lumen-teal hover:text-lumen-teal-soft transition-colors">
+        <svg viewBox="0 0 16 16" class="h-3.5 w-3.5" fill="currentColor" aria-hidden><path d="M8 0a8 8 0 0 0-2.53 15.59c.4.07.55-.17.55-.38v-1.34c-2.23.48-2.7-1.07-2.7-1.07-.36-.93-.89-1.18-.89-1.18-.73-.5.06-.49.06-.49.8.06 1.23.83 1.23.83.72 1.23 1.88.87 2.34.67.07-.52.28-.87.5-1.07-1.78-.2-3.65-.89-3.65-3.96 0-.87.31-1.59.83-2.15-.08-.2-.36-1.02.08-2.13 0 0 .67-.22 2.2.82a7.66 7.66 0 0 1 4.01 0c1.53-1.04 2.2-.82 2.2-.82.44 1.11.16 1.93.08 2.13.51.56.83 1.28.83 2.15 0 3.07-1.87 3.76-3.66 3.95.29.25.54.74.54 1.5v2.22c0 .21.15.46.55.38A8 8 0 0 0 8 0z"/></svg>
+        GitHub
+      </a>
+    </div>
+  </div>
+</header>
 
-            <div class="pulse">
-              <span class="rings" aria-hidden="true"></span>
-              <img src="logo-mark.svg" alt="Biểu tượng tín hiệu Lumen" />
-            </div>
+<!-- ─── Hero ────────────────────────────────────────────────────────── -->
+<section class="relative overflow-hidden">
+  <div class="absolute inset-0 -z-10 bg-[radial-gradient(ellipse_at_top,_rgba(20,184,166,0.15),_transparent_50%)]"></div>
+  <div class="mx-auto max-w-6xl px-6 py-20 sm:py-28 text-center">
+    <div class="inline-flex items-center gap-2 rounded-full border border-slate-800 bg-slate-900/60 px-3 py-1 text-xs font-medium text-slate-300 mb-8">
+      <span class="h-1.5 w-1.5 rounded-full bg-lumen-teal animate-pulse"></span>
+      <span data-i18n="hero.badge">v0.6.4 shipped · multi-arch (amd64 + arm64)</span>
+    </div>
+    <h1 class="text-4xl sm:text-6xl font-bold tracking-tight leading-[1.05] mb-6">
+      <span class="block" data-i18n="hero.line1">Homelab monitoring</span>
+      <span class="block gradient-text" data-i18n="hero.line2">without the bloat.</span>
+    </h1>
+    <p class="mx-auto max-w-2xl text-base sm:text-lg text-slate-400 mb-10" data-i18n="hero.desc">
+      Proxmox-native, HTTPS-only, HDD-friendly. Single Go binary for hub and agent. Comfortable on a Raspberry Pi, ready for a 200-host fleet.
+    </p>
+    <div class="flex flex-col sm:flex-row items-center justify-center gap-3">
+      <a href="#install" class="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-md bg-lumen-teal px-5 py-2.5 text-sm font-semibold text-slate-950 hover:bg-lumen-teal-soft transition-colors">
+        <span data-i18n="hero.cta1">Get started in 60 seconds</span>
+        <svg viewBox="0 0 20 20" class="h-4 w-4" fill="currentColor" aria-hidden><path d="M10.293 3.293a1 1 0 0 1 1.414 0l6 6a1 1 0 0 1 0 1.414l-6 6a1 1 0 0 1-1.414-1.414L14.586 11H3a1 1 0 1 1 0-2h11.586l-4.293-4.293a1 1 0 0 1 0-1.414z"/></svg>
+      </a>
+      <a href="https://github.com/quanla93/lumen" class="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-md border border-slate-700 bg-slate-900/60 px-5 py-2.5 text-sm font-semibold text-slate-100 hover:border-lumen-teal hover:text-lumen-teal-soft transition-colors">
+        <span data-i18n="hero.cta2">Star on GitHub</span>
+      </a>
+    </div>
+    <p class="mt-8 text-xs text-slate-500" data-i18n="hero.tag">MIT-licensed · No telemetry · No phone-home · Built in the open</p>
+  </div>
+</section>
 
-            <div class="footer-note">
-              <span>Xây dựng cho việc giám sát hạ tầng tập trung.</span>
-              <span>quanla.org</span>
-            </div>
-          </div>
-        </aside>
+<!-- ─── 3 Wedges ────────────────────────────────────────────────────── -->
+<section id="wedges" class="border-t border-slate-800/60">
+  <div class="mx-auto max-w-6xl px-6 py-20">
+    <div class="text-center mb-14">
+      <h2 class="text-3xl sm:text-4xl font-bold tracking-tight" data-i18n="wedges.title">Built for homelabs, not enterprises</h2>
+      <p class="mt-3 max-w-2xl mx-auto text-slate-400" data-i18n="wedges.subtitle">Every feature serves one of three north-star wedges. No design-by-committee, no enterprise creep.</p>
+    </div>
+    <div class="grid gap-6 md:grid-cols-3">
+      <article class="rounded-xl border border-slate-800 bg-slate-900/40 p-6 hover:border-lumen-teal/40 transition-colors">
+        <div class="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-lumen-teal/15 text-lumen-teal-soft mb-4">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" class="h-5 w-5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 1l3.22 6.53L22 8.79l-5 4.87L18.18 21 12 17.27 5.82 21 7 13.66l-5-4.87 6.78-1.26L12 1z"/></svg>
+        </div>
+        <h3 class="text-lg font-semibold mb-2" data-i18n="wedges.w1.title">HTTPS-only push transport</h3>
+        <p class="text-sm text-slate-400" data-i18n="wedges.w1.desc">Agents push outbound via HTTPS/WebSocket. Works behind any NAT, Cloudflare Tunnel, or Tailscale Funnel. No SSH keys, no inbound ports.</p>
+      </article>
+      <article class="rounded-xl border border-slate-800 bg-slate-900/40 p-6 hover:border-lumen-teal/40 transition-colors">
+        <div class="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-lumen-teal/15 text-lumen-teal-soft mb-4">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" class="h-5 w-5"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v6c0 1.66 4 3 9 3s9-1.34 9-3V5"/><path d="M3 11v6c0 1.66 4 3 9 3s9-1.34 9-3v-6"/></svg>
+        </div>
+        <h3 class="text-lg font-semibold mb-2" data-i18n="wedges.w2.title">HDD-friendly storage</h3>
+        <p class="text-sm text-slate-400" data-i18n="wedges.w2.desc">Batched 60s flush ring + WAL-tuned SQLite cuts fsync pressure ~100× at fleet scale. Won't grind a Pi's SD card to dust.</p>
+      </article>
+      <article class="rounded-xl border border-slate-800 bg-slate-900/40 p-6 hover:border-lumen-teal/40 transition-colors">
+        <div class="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-lumen-teal/15 text-lumen-teal-soft mb-4">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" class="h-5 w-5"><rect x="5" y="2" width="14" height="20" rx="2"/><path d="M11 18h2"/></svg>
+        </div>
+        <h3 class="text-lg font-semibold mb-2" data-i18n="wedges.w3.title">Mobile-ready PWA</h3>
+        <p class="text-sm text-slate-400" data-i18n="wedges.w3.desc">Installable to your phone homescreen. App shell paints instantly on cold start. Realtime metrics via WebSocket, even on cellular.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ─── Install ─────────────────────────────────────────────────────── -->
+<section id="install" class="border-t border-slate-800/60">
+  <div class="mx-auto max-w-6xl px-6 py-20">
+    <div class="grid gap-12 lg:grid-cols-2 items-start">
+      <div>
+        <h2 class="text-3xl sm:text-4xl font-bold tracking-tight mb-4" data-i18n="install.title">One docker compose away</h2>
+        <p class="text-slate-400 mb-6" data-i18n="install.desc">Spin up the hub in under a minute. Mint a host token from the UI, drop the generated per-agent compose file on the target machine, run docker compose up -d. Done.</p>
+        <ul class="space-y-2 text-sm text-slate-300">
+          <li class="flex items-start gap-2">
+            <svg viewBox="0 0 20 20" class="h-4 w-4 mt-0.5 text-lumen-teal-soft shrink-0" fill="currentColor"><path d="M16.7 5.7a1 1 0 0 0-1.4-1.4L8 11.6 4.7 8.3a1 1 0 0 0-1.4 1.4l4 4a1 1 0 0 0 1.4 0l8-8z"/></svg>
+            <span data-i18n="install.bullet1">Multi-arch: linux/amd64 + linux/arm64 images on ghcr.io</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <svg viewBox="0 0 20 20" class="h-4 w-4 mt-0.5 text-lumen-teal-soft shrink-0" fill="currentColor"><path d="M16.7 5.7a1 1 0 0 0-1.4-1.4L8 11.6 4.7 8.3a1 1 0 0 0-1.4 1.4l4 4a1 1 0 0 0 1.4 0l8-8z"/></svg>
+            <span data-i18n="install.bullet2">Works on Proxmox host, Pi 4/5, Ampere/Graviton VPS, NAS chips</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <svg viewBox="0 0 20 20" class="h-4 w-4 mt-0.5 text-lumen-teal-soft shrink-0" fill="currentColor"><path d="M16.7 5.7a1 1 0 0 0-1.4-1.4L8 11.6 4.7 8.3a1 1 0 0 0-1.4 1.4l4 4a1 1 0 0 0 1.4 0l8-8z"/></svg>
+            <span data-i18n="install.bullet3">Distroless image · ~25 MB compressed · &lt;30 MB RAM idle</span>
+          </li>
+        </ul>
+        <div class="mt-8 flex flex-col sm:flex-row gap-3">
+          <a href="https://github.com/quanla93/lumen/blob/main/docs/src/content/docs/install/hub-compose.md" class="inline-flex items-center justify-center gap-1.5 rounded-md border border-slate-700 bg-slate-900/60 px-4 py-2 text-sm font-medium hover:border-lumen-teal hover:text-lumen-teal-soft transition-colors" data-i18n="install.cta1">Full install guide</a>
+          <a href="https://github.com/quanla93/lumen/releases/latest" class="inline-flex items-center justify-center gap-1.5 rounded-md border border-slate-700 bg-slate-900/60 px-4 py-2 text-sm font-medium hover:border-lumen-teal hover:text-lumen-teal-soft transition-colors" data-i18n="install.cta2">Pre-built binaries</a>
+        </div>
       </div>
-    </section>
-  </main>
+      <div class="rounded-xl border border-slate-800 bg-slate-950/80 overflow-hidden">
+        <div class="flex items-center gap-2 border-b border-slate-800 bg-slate-900/60 px-4 py-2.5 text-xs text-slate-400">
+          <span class="h-2 w-2 rounded-full bg-rose-400/70"></span>
+          <span class="h-2 w-2 rounded-full bg-amber-400/70"></span>
+          <span class="h-2 w-2 rounded-full bg-emerald-400/70"></span>
+          <span class="ml-3 font-mono">$ install hub</span>
+        </div>
+        <pre class="px-5 py-5 text-sm font-mono leading-relaxed text-slate-200 overflow-x-auto"><span class="text-slate-500"># Clone the repo</span>
+<span class="text-lumen-teal-soft">git clone</span> https://github.com/quanla93/lumen
+<span class="text-lumen-teal-soft">cd</span> lumen
+
+<span class="text-slate-500"># Bring up the hub</span>
+<span class="text-lumen-teal-soft">docker compose</span> -f deploy/docker/docker-compose.yml up -d
+
+<span class="text-slate-500"># Open the UI</span>
+<span class="text-lumen-teal-soft">open</span> http://localhost:8090</pre>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─── Highlights ──────────────────────────────────────────────────── -->
+<section id="highlights" class="border-t border-slate-800/60">
+  <div class="mx-auto max-w-6xl px-6 py-20">
+    <div class="text-center mb-12">
+      <h2 class="text-3xl sm:text-4xl font-bold tracking-tight" data-i18n="features.title">What's in the box</h2>
+      <p class="mt-3 text-slate-400" data-i18n="features.subtitle">Everything you need to operate a homelab fleet. Nothing you'd skip on the way out.</p>
+    </div>
+    <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <div class="rounded-lg border border-slate-800 bg-slate-900/40 p-4">
+        <h4 class="font-semibold text-sm mb-1" data-i18n="features.f1.t">Realtime + history</h4>
+        <p class="text-xs text-slate-400" data-i18n="features.f1.d">WebSocket fan-out for live updates; SQLite-backed history with downsampled queries up to 7 days.</p>
+      </div>
+      <div class="rounded-lg border border-slate-800 bg-slate-900/40 p-4">
+        <h4 class="font-semibold text-sm mb-1" data-i18n="features.f2.t">Per-host dashboard builder</h4>
+        <p class="text-xs text-slate-400" data-i18n="features.f2.d">Drag, resize, add, and hide charts on any host. Per-user, per-host layouts. Curated 10-chart catalog.</p>
+      </div>
+      <div class="rounded-lg border border-slate-800 bg-slate-900/40 p-4">
+        <h4 class="font-semibold text-sm mb-1" data-i18n="features.f3.t">Alerts &amp; notifications</h4>
+        <p class="text-xs text-slate-400" data-i18n="features.f3.d">Threshold rules, offline detection. ntfy, Discord, webhook, Telegram, Email (SMTP). Per-rule routing, flap cooldown, per-host silence.</p>
+      </div>
+      <div class="rounded-lg border border-slate-800 bg-slate-900/40 p-4">
+        <h4 class="font-semibold text-sm mb-1" data-i18n="features.f4.t">Public Read API</h4>
+        <p class="text-xs text-slate-400" data-i18n="features.f4.d"><code class="text-lumen-teal-soft font-mono">/api/v1/*</code> Bearer-key authenticated endpoints. Scopes, host-glob filter, per-key rate limit. Grafana datasource recipe in docs.</p>
+      </div>
+      <div class="rounded-lg border border-slate-800 bg-slate-900/40 p-4">
+        <h4 class="font-semibold text-sm mb-1" data-i18n="features.f5.t">Personalization on the hub</h4>
+        <p class="text-xs text-slate-400" data-i18n="features.f5.d">Theme, language, units, reduce-motion, density. Per-user saved views. All synced across browsers.</p>
+      </div>
+      <div class="rounded-lg border border-slate-800 bg-slate-900/40 p-4">
+        <h4 class="font-semibold text-sm mb-1" data-i18n="features.f6.t">Bilingual UI + docs</h4>
+        <p class="text-xs text-slate-400" data-i18n="features.f6.d">English and Vietnamese ship in both the web app and Starlight docs. Translation guide for adding more locales.</p>
+      </div>
+      <div class="rounded-lg border border-slate-800 bg-slate-900/40 p-4">
+        <h4 class="font-semibold text-sm mb-1" data-i18n="features.f7.t">Docker collector</h4>
+        <p class="text-xs text-slate-400" data-i18n="features.f7.d">Live container CPU / RAM / state from the Engine API. Stdlib unix-socket client — no docker/docker SDK bloat.</p>
+      </div>
+      <div class="rounded-lg border border-slate-800 bg-slate-900/40 p-4">
+        <h4 class="font-semibold text-sm mb-1" data-i18n="features.f8.t">Offline-tolerant agent</h4>
+        <p class="text-xs text-slate-400" data-i18n="features.f8.d">bbolt-backed durable queue replays on reconnect. Survives hub restarts, network blips, and 24h+ outages.</p>
+      </div>
+      <div class="rounded-lg border border-slate-800 bg-slate-900/40 p-4">
+        <h4 class="font-semibold text-sm mb-1" data-i18n="features.f9.t">Auth without the headache</h4>
+        <p class="text-xs text-slate-400" data-i18n="features.f9.d">First-admin register flow. JWT (HS256, 30d). Argon2id password hashing. Per-host bearer tokens you can rotate.</p>
+      </div>
+    </div>
+    <div class="mt-8 text-center">
+      <a href="https://github.com/quanla93/lumen#feature-highlights" class="text-sm text-slate-400 hover:text-lumen-teal-soft inline-flex items-center gap-1" data-i18n="features.more">Browse the full feature list on GitHub →</a>
+    </div>
+  </div>
+</section>
+
+<!-- ─── Roadmap ─────────────────────────────────────────────────────── -->
+<section id="roadmap" class="border-t border-slate-800/60">
+  <div class="mx-auto max-w-6xl px-6 py-20">
+    <div class="text-center mb-12">
+      <h2 class="text-3xl sm:text-4xl font-bold tracking-tight" data-i18n="roadmap.title">Where Lumen is heading</h2>
+      <p class="mt-3 max-w-2xl mx-auto text-slate-400" data-i18n="roadmap.subtitle">Pre-1.0; breaking changes allowed in minor releases. v1.0 freezes the public API and ships a plugin SDK.</p>
+    </div>
+    <div class="grid gap-4 md:grid-cols-3">
+      <div class="rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-5">
+        <div class="text-xs font-semibold uppercase tracking-wide text-emerald-400 mb-2" data-i18n="roadmap.shipped">Shipped — v0.6.x</div>
+        <ul class="space-y-1.5 text-sm text-slate-300">
+          <li data-i18n="roadmap.shipped.l1">• MVP: hub, agent, realtime + history</li>
+          <li data-i18n="roadmap.shipped.l2">• Alert engine end-to-end (5 channel types)</li>
+          <li data-i18n="roadmap.shipped.l3">• Public Read API (v0.5.0)</li>
+          <li data-i18n="roadmap.shipped.l4">• Personalization + dashboard builder (v0.6.0)</li>
+          <li data-i18n="roadmap.shipped.l5">• Multi-arch images (v0.6.4)</li>
+        </ul>
+      </div>
+      <div class="rounded-xl border border-lumen-teal/30 bg-lumen-teal/5 p-5">
+        <div class="text-xs font-semibold uppercase tracking-wide text-lumen-teal-soft mb-2" data-i18n="roadmap.next">Next — v0.7+</div>
+        <ul class="space-y-1.5 text-sm text-slate-300">
+          <li data-i18n="roadmap.next.l1">• Self-hosted SSO (OIDC first)</li>
+          <li data-i18n="roadmap.next.l2">• Public status page (read-only share)</li>
+          <li data-i18n="roadmap.next.l3">• Web Push notifications (VAPID)</li>
+          <li data-i18n="roadmap.next.l4">• Parquet cold tier (gated on demand)</li>
+          <li data-i18n="roadmap.next.l5">• First-run onboarding polish</li>
+        </ul>
+      </div>
+      <div class="rounded-xl border border-slate-700 bg-slate-900/40 p-5">
+        <div class="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-2" data-i18n="roadmap.future">Future — v1.0</div>
+        <ul class="space-y-1.5 text-sm text-slate-300">
+          <li data-i18n="roadmap.future.l1">• API freeze (/api/v1/*)</li>
+          <li data-i18n="roadmap.future.l2">• Plugin SDK</li>
+          <li data-i18n="roadmap.future.l3">• Beszel migration tool</li>
+          <li data-i18n="roadmap.future.l4">• Proxmox-native (guests-as-hosts)</li>
+          <li data-i18n="roadmap.future.l5">• Community security audit</li>
+        </ul>
+      </div>
+    </div>
+    <div class="mt-8 text-center">
+      <a href="https://github.com/quanla93/lumen/blob/main/ACTION_PLAN.md" class="text-sm text-slate-400 hover:text-lumen-teal-soft inline-flex items-center gap-1" data-i18n="roadmap.full">Read the full phase-by-phase roadmap →</a>
+    </div>
+  </div>
+</section>
+
+<!-- ─── Footer ──────────────────────────────────────────────────────── -->
+<footer class="border-t border-slate-800/60">
+  <div class="mx-auto max-w-6xl px-6 py-12">
+    <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
+      <div class="flex items-center gap-3">
+        <img src="logo-mark.svg" alt="" class="h-6 w-6" />
+        <div class="text-sm">
+          <div class="font-semibold">Lumen</div>
+          <div class="text-slate-500 text-xs" data-i18n="footer.tagline">Monitoring without the bloat.</div>
+        </div>
+      </div>
+      <div class="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-slate-400">
+        <a href="https://github.com/quanla93/lumen" class="hover:text-lumen-teal-soft">GitHub</a>
+        <a href="https://github.com/quanla93/lumen/discussions" class="hover:text-lumen-teal-soft" data-i18n="footer.discussions">Discussions</a>
+        <a href="https://github.com/quanla93/lumen/blob/main/CONTRIBUTING.md" class="hover:text-lumen-teal-soft" data-i18n="footer.contributing">Contributing</a>
+        <a href="https://github.com/quanla93/lumen/blob/main/LICENSE" class="hover:text-lumen-teal-soft">MIT</a>
+      </div>
+    </div>
+    <div class="mt-8 pt-6 border-t border-slate-800/60 text-xs text-slate-500 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+      <div data-i18n="footer.copy">Lumen is, and will remain, free and open source software.</div>
+      <div class="font-mono"><span data-i18n="footer.builtby">Built in the open</span> · github.com/quanla93/lumen</div>
+    </div>
+  </div>
+</footer>
+
+<!-- ─── i18n ────────────────────────────────────────────────────────── -->
+<script>
+(function () {
+  const I18N = {
+    en: {
+      "nav.why": "Why Lumen",
+      "nav.install": "Install",
+      "nav.features": "Features",
+      "nav.roadmap": "Roadmap",
+      "nav.docs": "Docs",
+      "hero.badge": "v0.6.4 shipped · multi-arch (amd64 + arm64)",
+      "hero.line1": "Homelab monitoring",
+      "hero.line2": "without the bloat.",
+      "hero.desc": "Proxmox-native, HTTPS-only, HDD-friendly. Single Go binary for hub and agent. Comfortable on a Raspberry Pi, ready for a 200-host fleet.",
+      "hero.cta1": "Get started in 60 seconds",
+      "hero.cta2": "Star on GitHub",
+      "hero.tag": "MIT-licensed · No telemetry · No phone-home · Built in the open",
+      "wedges.title": "Built for homelabs, not enterprises",
+      "wedges.subtitle": "Every feature serves one of three north-star wedges. No design-by-committee, no enterprise creep.",
+      "wedges.w1.title": "HTTPS-only push transport",
+      "wedges.w1.desc": "Agents push outbound via HTTPS/WebSocket. Works behind any NAT, Cloudflare Tunnel, or Tailscale Funnel. No SSH keys, no inbound ports.",
+      "wedges.w2.title": "HDD-friendly storage",
+      "wedges.w2.desc": "Batched 60s flush ring + WAL-tuned SQLite cuts fsync pressure ~100× at fleet scale. Won't grind a Pi's SD card to dust.",
+      "wedges.w3.title": "Mobile-ready PWA",
+      "wedges.w3.desc": "Installable to your phone homescreen. App shell paints instantly on cold start. Realtime metrics via WebSocket, even on cellular.",
+      "install.title": "One docker compose away",
+      "install.desc": "Spin up the hub in under a minute. Mint a host token from the UI, drop the generated per-agent compose file on the target machine, run docker compose up -d. Done.",
+      "install.bullet1": "Multi-arch: linux/amd64 + linux/arm64 images on ghcr.io",
+      "install.bullet2": "Works on Proxmox host, Pi 4/5, Ampere/Graviton VPS, NAS chips",
+      "install.bullet3": "Distroless image · ~25 MB compressed · <30 MB RAM idle",
+      "install.cta1": "Full install guide",
+      "install.cta2": "Pre-built binaries",
+      "features.title": "What's in the box",
+      "features.subtitle": "Everything you need to operate a homelab fleet. Nothing you'd skip on the way out.",
+      "features.f1.t": "Realtime + history",
+      "features.f1.d": "WebSocket fan-out for live updates; SQLite-backed history with downsampled queries up to 7 days.",
+      "features.f2.t": "Per-host dashboard builder",
+      "features.f2.d": "Drag, resize, add, and hide charts on any host. Per-user, per-host layouts. Curated 10-chart catalog.",
+      "features.f3.t": "Alerts & notifications",
+      "features.f3.d": "Threshold rules, offline detection. ntfy, Discord, webhook, Telegram, Email (SMTP). Per-rule routing, flap cooldown, per-host silence.",
+      "features.f4.t": "Public Read API",
+      "features.f4.d": "/api/v1/* Bearer-key authenticated endpoints. Scopes, host-glob filter, per-key rate limit. Grafana datasource recipe in docs.",
+      "features.f5.t": "Personalization on the hub",
+      "features.f5.d": "Theme, language, units, reduce-motion, density. Per-user saved views. All synced across browsers.",
+      "features.f6.t": "Bilingual UI + docs",
+      "features.f6.d": "English and Vietnamese ship in both the web app and Starlight docs. Translation guide for adding more locales.",
+      "features.f7.t": "Docker collector",
+      "features.f7.d": "Live container CPU / RAM / state from the Engine API. Stdlib unix-socket client — no docker/docker SDK bloat.",
+      "features.f8.t": "Offline-tolerant agent",
+      "features.f8.d": "bbolt-backed durable queue replays on reconnect. Survives hub restarts, network blips, and 24h+ outages.",
+      "features.f9.t": "Auth without the headache",
+      "features.f9.d": "First-admin register flow. JWT (HS256, 30d). Argon2id password hashing. Per-host bearer tokens you can rotate.",
+      "features.more": "Browse the full feature list on GitHub →",
+      "roadmap.title": "Where Lumen is heading",
+      "roadmap.subtitle": "Pre-1.0; breaking changes allowed in minor releases. v1.0 freezes the public API and ships a plugin SDK.",
+      "roadmap.shipped": "Shipped — v0.6.x",
+      "roadmap.shipped.l1": "• MVP: hub, agent, realtime + history",
+      "roadmap.shipped.l2": "• Alert engine end-to-end (5 channel types)",
+      "roadmap.shipped.l3": "• Public Read API (v0.5.0)",
+      "roadmap.shipped.l4": "• Personalization + dashboard builder (v0.6.0)",
+      "roadmap.shipped.l5": "• Multi-arch images (v0.6.4)",
+      "roadmap.next": "Next — v0.7+",
+      "roadmap.next.l1": "• Self-hosted SSO (OIDC first)",
+      "roadmap.next.l2": "• Public status page (read-only share)",
+      "roadmap.next.l3": "• Web Push notifications (VAPID)",
+      "roadmap.next.l4": "• Parquet cold tier (gated on demand)",
+      "roadmap.next.l5": "• First-run onboarding polish",
+      "roadmap.future": "Future — v1.0",
+      "roadmap.future.l1": "• API freeze (/api/v1/*)",
+      "roadmap.future.l2": "• Plugin SDK",
+      "roadmap.future.l3": "• Beszel migration tool",
+      "roadmap.future.l4": "• Proxmox-native (guests-as-hosts)",
+      "roadmap.future.l5": "• Community security audit",
+      "roadmap.full": "Read the full phase-by-phase roadmap →",
+      "footer.tagline": "Monitoring without the bloat.",
+      "footer.discussions": "Discussions",
+      "footer.contributing": "Contributing",
+      "footer.copy": "Lumen is, and will remain, free and open source software.",
+      "footer.builtby": "Built in the open"
+    },
+    vi: {
+      "nav.why": "Vì sao Lumen",
+      "nav.install": "Cài đặt",
+      "nav.features": "Tính năng",
+      "nav.roadmap": "Lộ trình",
+      "nav.docs": "Tài liệu",
+      "hero.badge": "v0.6.4 đã phát hành · đa kiến trúc (amd64 + arm64)",
+      "hero.line1": "Theo dõi homelab",
+      "hero.line2": "không cồng kềnh.",
+      "hero.desc": "Tích hợp Proxmox, chỉ dùng HTTPS, thân thiện với HDD. Hub và agent đều là một file Go duy nhất. Chạy thoải mái trên Raspberry Pi, sẵn sàng cho fleet 200 host.",
+      "hero.cta1": "Khởi động trong 60 giây",
+      "hero.cta2": "Star trên GitHub",
+      "hero.tag": "Giấy phép MIT · Không telemetry · Không phone-home · Xây dựng công khai",
+      "wedges.title": "Cho homelab, không phải doanh nghiệp",
+      "wedges.subtitle": "Mỗi tính năng phục vụ một trong ba định hướng cốt lõi. Không design-by-committee, không enterprise creep.",
+      "wedges.w1.title": "Push qua HTTPS",
+      "wedges.w1.desc": "Agent push ra ngoài qua HTTPS/WebSocket. Hoạt động sau NAT, Cloudflare Tunnel, hay Tailscale Funnel. Không SSH key, không cổng vào.",
+      "wedges.w2.title": "Thân thiện với HDD",
+      "wedges.w2.desc": "Vòng flush 60s + SQLite WAL-tuned giảm fsync ~100× ở quy mô fleet. Không bào mòn thẻ SD của Pi.",
+      "wedges.w3.title": "Sẵn sàng cho mobile (PWA)",
+      "wedges.w3.desc": "Cài lên home screen điện thoại. App shell hiện tức thì lúc khởi động lạnh. Metrics realtime qua WebSocket, kể cả khi dùng 4G.",
+      "install.title": "Một dòng docker compose",
+      "install.desc": "Dựng hub trong chưa đến một phút. Tạo token cho host trên UI, đặt file compose tự sinh lên máy đích, chạy docker compose up -d. Xong.",
+      "install.bullet1": "Đa kiến trúc: image linux/amd64 + linux/arm64 trên ghcr.io",
+      "install.bullet2": "Chạy được trên Proxmox host, Pi 4/5, VPS Ampere/Graviton, chip NAS",
+      "install.bullet3": "Image distroless · ~25 MB nén · <30 MB RAM khi idle",
+      "install.cta1": "Hướng dẫn cài đặt đầy đủ",
+      "install.cta2": "Tải binary pre-built",
+      "features.title": "Có sẵn trong gói",
+      "features.subtitle": "Đủ thứ bạn cần để vận hành fleet homelab. Không thừa cái nào.",
+      "features.f1.t": "Realtime + lịch sử",
+      "features.f1.d": "WebSocket fan-out cho cập nhật trực tiếp; lịch sử lưu SQLite, query downsample đến 7 ngày.",
+      "features.f2.t": "Dashboard builder theo host",
+      "features.f2.d": "Kéo, resize, thêm, ẩn chart trên từng host. Layout riêng cho mỗi user / mỗi host. Catalog 10 chart đã được tuyển chọn.",
+      "features.f3.t": "Cảnh báo & thông báo",
+      "features.f3.d": "Rule threshold, phát hiện offline. ntfy, Discord, webhook, Telegram, Email (SMTP). Routing theo rule, cooldown chống flap, silence theo host.",
+      "features.f4.t": "Public Read API",
+      "features.f4.d": "/api/v1/* xác thực bằng Bearer key. Scope, lọc host-glob, rate limit từng key. Có recipe Grafana datasource trong docs.",
+      "features.f5.t": "Cá nhân hóa trên hub",
+      "features.f5.d": "Theme, ngôn ngữ, đơn vị, reduce-motion, density. Saved view riêng cho mỗi user. Sync trên mọi trình duyệt.",
+      "features.f6.t": "UI + docs song ngữ",
+      "features.f6.d": "Cả web app lẫn Starlight docs đều có English và tiếng Việt. Có guide hướng dẫn thêm locale mới.",
+      "features.f7.t": "Collector Docker",
+      "features.f7.d": "CPU / RAM / state container realtime qua Engine API. Client unix-socket dùng stdlib — không kéo theo docker/docker SDK.",
+      "features.f8.t": "Agent chịu được offline",
+      "features.f8.d": "Queue durable bằng bbolt, replay lại khi reconnect. Sống sót hub restart, network blip, outage 24h+.",
+      "features.f9.t": "Auth gọn nhẹ",
+      "features.f9.d": "Flow đăng ký admin đầu tiên. JWT (HS256, 30d). Hash mật khẩu Argon2id. Bearer token cho mỗi host, có thể rotate.",
+      "features.more": "Xem danh sách tính năng đầy đủ trên GitHub →",
+      "roadmap.title": "Lumen đang đi về đâu",
+      "roadmap.subtitle": "Pre-1.0; breaking change được phép trong các bản minor. v1.0 sẽ khóa Public API và phát hành plugin SDK.",
+      "roadmap.shipped": "Đã ship — v0.6.x",
+      "roadmap.shipped.l1": "• MVP: hub, agent, realtime + lịch sử",
+      "roadmap.shipped.l2": "• Alert engine đầy đủ (5 loại kênh)",
+      "roadmap.shipped.l3": "• Public Read API (v0.5.0)",
+      "roadmap.shipped.l4": "• Cá nhân hóa + dashboard builder (v0.6.0)",
+      "roadmap.shipped.l5": "• Image đa kiến trúc (v0.6.4)",
+      "roadmap.next": "Kế tiếp — v0.7+",
+      "roadmap.next.l1": "• Self-hosted SSO (OIDC trước)",
+      "roadmap.next.l2": "• Trang status public (chia sẻ read-only)",
+      "roadmap.next.l3": "• Web Push notifications (VAPID)",
+      "roadmap.next.l4": "• Parquet cold tier (chờ demand)",
+      "roadmap.next.l5": "• Hoàn thiện onboarding lần đầu",
+      "roadmap.future": "Tương lai — v1.0",
+      "roadmap.future.l1": "• Khóa API (/api/v1/*)",
+      "roadmap.future.l2": "• Plugin SDK",
+      "roadmap.future.l3": "• Tool migrate từ Beszel",
+      "roadmap.future.l4": "• Proxmox-native (guests-as-hosts)",
+      "roadmap.future.l5": "• Audit bảo mật từ cộng đồng",
+      "roadmap.full": "Đọc lộ trình chi tiết từng phase →",
+      "footer.tagline": "Theo dõi không cồng kềnh.",
+      "footer.discussions": "Thảo luận",
+      "footer.contributing": "Đóng góp",
+      "footer.copy": "Lumen là, và sẽ luôn là, phần mềm tự do và mã nguồn mở.",
+      "footer.builtby": "Xây dựng công khai"
+    }
+  };
+
+  const STORAGE_KEY = "lumen.landing.locale";
+  function detectInitial() {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (stored === "vi" || stored === "en") return stored;
+    const nav = (navigator.language || "en").toLowerCase();
+    return nav.startsWith("vi") ? "vi" : "en";
+  }
+
+  function apply(locale) {
+    document.documentElement.lang = locale;
+    document.documentElement.dataset.locale = locale;
+    const bundle = I18N[locale] || I18N.en;
+    document.querySelectorAll("[data-i18n]").forEach((el) => {
+      const key = el.getAttribute("data-i18n");
+      const val = bundle[key];
+      if (val) el.textContent = val;
+    });
+    const toggle = document.getElementById("lang-toggle");
+    if (toggle) toggle.textContent = locale === "en" ? "EN · VI" : "VI · EN";
+  }
+
+  const initial = detectInitial();
+  apply(initial);
+
+  document.getElementById("lang-toggle")?.addEventListener("click", () => {
+    const next = (document.documentElement.dataset.locale || "en") === "en" ? "vi" : "en";
+    localStorage.setItem(STORAGE_KEY, next);
+    apply(next);
+  });
+})();
+</script>
+
 </body>
 </html>
