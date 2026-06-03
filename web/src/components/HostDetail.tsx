@@ -638,8 +638,8 @@ function HostSummaryHeader({
   latestAgentVersion: string | null;
   t: ReturnType<typeof useI18n>["t"];
 }) {
-  const lastSeen = live?.ts ?? host?.last_seen_at ?? null;
-  const stale = live ? isStale(live.ts, undefined, now) : true;
+  const lastSeen = live?.received_at ?? host?.last_seen_at ?? null;
+  const stale = live ? isStale(live.received_at, undefined, now) : true;
   const status: { label: string; tone: StatusTone } = live && !stale
     ? { label: t("host.up"), tone: "ok" }
     : lastSeen

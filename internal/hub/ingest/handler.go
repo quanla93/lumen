@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/quanla93/lumen/internal/hub/hosts"
 	"github.com/quanla93/lumen/internal/hub/storage"
@@ -77,8 +78,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	snap := api.HostSnapshot{
-		Host:       req.Host,
-		Ts:         req.Ts,
+		Host: req.Host,
+		Ts:   req.Ts,
+		// ReceivedAt is the server-side liveness signal — agents draining
+		// a buffered backlog send frames with old Ts but their arrival
+		// here is what proves "the agent is reaching us right now".
+		ReceivedAt: time.Now().UTC(),
 		CpuPct:     req.CpuPct,
 		CpuPerCore: req.CpuPerCore,
 		RamPct:     req.RamPct,
