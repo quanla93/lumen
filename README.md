@@ -18,7 +18,7 @@ metrics — designed to run comfortably on a Raspberry Pi.
 [Public API](docs/src/content/docs/reference/public-api.md) ·
 [Roadmap](ACTION_PLAN.md)
 
-> ⚠️ **Pre-1.0.** Latest tag is **v0.6.3**. Breaking changes are allowed in
+> ⚠️ **Pre-1.0.** Latest tag is **v0.6.5**. Breaking changes are allowed in
 > minor releases until v1.0.
 
 </div>
