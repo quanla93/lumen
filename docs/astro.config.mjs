@@ -2,7 +2,12 @@ import starlight from "@astrojs/starlight";
 import { defineConfig } from "astro/config";
 
 export default defineConfig({
-	site: "https://quanla.org",
+	// Docs are served at lumen.quanla.org/docs/ alongside the landing
+	// page at lumen.quanla.org/. The `base` prefix tells Starlight to
+	// emit all routes, asset URLs, and internal links with /docs/ in
+	// front so the unified Cloudflare deploy serves them correctly.
+	site: "https://lumen.quanla.org",
+	base: "/docs",
 	integrations: [
 		starlight({
 			title: "Lumen",

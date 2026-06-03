@@ -6,11 +6,12 @@ The landing page (`brand/index.html`) is pure static HTML — no build step. Clo
 
 1. Cloudflare Dashboard → **Workers & Pages** → **Create application** → **Connect to Git**.
 2. Pick the `quanla93/lumen` repository (authorise the Cloudflare GitHub app if needed).
-3. The connect form pre-fills from `wrangler.toml`:
+3. The connect form pre-fills most fields from `wrangler.toml`. Set the build step manually:
    - **Production branch:** `main`
    - **Builds for non-production branches:** ✓ (preview deploys on PRs)
-   - **Build command:** *(leave empty — pure HTML, no build)*
-   - **Deploy command:** *(leave empty — `[assets]` in `wrangler.toml` handles publishing)*
+   - **Build command:** `bash scripts/build-public-site.sh`
+   - **Deploy command:** *(leave the auto-prefilled `npx wrangler deploy`)*
+   The build script produces `./public-site/` — landing page at root plus Starlight docs at `/docs/` — which `wrangler.toml` `[assets].directory = "./public-site"` then publishes.
 4. **Connect**. Cloudflare clones the repo, reads `wrangler.toml`, and publishes `./brand/` as static assets. First deploy attaches `*.workers.dev` automatically.
 5. **Custom domain:** project → **Settings** → **Domains & Routes** → **Add** → enter `lumen.quanla.org`. Cloudflare adds the CNAME automatically if the apex domain (`quanla.org`) is already on Cloudflare DNS.
 

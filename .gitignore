@@ -31,6 +31,10 @@ yarn-error.log
 /docs/dist/
 /docs/.cache/
 
+# Unified public site (built by scripts/build-public-site.sh —
+# combines landing + docs for Cloudflare deploy).
+/public-site/
+
 # TypeScript incremental build info
 *.tsbuildinfo
 
