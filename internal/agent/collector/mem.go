@@ -113,17 +113,23 @@ func MemoryLimitStatus() string {
 }
 
 // procMeminfoIsBindMounted returns true when /proc/meminfo appears as its own
-// mount entry in /proc/mounts — the signature of a `-v /proc/meminfo:...`
-// bind mount, used to surface the lxcfs-overlaid view from an LXC host into
-// a Docker container running inside it.
+// mount entry in /proc/self/mountinfo — the signature of a `-v /proc/meminfo:...`
+// bind mount (Docker), an lxcfs FUSE bind (LXC native), or similar. Used to
+// surface the host's lxcfs-overlaid view into a Docker container running
+// inside an LXC.
+//
+// We check mountinfo, not /proc/mounts: Docker's file-level bind mounts only
+// appear in mountinfo. mountinfo line format is documented at
+// https://www.kernel.org/doc/Documentation/filesystems/proc.txt; the 5th
+// field (0-indexed 4) is the mount point.
 func procMeminfoIsBindMounted() bool {
-	data, err := os.ReadFile("/proc/mounts")
+	data, err := os.ReadFile("/proc/self/mountinfo")
 	if err != nil {
 		return false
 	}
 	for _, line := range strings.Split(string(data), "\n") {
 		f := strings.Fields(line)
-		if len(f) >= 2 && f[1] == "/proc/meminfo" {
+		if len(f) >= 5 && f[4] == "/proc/meminfo" {
 			return true
 		}
 	}
