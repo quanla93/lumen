@@ -23,6 +23,24 @@ metrics — designed to run comfortably on a Raspberry Pi.
 
 </div>
 
+![Lumen dashboard — 8 homelab hosts with CPU / RAM / disk sparklines, hottest-first summary](brand/screenshots/01-dashboard.png)
+
+<details>
+<summary><b>More screenshots</b> — host detail · alerts · settings · light theme · mobile</summary>
+
+| | |
+|---|---|
+| **Host detail** — drag/resize charts, 10-entry curated catalog | **Alerts** — threshold rules, 5 channel types, per-rule routing |
+| ![host detail](brand/screenshots/02-host-detail.png) | ![alerts](brand/screenshots/05-alerts.png) |
+| **Settings** — host tokens, runtime, retention, API keys | **Light theme** |
+| ![settings](brand/screenshots/03-settings.png) | ![light theme](brand/screenshots/07-dashboard-light.png) |
+
+**Mobile (installable PWA — no native app):**
+
+<img src="brand/screenshots/06-mobile-dashboard.png" alt="Lumen mobile dashboard" width="320" />
+
+</details>
+
 ---
 
 ## Why Lumen?

@@ -74,6 +74,7 @@
       <span class="text-lg font-semibold tracking-tight">Lumen</span>
     </a>
     <nav class="hidden md:flex items-center gap-6 text-sm text-slate-300">
+      <a href="#screenshots" class="hover:text-lumen-teal-soft transition-colors" data-i18n="nav.screenshots">Screenshots</a>
       <a href="#wedges" class="hover:text-lumen-teal-soft transition-colors" data-i18n="nav.why">Why Lumen</a>
       <a href="#install" class="hover:text-lumen-teal-soft transition-colors" data-i18n="nav.install">Install</a>
       <a href="#highlights" class="hover:text-lumen-teal-soft transition-colors" data-i18n="nav.features">Features</a>
@@ -115,6 +116,50 @@
       </a>
     </div>
     <p class="mt-8 text-xs text-slate-500" data-i18n="hero.tag">MIT-licensed · No telemetry · No phone-home · Built in the open</p>
+  </div>
+</section>
+
+<!-- ─── Screenshots ─────────────────────────────────────────────────── -->
+<section id="screenshots" class="border-t border-slate-800/60">
+  <div class="mx-auto max-w-6xl px-6 py-20">
+    <div class="text-center mb-12">
+      <h2 class="text-3xl sm:text-4xl font-bold tracking-tight" data-i18n="shots.title">See it running</h2>
+      <p class="mt-3 max-w-2xl mx-auto text-slate-400" data-i18n="shots.subtitle">A fleet view that fits on one screen. Deep host charts a click away. The same UI on your phone, dark or light.</p>
+    </div>
+
+    <!-- Hero screenshot: dashboard -->
+    <figure class="rounded-xl border border-slate-800/60 overflow-hidden shadow-2xl shadow-slate-950/80 mb-6">
+      <img src="screenshots/01-dashboard.png" alt="Lumen dashboard — 8 hosts with CPU/RAM/disk sparklines, summary stats" loading="eager" class="block w-full" />
+      <figcaption class="px-4 py-2 text-xs text-slate-500 border-t border-slate-800/60" data-i18n="shots.dashboard">Dashboard — fleet at a glance, hottest CPU/RAM/disk surfaced first</figcaption>
+    </figure>
+
+    <!-- Host detail row -->
+    <div class="grid gap-4 lg:grid-cols-2 mb-6">
+      <figure class="rounded-xl border border-slate-800/60 overflow-hidden">
+        <img src="screenshots/02-host-detail.png" alt="Lumen host detail — uPlot charts for CPU per-core, RAM, swap, disk, disk I/O, network, load, temperature, containers" loading="lazy" class="block w-full" />
+        <figcaption class="px-4 py-2 text-xs text-slate-500 border-t border-slate-800/60" data-i18n="shots.detail">Host detail — drag, resize, hide. 10 curated charts. Per-user layouts.</figcaption>
+      </figure>
+      <figure class="rounded-xl border border-slate-800/60 overflow-hidden">
+        <img src="screenshots/05-alerts.png" alt="Lumen alerts — threshold rules and notification channels" loading="lazy" class="block w-full" />
+        <figcaption class="px-4 py-2 text-xs text-slate-500 border-t border-slate-800/60" data-i18n="shots.alerts">Alerts — threshold rules, 5 channel types, per-rule routing.</figcaption>
+      </figure>
+    </div>
+
+    <!-- Settings + mobile + light row -->
+    <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <figure class="rounded-xl border border-slate-800/60 overflow-hidden">
+        <img src="screenshots/03-settings.png" alt="Lumen settings — hosts list with token rotation" loading="lazy" class="block w-full" />
+        <figcaption class="px-4 py-2 text-xs text-slate-500 border-t border-slate-800/60" data-i18n="shots.settings">Settings — host tokens, runtime knobs, retention, API keys.</figcaption>
+      </figure>
+      <figure class="rounded-xl border border-slate-800/60 overflow-hidden">
+        <img src="screenshots/07-dashboard-light.png" alt="Lumen dashboard in light theme" loading="lazy" class="block w-full" />
+        <figcaption class="px-4 py-2 text-xs text-slate-500 border-t border-slate-800/60" data-i18n="shots.light">Light theme — same data, daytime friendly.</figcaption>
+      </figure>
+      <figure class="rounded-xl border border-slate-800/60 overflow-hidden bg-slate-900/40">
+        <img src="screenshots/06-mobile-dashboard.png" alt="Lumen mobile dashboard — installable PWA" loading="lazy" class="block w-full" />
+        <figcaption class="px-4 py-2 text-xs text-slate-500 border-t border-slate-800/60" data-i18n="shots.mobile">Mobile web (PWA) — no native app to install, no app-store review.</figcaption>
+      </figure>
+    </div>
   </div>
 </section>
 
@@ -324,12 +369,21 @@
 (function () {
   const I18N = {
     en: {
+      "nav.screenshots": "Screenshots",
       "nav.why": "Why Lumen",
       "nav.install": "Install",
       "nav.features": "Features",
       "nav.roadmap": "Roadmap",
       "nav.docs": "Docs",
-      "hero.badge": "v0.6.4 shipped · multi-arch (amd64 + arm64)",
+      "hero.badge": "v0.6.5 shipped · multi-arch (amd64 + arm64)",
+      "shots.title": "See it running",
+      "shots.subtitle": "A fleet view that fits on one screen. Deep host charts a click away. The same UI on your phone, dark or light.",
+      "shots.dashboard": "Dashboard — fleet at a glance, hottest CPU/RAM/disk surfaced first",
+      "shots.detail": "Host detail — drag, resize, hide. 10 curated charts. Per-user layouts.",
+      "shots.alerts": "Alerts — threshold rules, 5 channel types, per-rule routing.",
+      "shots.settings": "Settings — host tokens, runtime knobs, retention, API keys.",
+      "shots.light": "Light theme — same data, daytime friendly.",
+      "shots.mobile": "Mobile web (PWA) — no native app to install, no app-store review.",
       "hero.line1": "Homelab monitoring",
       "hero.line2": "without the bloat.",
       "hero.desc": "Proxmox-native, HTTPS-only, HDD-friendly. Single Go binary for hub and agent. Comfortable on a Raspberry Pi, ready for a 200-host fleet.",
@@ -400,12 +454,21 @@
       "footer.builtby": "Built in the open"
     },
     vi: {
+      "nav.screenshots": "Ảnh chụp",
       "nav.why": "Vì sao Lumen",
       "nav.install": "Cài đặt",
       "nav.features": "Tính năng",
       "nav.roadmap": "Lộ trình",
       "nav.docs": "Tài liệu",
-      "hero.badge": "v0.6.4 đã phát hành · đa kiến trúc (amd64 + arm64)",
+      "hero.badge": "v0.6.5 đã phát hành · đa kiến trúc (amd64 + arm64)",
+      "shots.title": "Xem Lumen chạy thật",
+      "shots.subtitle": "Toàn bộ cụm máy chủ gói gọn trong một màn hình. Biểu đồ chi tiết chỉ cách một cú nhấp. Vẫn giao diện đó trên điện thoại, sáng hay tối.",
+      "shots.dashboard": "Dashboard — toàn cảnh cụm máy chủ, CPU/RAM/đĩa nóng nhất hiện đầu tiên",
+      "shots.detail": "Chi tiết máy chủ — kéo, đổi cỡ, ẩn. 10 biểu đồ đã chọn lọc. Layout riêng từng user.",
+      "shots.alerts": "Cảnh báo — luật ngưỡng, 5 loại kênh, định tuyến theo luật.",
+      "shots.settings": "Cài đặt — token máy chủ, runtime, lưu trữ, API keys.",
+      "shots.light": "Giao diện sáng — cùng dữ liệu, hợp ban ngày.",
+      "shots.mobile": "Web di động (PWA) — không cần app native, không qua app store.",
       "hero.line1": "Theo dõi homelab",
       "hero.line2": "không cồng kềnh.",
       "hero.desc": "Tích hợp Proxmox, chỉ dùng HTTPS, thân thiện với HDD. Hub và agent đều là một file Go duy nhất. Chạy thoải mái trên Raspberry Pi, sẵn sàng cho fleet 200 host.",
