@@ -66,10 +66,6 @@ export function TokenReveal({
     container_name: lumen-agent-${safeHostName}
     restart: unless-stopped
     user: "0:0"
-    # Uncomment and set to your container's RAM allocation if you want
-    # accurate RAM% (especially when running Docker inside an LXC/VM —
-    # otherwise the agent sees the kernel host's memory, not yours).
-    # mem_limit: 4g
     environment:
       LUMEN_HUB_URL: "${dockerHubUrl}"
       LUMEN_AGENT_TOKEN: "${token}"
@@ -80,6 +76,12 @@ export function TokenReveal({
       LUMEN_AGENT_BUFFER_DRAIN: "10"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
+      # Forward the host's view of memory/CPU into the container. Required
+      # for accurate RAM% when running Docker inside an LXC or VM, where
+      # the container's default /proc/meminfo otherwise leaks the kernel
+      # host's RAM total. No-op on a bare Docker host.
+      - /proc/meminfo:/proc/meminfo:ro
+      - /proc/cpuinfo:/proc/cpuinfo:ro
       - lumen-agent-data:/data
 
 volumes:
