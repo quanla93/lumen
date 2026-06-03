@@ -8,6 +8,18 @@ export default defineConfig({
 	// front so the unified Cloudflare deploy serves them correctly.
 	site: "https://lumen.quanla.org",
 	base: "/docs",
+	// The /docs/ root used to render a splash page (template:splash) whose
+	// CTAs duplicated the landing page's. A user clicking "Docs" then had to
+	// click again to reach actual content. Redirect /docs/ straight to the
+	// first real page so the splash never gets in the way. The redirect
+	// emits a static HTML meta-refresh page that the Cloudflare assets
+	// host serves before the SPA fallback fires.
+	redirects: {
+		// Destination is written verbatim into the meta-refresh — Astro does
+		// not prepend `base` here. Include /docs/ explicitly so the redirect
+		// lands inside the docs site instead of jumping to the landing tree.
+		"/": "/docs/getting-started/overview/",
+	},
 	integrations: [
 		starlight({
 			title: "Lumen",
@@ -37,6 +49,14 @@ export default defineConfig({
 			// groups). The five remaining sections follow the operator
 			// journey end-to-end without forcing tab jumps for one task.
 			sidebar: [
+				{
+					label: "← Back to lumen.quanla.org",
+					link: "https://lumen.quanla.org/",
+					attrs: {
+						target: "_self",
+						"aria-label": "Back to the Lumen landing page",
+					},
+				},
 				{
 					label: "Get started",
 					autogenerate: { directory: "getting-started" },
