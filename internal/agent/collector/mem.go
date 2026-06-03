@@ -32,8 +32,16 @@ func Memory(_ context.Context) (ramPct, swapPct float64, err error) {
 	if v.Available > 0 && v.Total > 0 {
 		ramPct = float64(v.Total-v.Available) / float64(v.Total) * 100
 	}
-	if p, ok := cgroupRAMPct(v.Total); ok {
-		ramPct = p
+	// Skip cgroup override when /proc/meminfo is bind-mounted from the host:
+	// gopsutil's view above is already container-scoped (lxcfs), and the
+	// Docker container's own cgroup would otherwise leak through here showing
+	// just the agent process's memory (~5 MB / 4 GB ≈ 0.1%). The cgroup path
+	// is still useful when the operator chose mem_limit-only (no bind-mount)
+	// because they're intentionally monitoring the container's own footprint.
+	if !procMeminfoIsBindMounted() {
+		if p, ok := cgroupRAMPct(v.Total); ok {
+			ramPct = p
+		}
 	}
 
 	if s, sErr := mem.SwapMemory(); sErr == nil && s != nil {
