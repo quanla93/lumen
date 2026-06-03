@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.6.5.4] - 2026-06-03
+
+**Bind-mount detection now reads `mountinfo`, not `mounts`.** v0.6.5.3 added the bind-mount-wins-over-cgroup rule but the detection itself (`procMeminfoIsBindMounted`) checked `/proc/mounts` — which silently omits Docker's file-level bind mounts. Verified live on a Docker-in-LXC agent: `cat /proc/mounts | grep meminfo` returned empty, while `/proc/self/mountinfo` clearly showed the lxcfs FUSE entry. v0.6.5.3 thus changed nothing in practice for Docker-in-LXC; this release makes the detection actually fire.
+
+### Fixed
+
+- **`procMeminfoIsBindMounted` now scans `/proc/self/mountinfo`** with the mount point at field index 4. `mountinfo` is the only one of the two `/proc` files that lists per-file bind mounts; `/proc/mounts` only carries filesystem-level mounts. Behaviour for LXC-native (lxcfs FUSE mount on `/proc/meminfo`), Docker bind-mount, and bare-host (no bind) all distinguished correctly.
+
 ## [0.6.5.3] - 2026-06-03
 
 **Bind-mount now wins over cgroup in nested setups.** Caught immediately after v0.6.5.2 shipped: with the `/proc/meminfo` bind-mount in place on a Docker-in-LXC agent, RAM% still read ~0.1% instead of the expected ~5%. Root cause: Docker inside LXC exposes a cgroup v1 compat view at `/sys/fs/cgroup/memory/memory.limit_in_bytes` that inherits the LXC's 4 GiB effective limit, which v0.6.5.1's cgroup-aware path picked up — and then read the Docker container's *own* `memory.usage_in_bytes` (~5 MB, just the agent process) as numerator, drowning the MemAvailable formula's correct number.
