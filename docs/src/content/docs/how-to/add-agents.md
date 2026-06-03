@@ -73,6 +73,10 @@ services:
     volumes:
       - lumen-agent-data:/data
       - /var/run/docker.sock:/var/run/docker.sock:ro
+      # Required for accurate RAM% on Docker-in-LXC / Docker-in-VM
+      # (no-op on bare Docker). See install/agent-docker for details.
+      - /proc/meminfo:/proc/meminfo:ro
+      - /proc/cpuinfo:/proc/cpuinfo:ro
 
 volumes:
   lumen-agent-data:

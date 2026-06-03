@@ -6,6 +6,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.6.5.2] - 2026-06-03
+
+**Auto-correct RAM% for Docker-in-LXC.** Follow-up to v0.6.5.1. The cgroup path that release shipped still required operators to set `mem_limit:` on the Docker container — and to remember to bump it whenever they bumped the LXC's RAM. The cleaner answer is to bind-mount the host's `/proc/meminfo` (and `/proc/cpuinfo`) into the agent container so the agent sees the LXC's lxcfs-overlaid view automatically. No `mem_limit` to maintain, tracks LXC RAM changes for free, no-op on bare-host Docker.
+
+### Changed
+
+- **Generated `docker-compose.yml`** (`web/src/components/TokenReveal.tsx`) now bind-mounts `/proc/meminfo:/proc/meminfo:ro` and `/proc/cpuinfo:/proc/cpuinfo:ro` by default. The earlier commented-out `mem_limit:` hint from v0.6.5.1 is removed — the bind-mount is strictly better and needs no per-host tuning.
+- **Local-test compose** (`deploy/docker/docker-compose.agent.example.yml`) gets the same two bind mounts.
+- **`install/agent-docker.md`** updates all 3 compose variants (manual fallback, host-metrics-only, host+Docker), the `docker run` fallback, the compose-field reference table, and adds a Troubleshooting entry "RAM% shows the wrong number on Docker-in-LXC / Docker-in-VM".
+- **`how-to/add-agents.md`** compose snippet adds the two bind mounts.
+
+### Fixed
+
+- **Startup warning no longer false-fires on a correct bind-mount setup.** `MemoryLimitStatus()` (`internal/agent/collector/mem.go`) now checks `/proc/mounts` for a `/proc/meminfo` bind-mount entry first; if present, the agent has a trustworthy view and the warning stays silent. Without the bind-mount AND without a real cgroup limit, the warning fires with both fix options listed (bind-mount preferred, `mem_limit` as alternative).
+
+### Notes
+
+- **Existing v0.6.5.1 deployments**: pull the new image (`ghcr.io/quanla93/lumen-agent:0.6.5.2` or `:latest`), edit `/opt/lumen-agent/docker-compose.yml` to add the two `/proc` bind mounts under `volumes:`, then `docker compose up -d`. Drop the `mem_limit:` line if you added one for v0.6.5.1 — it's redundant once the bind-mount is in place.
+- **Bare-host Docker users**: the bind-mount is a no-op for you (your container's `/proc/meminfo` already matches the host's `/proc/meminfo`). Adding the lines is harmless.
+
 ## [0.6.5.1] - 2026-06-03
 
 **Container-aware RAM accounting.** Reported by an operator whose Lumen UI showed 9router (Docker-in-LXC) stuck at RAM 60% while Proxmox said 7.5%. Root cause: gopsutil reads `/proc/meminfo`, and a Docker container does not inherit the LXC's lxcfs `/proc/meminfo` bind mount — so the agent saw the PVE host's 11.6 GiB total instead of the LXC's 4 GiB. The same shape bites any nested setup (Docker-in-VM where the agent should report VM RAM, k8s pods with limits, …).

@@ -80,6 +80,12 @@ services:
       # Optional: enables Docker container telemetry on this target host.
       - /var/run/docker.sock:/var/run/docker.sock:ro
 
+      # Required for accurate RAM% on Docker-in-LXC or Docker-in-VM
+      # (no-op on bare Docker). Without this, the agent sees the kernel
+      # host's memory, not the LXC/VM it runs in.
+      - /proc/meminfo:/proc/meminfo:ro
+      - /proc/cpuinfo:/proc/cpuinfo:ro
+
 volumes:
   lumen-agent-data:
 ```
@@ -128,6 +134,7 @@ The host card should appear in the dashboard within one collection interval. The
 | `LUMEN_AGENT_BUFFER_DRAIN` | recommended | Number of buffered frames replayed per successful tick. |
 | `lumen-agent-data:/data` | recommended | Named volume that keeps the offline buffer across updates. |
 | `/var/run/docker.sock` mount | optional | Enables Docker container telemetry from this target host. |
+| `/proc/meminfo` + `/proc/cpuinfo` mounts | recommended | Forward the host's view of memory and CPU into the agent container. Required for accurate RAM% on Docker-in-LXC and Docker-in-VM; no-op on bare Docker. |
 
 ## Common compose variants
 
@@ -150,6 +157,8 @@ services:
       LUMEN_AGENT_BUFFER_PATH: "/data/buffer.db"
     volumes:
       - lumen-agent-data:/data
+      - /proc/meminfo:/proc/meminfo:ro
+      - /proc/cpuinfo:/proc/cpuinfo:ro
 
 volumes:
   lumen-agent-data:
@@ -175,6 +184,8 @@ services:
     volumes:
       - lumen-agent-data:/data
       - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /proc/meminfo:/proc/meminfo:ro
+      - /proc/cpuinfo:/proc/cpuinfo:ro
 
 volumes:
   lumen-agent-data:
@@ -273,8 +284,10 @@ For production-like installs, pin an image tag instead of `latest`:
 ```yaml
 services:
   lumen-agent:
-    image: ghcr.io/quanla93/lumen-agent:0.2.0
+    image: ghcr.io/quanla93/lumen-agent:0.6.5
 ```
+
+Image tags follow the GitHub release tags — see <https://github.com/quanla93/lumen/releases> for the latest stable version.
 
 Then update with the same Compose commands:
 
@@ -308,6 +321,8 @@ docker run -d \
   --user 0:0 \
   -v lumen-agent-data:/data \
   -v /var/run/docker.sock:/var/run/docker.sock:ro \
+  -v /proc/meminfo:/proc/meminfo:ro \
+  -v /proc/cpuinfo:/proc/cpuinfo:ro \
   -e LUMEN_HUB_URL=https://lumen.example.lan \
   -e LUMEN_AGENT_TOKEN=lum_REPLACE_WITH_UI_TOKEN \
   -e LUMEN_AGENT_HOST=my-server \
@@ -333,3 +348,6 @@ If the container was created with `docker run`, update means removing and recrea
 
 **Data disappears during hub outage**
 : Make sure the compose file includes the `lumen-agent-data:/data` volume and `LUMEN_AGENT_BUFFER_PATH=/data/buffer.db` so the offline buffer survives container recreation.
+
+**RAM% shows the wrong number on Docker-in-LXC / Docker-in-VM**
+: Without the `/proc/meminfo:/proc/meminfo:ro` and `/proc/cpuinfo:/proc/cpuinfo:ro` bind mounts, a Docker container does not inherit its LXC's or VM's `/proc` view — the agent ends up reading the kernel host's memory total instead. Add those two mounts and recreate the container with `docker compose up -d`. The agent also logs a single `Warn` at startup naming this exact fix when it detects the bad state.
