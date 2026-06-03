@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.6.5.5] - 2026-06-03
+
+**Re-ships v0.6.5.4 after dropping arm64 from the container image build.** The v0.6.5.4 tag was pushed but the release workflow's `Push images to ghcr.io` job stalled for >1h on QEMU-emulated `linux/arm64` image build (twice — first run hit a ghcr.io 502 mid-push and the rerun never finished the hub image at all). Same v0.6.5.3 job had completed in 15 minutes the day before, so this is a runner/QEMU regression, not a code problem. No GitHub Release or ghcr image was ever published for v0.6.5.4; pull v0.6.5.5 instead.
+
+### Changed
+
+- **`.github/workflows/release.yml`** drops `linux/arm64` from the Docker image build matrix. amd64 images now build natively (no QEMU). arm64 operators continue to install via the binary tarball from the GitHub Release — the cross-compiled `lumen-agent-linux-arm64` / `lumen-hub-linux-arm64.tar.gz` artifacts ship unchanged, because the Go cross-compile path on the amd64 runner was never the bottleneck.
+
+### Notes
+
+- **No agent or hub behaviour change vs v0.6.5.4.** The mountinfo bind-mount detection fix described under v0.6.5.4 below is the actual fix shipping in this release.
+- **Existing v0.6.5.x deployments**: pull `ghcr.io/quanla93/lumen-{hub,agent}:0.6.5.5` (or `:latest`), `docker compose up -d`. No compose changes needed.
+
 ## [0.6.5.4] - 2026-06-03
 
 **Bind-mount detection now reads `mountinfo`, not `mounts`.** v0.6.5.3 added the bind-mount-wins-over-cgroup rule but the detection itself (`procMeminfoIsBindMounted`) checked `/proc/mounts` — which silently omits Docker's file-level bind mounts. Verified live on a Docker-in-LXC agent: `cat /proc/mounts | grep meminfo` returned empty, while `/proc/self/mountinfo` clearly showed the lxcfs FUSE entry. v0.6.5.3 thus changed nothing in practice for Docker-in-LXC; this release makes the detection actually fire.
