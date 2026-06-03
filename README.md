@@ -119,7 +119,7 @@ Then open `http://localhost:8090`, create/sign in to the admin account, and go t
 `docker-compose.yml`, place it on the target machine at `/opt/lumen-agent`, and
 run `docker compose up -d` there.
 
-For development from source, see [Run from source](docs/src/content/docs/how-to/run-from-source.md).
+For development from source, see [Run from source](docs/src/content/docs/contributing/run-from-source.md).
 Full setup: see [Quickstart](docs/src/content/docs/getting-started/quickstart.md).
 
 ---
@@ -180,7 +180,7 @@ Docs are a Starlight site under [docs/](docs/) (English + Vietnamese).
 **Install & operate**
 - **[Hub (Docker Compose)](docs/src/content/docs/install/hub-compose.md)** · **[Hub (binary)](docs/src/content/docs/install/hub-binary.md)** · **[Hub on Proxmox LXC](docs/src/content/docs/install/hub-lxc.md)**
 - **[Agent (Docker)](docs/src/content/docs/install/agent-docker.md)** · **[Agent (Linux)](docs/src/content/docs/install/agent-linux.md)**
-- **[Add agents](docs/src/content/docs/how-to/add-agents.md)** · **[Update agents](docs/src/content/docs/how-to/update-agents.md)** · **[Use the web UI](docs/src/content/docs/how-to/use-the-web-ui.md)**
+- **[Add agents (Docker)](docs/src/content/docs/install/agent-docker.md)** · **[Add agents (Linux)](docs/src/content/docs/install/agent-linux.md)** · **[Update agents](docs/src/content/docs/how-to/update-agents.md)** · **[Use the web UI](docs/src/content/docs/how-to/use-the-web-ui.md)**
 
 **Configure**
 - **[Hosts & tokens](docs/src/content/docs/configure/hosts-and-tokens.md)** · **[Runtime settings](docs/src/content/docs/configure/runtime-settings.md)** · **[Retention](docs/src/content/docs/configure/retention.md)** · **[Reliability](docs/src/content/docs/configure/reliability.md)**
@@ -190,7 +190,7 @@ Docs are a Starlight site under [docs/](docs/) (English + Vietnamese).
 - **[ADR-0001: Storage](docs/adr/0001-storage-architecture.md)** · **[ADR-0002: Transport](docs/adr/0002-transport-choice.md)** · **[ADR-0003: Language](docs/adr/0003-language-choice.md)**
 
 **Develop**
-- **[Run from source](docs/src/content/docs/how-to/run-from-source.md)** · **[CI/CD](docs/src/content/docs/contributing/ci-cd.md)** · **[Contributing](CONTRIBUTING.md)**
+- **[Run from source](docs/src/content/docs/contributing/run-from-source.md)** · **[CI/CD](docs/src/content/docs/contributing/ci-cd.md)** · **[Contributing](CONTRIBUTING.md)**
 
 Proxmox/LXC/ZFS/PBS integration guides land when the Proxmox wedge ships (deferred from v0.4 to a later release) — see the [roadmap](ACTION_PLAN.md).
 

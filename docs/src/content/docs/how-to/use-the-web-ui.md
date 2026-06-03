@@ -40,7 +40,7 @@ Click any host card to open its detail page.
 4. Copy the `lum_...` token immediately. The token is only shown once.
 5. Install or configure the agent on that machine with the copied token.
 
-For installation commands, see [Add agents](/how-to/add-agents/).
+For installation commands, see [Agent — Docker Compose](/install/agent-docker/) or [Agent — Linux](/install/agent-linux/).
 
 ## Read a host detail page
 

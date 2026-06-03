@@ -19,6 +19,16 @@ export default defineConfig({
 		// not prepend `base` here. Include /docs/ explicitly so the redirect
 		// lands inside the docs site instead of jumping to the landing tree.
 		"/": "/docs/getting-started/overview/",
+
+		// /how-to/add-agents used to live here and duplicated install/agent-*.
+		// Redirect to the canonical install page so existing bookmarks survive.
+		"/how-to/add-agents": "/docs/install/agent-docker/",
+		"/how-to/add-agents/": "/docs/install/agent-docker/",
+
+		// /how-to/run-from-source moved to /contributing/ because it's a dev
+		// workflow, not an ops how-to.
+		"/how-to/run-from-source": "/docs/contributing/run-from-source/",
+		"/how-to/run-from-source/": "/docs/contributing/run-from-source/",
 	},
 	integrations: [
 		starlight({
@@ -64,7 +74,7 @@ export default defineConfig({
 					autogenerate: { directory: "install" },
 				},
 				{
-					label: "How-to",
+					label: "Operate",
 					autogenerate: { directory: "how-to" },
 				},
 				{
