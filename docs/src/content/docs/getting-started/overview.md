@@ -37,7 +37,7 @@ For the full system shape, see [Architecture](/reference/architecture/). Archite
 
 - [Quickstart](./quickstart.md) — run the hub with Docker Compose, then add an agent from the web UI.
 - [Hub — Docker Compose](/install/hub-compose/) — the main install path for now.
-- [Add agents](/how-to/add-agents/) — create a host and run the generated per-agent `docker-compose.yml`.
+- [Add agents](/install/agent-docker/) — create a host and run the generated per-agent `docker-compose.yml`.
 - [Use the web UI](/how-to/use-the-web-ui/) — navigate the dashboard, host detail, and settings.
 - [Concepts](./concepts.md) — Hub, Agent, Token, Tier.
 
