@@ -1,0 +1,63 @@
+---
+// Override of @astrojs/starlight/components/SiteTitle. Identical to the
+// default except the anchor href: the logo + title in the docs header
+// link back to the landing root (lumen.quanla.org/) instead of the docs
+// root (/docs/). Operators in the docs site can click the logo to leave
+// to the marketing landing without typing the URL.
+import config from "virtual:starlight/user-config";
+import { logos } from "virtual:starlight/user-images";
+import type { Props } from "@astrojs/starlight/props";
+
+const { siteTitle } = Astro.props as Props;
+
+// Absolute path so the link survives the `base: "/docs"` rewriting that
+// Starlight applies to internal hrefs.
+const landingHref = "/";
+---
+
+<a href={landingHref} class="site-title sl-flex">
+	{
+		config.logo && logos.dark && (
+			<>
+				<img
+					class:list={{ "light:sl-hidden": !("src" in config.logo) }}
+					alt={config.logo.alt}
+					src={logos.dark.src}
+					width={logos.dark.width}
+					height={logos.dark.height}
+				/>
+				{!("src" in config.logo) && (
+					<img
+						class="dark:sl-hidden"
+						alt={config.logo.alt}
+						src={logos.light?.src}
+						width={logos.light?.width}
+						height={logos.light?.height}
+					/>
+				)}
+			</>
+		)
+	}
+	<span class:list={{ "sr-only": config.logo?.replacesTitle }} translate="no">
+		{siteTitle}
+	</span>
+</a>
+
+<style>
+	.site-title {
+		align-items: center;
+		gap: var(--sl-nav-gap);
+		font-size: var(--sl-text-h4);
+		font-weight: 600;
+		color: var(--sl-color-text-accent);
+		text-decoration: none;
+		white-space: nowrap;
+	}
+	img {
+		height: calc(var(--sl-nav-height) - 2 * var(--sl-nav-pad-y));
+		width: auto;
+		max-width: 100%;
+		object-fit: contain;
+		object-position: 0 50%;
+	}
+</style>
