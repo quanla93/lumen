@@ -1,136 +1,121 @@
 ---
-title: Hub — Docker Compose
-description: Run the Lumen hub from the official multi-arch image. No clone, no build — just pull and run.
+title: Hub — Docker compose
+description: Run the Lumen hub via Docker compose on any host with Docker.
 sidebar:
-  order: 1
+  order: 3
 ---
 
-Run the Lumen hub from the official multi-arch image (`ghcr.io/quanla93/lumen-hub`). This is the fastest path: no source clone, no Go toolchain, no build step. Works on any host with Docker.
+Run the Lumen hub with Docker Compose. Use this if Docker is already your deployment substrate; agents are normally added later from the web UI with their own generated per-agent Compose files.
 
 ## Requirements
 
 - Docker 20.10+ and Docker Compose v2 (`docker compose version`).
 - 200 MiB free RAM, ~250 MiB disk.
-- Internet access to pull the image once (`ghcr.io`).
-- A free port for the UI (default `8090`).
+- Outbound HTTPS (for the first build only).
 
-## 1. Create a working directory
-
-```bash
-sudo mkdir -p /opt/lumen-hub
-cd /opt/lumen-hub
-```
-
-## 2. Write `docker-compose.yml`
-
-```yaml
-# /opt/lumen-hub/docker-compose.yml
-services:
-  hub:
-    image: ghcr.io/quanla93/lumen-hub:latest
-    container_name: lumen-hub
-    restart: unless-stopped
-    ports:
-      - "8090:8090"
-    environment:
-      # Stable HMAC secret — keeps sessions valid across restarts.
-      # Generate with: openssl rand -hex 32
-      LUMEN_HUB_SECRET: "REPLACE_WITH_32_BYTE_HEX"
-
-      # Where SQLite lives inside the container (volume mounted below).
-      LUMEN_HUB_DB_PATH: "/data/lumen.db"
-
-      # Bootstrap admin — change the password before exposing the hub.
-      LUMEN_HUB_ADMIN_USERNAME: "admin"
-      LUMEN_HUB_ADMIN_PASSWORD: "lumenadmin"
-    volumes:
-      - lumen-data:/data
-
-volumes:
-  lumen-data:
-```
-
-Generate the secret and write it in place:
+## 1. Clone and configure
 
 ```bash
-sudo sed -i "s|REPLACE_WITH_32_BYTE_HEX|$(openssl rand -hex 32)|" docker-compose.yml
+git clone https://github.com/quanla93/lumen
+cd lumen
+cp .env.example .env
 ```
 
-Pinning a version is recommended for production. Replace `:latest` with the tag you want, e.g. `ghcr.io/quanla93/lumen-hub:0.6.5`. The image is multi-arch (linux/amd64 + linux/arm64) so the same tag works on x86 servers, Apple Silicon, Raspberry Pi 4/5, Ampere, Graviton, etc.
+Edit `.env` and set at minimum:
 
-## 3. Start the hub
+```ini
+# Stable secret so sessions survive restart.
+LUMEN_HUB_SECRET=<generate with: openssl rand -hex 32>
+
+# Bootstrap admin. CHANGE THE PASSWORD before exposing the hub.
+LUMEN_HUB_ADMIN_USERNAME=admin
+LUMEN_HUB_ADMIN_PASSWORD=<your-choice>
+```
+
+The other variables are documented inline — defaults are sensible.
+
+## 2. Bring up the stack
 
 ```bash
-sudo docker compose up -d
-sudo docker compose ps
-sudo docker compose logs -f
+docker compose -f deploy/docker/docker-compose.yml up --build -d
 ```
 
-You should see:
+First build takes ~3 min (pulls Node, Go, distroless; cross-compiles the
+agent for three Linux arches so the hub can serve `/install.sh`). Later
+runs use the layer cache and finish in seconds.
 
-```
-time=... level=INFO msg="storage ready" path=/data/lumen.db
-time=... level=INFO msg="hub listening" addr=:8090 dev=false
-```
+When `docker compose ps` shows `lumen-hub` as `Up`, open `http://<this-host>:8090`.
 
-Open `http://<your-host>:8090` and sign in with the admin credentials from the compose file.
+## 3. Add an agent from the UI
 
-> Change the admin password from the UI before exposing the hub on a network you don't fully trust.
+The hub compose stack starts the hub only by default. Add agents from the web UI so each monitored machine owns its own generated Compose file:
 
-## 4. Add an agent
+1. Sign in to the hub UI with `admin` / your password from step 1.
+2. Go to **Settings → Hosts** and create a stable host name such as `pve-01`.
+3. Download or copy the generated per-agent `docker-compose.yml`.
+4. Save that file on the target machine as `/opt/lumen-agent/docker-compose.yml` and start it with `docker compose up -d`.
 
-The hub on its own shows nothing. Add agents per target machine — each one gets its own token. Pick the agent install path that matches the target host:
+The host card should appear on the dashboard within one collection interval.
 
-- [Agent — install.sh one-liner](./agent-linux/#install-script) — recommended for Linux LXCs / VMs / bare metal.
-- [Agent — Docker Compose](./agent-docker/) — for hosts where Docker is already the deployment substrate.
-- [Agent — binary + systemd](./agent-linux/) — for explicit control over the systemd unit.
+## Stack details
+
+| Service | Image | Memory | Ports | Mounts |
+|---|---|---|---|---|
+| `hub` | `lumen-hub:dev` (built locally) | <100 MiB | `8090:8090` | named volume `lumen-data` → `/data` |
+
+The repo also contains `deploy/docker/docker-compose.agent.example.yml` for deliberate local ingest tests. Do not use it for normal onboarding, and do not create multiple local agents just because you are testing the hub. Reuse one fixed `local-test-agent` host/token when you need a local agent.
 
 ## Operations
 
 ```bash
-# Live logs
-sudo docker compose logs -f
+# Live hub logs
+docker compose -f deploy/docker/docker-compose.yml logs -f
 
-# Restart after editing docker-compose.yml
-sudo docker compose up -d --force-recreate hub
+# Restart hub only after editing .env
+docker compose -f deploy/docker/docker-compose.yml up -d --force-recreate hub
 
 # Stop everything but keep data
-sudo docker compose down
+docker compose -f deploy/docker/docker-compose.yml down
 
-# Stop and wipe SQLite (destructive)
-sudo docker compose down -v
+# Stop and wipe SQLite
+docker compose -f deploy/docker/docker-compose.yml down -v
 ```
 
-> `docker compose restart` does **not** reload environment variables. Use `up -d --force-recreate hub` after editing the compose file.
+> `docker compose restart` does **not** reload `env_file`. Use
+> `up -d --force-recreate <service>` after editing `.env`.
 
 ## Upgrade
 
 ```bash
-cd /opt/lumen-hub
-sudo docker compose pull
-sudo docker compose up -d
+git pull
+docker compose -f deploy/docker/docker-compose.yml up -d --build
 ```
 
-This pulls the newer image and recreates the container with the same config. The SQLite DB in the `lumen-data` volume survives — migrations apply on the next start.
+The hub image rebuilds; the SQLite DB in the `lumen-data` volume
+survives. Migrations apply on the next hub start.
 
-If you pinned a version tag, edit `image:` to the new tag first, then `pull` + `up -d`.
+## Backup the DB
 
-## Backup the database
-
-WAL means `cp` is safe while the hub is running:
+Hot-copy via a sidecar container — WAL means `cp` is safe while the
+hub is running:
 
 ```bash
 docker run --rm \
-  -v lumen-hub_lumen-data:/data:ro \
+  -v lumen_lumen-data:/data:ro \
   -v "$PWD/backup":/out \
   alpine cp /data/lumen.db /out/lumen-$(date +%F).db
 ```
 
-The volume name is `<compose-project>_<volume-name>` — if your working directory is `/opt/lumen-hub` the project is `lumen-hub` and the volume is `lumen-hub_lumen-data`.
+For point-in-time snapshots use `sqlite3 .backup` in the running hub
+container (the bundled distroless image has no shell — exec
+`sqlite3` via a temporary alpine sidecar bound to the same volume).
 
 ## Exposing externally
 
-The hub speaks plain HTTP on `:8090`. Put a reverse proxy in front for anything reachable from outside your trusted network — Caddy is the smallest config:
+Put a reverse proxy in front (Caddy / nginx / Traefik / Cloudflare
+Tunnel) — same shape as in [hub-binary § Putting HTTPS in front](./hub-binary#putting-https-in-front).
+
+For Caddy:
 
 ```text
 lumen.example.com {
@@ -138,22 +123,49 @@ lumen.example.com {
 }
 ```
 
-(Caddy upgrades WebSocket automatically.) Same shape works with nginx, Traefik, Cloudflare Tunnel, Tailscale Funnel.
+(Caddy auto-upgrades WebSocket; nothing else to configure.)
+
+## Adding more agents
+
+The normal flow for every monitored machine, including the same machine as the hub, is a per-agent Compose file generated by the hub UI:
+
+1. Hub UI → **Settings → Hosts** → Create `<host>`.
+2. Download or copy the generated `docker-compose.yml`.
+3. Save it on the target machine as `/opt/lumen-agent/docker-compose.yml`.
+4. Start it:
+
+```bash
+sudo mkdir -p /opt/lumen-agent
+cd /opt/lumen-agent
+# Save the generated docker-compose.yml from the hub UI in this directory.
+sudo docker compose up -d
+sudo docker compose logs -f
+```
+
+The token is shown once by the hub, then lives in the target machine's generated compose file. Future agent updates are standard Docker commands on that target:
+
+```bash
+cd /opt/lumen-agent
+sudo docker compose pull
+sudo docker compose up -d
+```
+
+See [Agent — Docker Compose](./agent-docker) for the full compose template, Docker socket options, updates, logs, and uninstall. The `install.sh` one-line flow can remain as a shortcut for native/manual installs, but Compose is the recommended long-running path.
 
 ## Troubleshooting
 
-**`port is already allocated`**
-: Another service is on `:8090`. Change the port mapping (`"8091:8090"`) and re-up. Agents need to know about the new port.
+**`pull access denied for lumen-hub:dev`**
+: The compose file references locally-built images (`:dev` tag).
+  Always include `--build` on first `up` so they get built.
 
-**`Sessions die every restart`**
-: `LUMEN_HUB_SECRET` is empty or changes between runs. Generate it once and write it into the compose file — the hub re-uses the same secret across restarts to keep cookies valid.
+**Compose port 8090 already in use**
+: Edit `ports: ["8091:8090"]` in `deploy/docker/docker-compose.yml`
+  and re-bring up. Agents then point at `:8091`.
 
-**Container restarts in a loop**
-: `docker compose logs hub` — usually a malformed `LUMEN_HUB_SECRET` (must be ≥64 hex chars) or wrong volume permissions.
+**Browser can't reach the hub**
+: Docker's default bridge binds to all interfaces; check your firewall
+  (`ufw allow 8090/tcp`, Proxmox node firewall, etc.).
 
-**Browser cannot reach the hub**
-: Check the host firewall (`ufw allow 8090/tcp`, Proxmox node firewall, security group) — Docker's default bridge binds to all interfaces, so usually the firewall is the culprit.
-
-**Need a shell inside the distroless image**
-: The runtime image has no shell. Use a sidecar that shares the same network namespace:
-`docker run --rm -it --network container:lumen-hub alpine sh`.
+**Need to debug inside a distroless image**
+: The runtime image has no shell. Use a sidecar:
+  `docker run --rm -it --network container:lumen-hub alpine sh`.

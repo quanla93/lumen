@@ -47,12 +47,6 @@ services:
       # Remove this line if the host is not running Docker or you do not want
       # container telemetry.
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      # Forward the host's /proc/meminfo and /proc/cpuinfo into the agent
-      # container. Required for accurate RAM% / CPU count on Docker-in-LXC
-      # (or Docker-in-VM) — without this, the agent sees the kernel host's
-      # memory total instead of this container's. No-op on bare Docker.
-      - /proc/meminfo:/proc/meminfo:ro
-      - /proc/cpuinfo:/proc/cpuinfo:ro
       # Persistent buffer file. Without this, restarting the agent loses any
       # frames queued during a hub outage.
       - lumen-agent-data:/data
