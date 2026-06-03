@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.6.5] - 2026-06-03
+
+**Backlog-drain hosts now read online.** Reported by an operator running a hub redeploy with the old data dir preserved: after the hub came back up, agents reconnected and `/api/ingest` returned 200 for every push, but the Dashboard kept the host cards in the yellow "stale" state for hours. Data IS flowing — the UI just couldn't tell. Root cause: the FE keyed its online/stale indicator off `snapshot.ts` (agent collection time), and a reconnected agent shipping a backlog from its bbolt buffer sends frames whose `ts` is the original (sometimes 24h-old) collection moment, even though the hub received them seconds ago.
+
+### Fixed
+
+- **`HostSnapshot` carries a new server-stamped `received_at` field** (`internal/shared/api/types.go`). The ingest handler (`internal/hub/ingest/handler.go`) stamps `time.Now().UTC()` once per request, before the snapshot reaches the in-memory store, the batcher, or the WS fanout. This separates the two semantics that were tangled in one field: `ts` (collection time, drives chart x-axes and "last sample N ago" labels) vs `received_at` (hub-side liveness, drives online / stale).
+- **FE liveness now reads `received_at`** in `HostCard`, `Dashboard` (summary card counts + sort-by-last-seen), and `HostDetail` (header status + "last seen" label). `ts` keeps its real job: data-point timeline.
+
+### Notes
+
+- **No DB migration.** `received_at` is an in-memory / wire-only liveness signal. Hub binary embeds the web bundle, so old-hub-new-web (or vice versa) is not a deploy state to plan for.
+- **What operators see after upgrading**: an agent draining a 24h backlog shows ONLINE immediately on reconnect, with the "last sample 23h ago" label staying accurate while the backlog catches up. Sort-by-last-seen on the Dashboard now orders by hub-reachability, not by stale collection time.
+- Buffer cap behaviour unchanged (`defaultMaxAge = 24h` + `defaultMaxRows = 17,280` in `internal/agent/buffer/buffer.go`) — agents still won't grow the local buffer file unboundedly during a long hub outage.
+
 ## [0.6.4] - 2026-06-02
 
 **arm64 back in the release pipeline.** The 2026-06-02 OSS-flip smoke test caught a real adoption blocker — `ghcr.io/quanla93/lumen-hub:latest` and `lumen-agent:latest` only carried amd64 manifests, even though the README + CI matrix + `internal/hub/install/install.go` allowedBinaries all assumed arm64 worked. The original removal (release.yml comment block, pre-OSS-flip) made sense when the repo was private and the operator fleet was 100% x86; once the repo is public the dropped arch hits anyone on Apple Silicon dev, Raspberry Pi 4/5, Ampere, Graviton, RK3566 NAS — exactly the homelab population the README claims as audience.
