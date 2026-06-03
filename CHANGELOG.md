@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.6.5.7] - 2026-06-03
+
+**RAM% on Docker-in-LXC actually works now.** v0.6.5.4–v0.6.5.6 all assumed gopsutil's `mem.VirtualMemory()` honoured the bind-mounted `/proc/meminfo` (lxcfs view). The startup diagnostic added in v0.6.5.6 proved it does not: gopsutil v4 mixes `/sys/fs/cgroup/memory.current` into its Available calculation, which on Docker-in-LXC is the Docker container's own RSS (2.1 MB out of 4 GiB ≈ 0.05%) — not the LXC's view. The bind-mount file itself reads correctly: `(MemTotal - MemAvailable) / MemTotal = (4194304 - 3956832) / 4194304 ≈ 5.66%`, matching Proxmox. Skip gopsutil for the RAM path when the bind-mount is present and parse `/proc/meminfo` directly.
+
+### Fixed
+
+- **`internal/agent/collector/mem.go`** — when `procMeminfoIsBindMounted()` returns true, `Memory()` now reads `/proc/meminfo` directly via the new `procMeminfoRamPct` and computes `(MemTotal - MemAvailable) / MemTotal`. gopsutil's `VirtualMemory` is only consulted on bare-host setups (no bind-mount), where its cgroup blending is harmless. Test seeded with the actual lxcfs view captured from the reproducer asserts the formula returns ~5.66%, not ~0.05%.
+
+### Notes
+
+- **Existing v0.6.5.x deployments**: pull `ghcr.io/quanla93/lumen-{hub,agent}:0.6.5.7` (or `:latest`), `docker compose up -d --force-recreate lumen-agent`. No compose changes needed — the bind-mount from v0.6.5.2 is still the right shape.
+- **Startup diagnostic stays** because Docker-in-LXC is the worst-served deployment shape we have and one more reproducer would otherwise cost another debugging round-trip. Will revisit at v0.7 once the path has stabilised.
+
 ## [0.6.5.6] - 2026-06-03
 
 **Diagnostic: agent logs `meminfo_bindmount`, mountinfo length, first `/proc/meminfo` line, and both cgroup v1/v2 limit+current at startup.** Live verification on a Docker-in-LXC agent running v0.6.5.5 still showed RAM% ≈ 0.06%, even with the `/proc/meminfo` bind-mount confirmed present in both compose YAML and the kernel's `/proc/<pid>/mountinfo` (lxcfs FUSE entry, `f[4] == "/proc/meminfo"`). A unit test (`TestParseMountinfoForMeminfo`) confirms the parser handles the exact line the kernel produced — so the bug, if any, is not in parsing. This release adds a one-shot startup log line so the next reproducer surfaces which side is actually failing (`os.ReadFile` returning empty under nonroot? Cgroup numbers swapping out a correct bind-mount number? gopsutil reading the wrong file?). No behaviour change to RAM%; once the log identifies the path, the actual fix can be targeted.

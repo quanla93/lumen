@@ -12,33 +12,32 @@ import (
 
 // Memory returns (RAM used %, Swap used %).
 //
-// When the process is inside a container with cgroup memory limits (LXC,
-// Docker --memory, k8s), we read /sys/fs/cgroup directly and compute usage
-// the same way Proxmox does (current minus page cache), because gopsutil's
-// /proc/meminfo path can leak host-wide stats when lxcfs isn't overlaying.
-// Without a real cgroup limit, we fall back to gopsutil.
+// When /proc/meminfo is bind-mounted from the host (LXC's lxcfs view), we
+// parse it directly and ignore gopsutil. gopsutil v4's mem.VirtualMemory
+// mixes /sys/fs/cgroup/memory.current into its Available calculation, which
+// on Docker-in-LXC silently substitutes the Docker container's own RSS
+// (a few MB) for the LXC's view (hundreds of MB) — reported as RAM% ≈ 0.06%
+// against a 4 GiB cap. The bind-mount IS the LXC view; trust it. v0.6.5.7
+// is the first release where this actually shipped — earlier 0.6.5.x patches
+// thought gopsutil was honouring /proc/meminfo and were debugging the wrong
+// thing.
+//
+// Without a bind-mount, fall through to gopsutil + cgroup override (still
+// useful for Docker `mem_limit:`-only setups).
 func Memory(_ context.Context) (ramPct, swapPct float64, err error) {
-	v, err := mem.VirtualMemory()
-	if err != nil {
-		return 0, 0, fmt.Errorf("mem.VirtualMemory: %w", err)
-	}
-	ramPct = v.UsedPercent
-	// gopsutil's UsedPercent counts SReclaimable as cache; lxcfs and other
-	// /proc/meminfo providers report it large enough that gopsutil's number
-	// reads "near zero used" while Proxmox / `free -m` show a normal usage
-	// level. Prefer the MemAvailable-based formula when the kernel exposes
-	// MemAvailable (Linux 3.14+) so RAM% lines up with what operators see
-	// in their hypervisor UI.
-	if v.Available > 0 && v.Total > 0 {
-		ramPct = float64(v.Total-v.Available) / float64(v.Total) * 100
-	}
-	// Skip cgroup override when /proc/meminfo is bind-mounted from the host:
-	// gopsutil's view above is already container-scoped (lxcfs), and the
-	// Docker container's own cgroup would otherwise leak through here showing
-	// just the agent process's memory (~5 MB / 4 GB ≈ 0.1%). The cgroup path
-	// is still useful when the operator chose mem_limit-only (no bind-mount)
-	// because they're intentionally monitoring the container's own footprint.
-	if !procMeminfoIsBindMounted() {
+	if procMeminfoIsBindMounted() {
+		if pct, ok := procMeminfoRamPct(); ok {
+			ramPct = pct
+		}
+	} else {
+		v, vErr := mem.VirtualMemory()
+		if vErr != nil {
+			return 0, 0, fmt.Errorf("mem.VirtualMemory: %w", vErr)
+		}
+		ramPct = v.UsedPercent
+		if v.Available > 0 && v.Total > 0 {
+			ramPct = float64(v.Total-v.Available) / float64(v.Total) * 100
+		}
 		if p, ok := cgroupRAMPct(v.Total); ok {
 			ramPct = p
 		}
@@ -51,6 +50,46 @@ func Memory(_ context.Context) (ramPct, swapPct float64, err error) {
 		swapPct = p
 	}
 	return ramPct, swapPct, nil
+}
+
+// procMeminfoRamPct reads /proc/meminfo (the bind-mounted lxcfs view on
+// Docker-in-LXC) and returns (MemTotal - MemAvailable) / MemTotal. False on
+// parse failure or implausible values so the caller can decide what to do.
+func procMeminfoRamPct() (float64, bool) {
+	data, err := os.ReadFile("/proc/meminfo")
+	if err != nil {
+		return 0, false
+	}
+	return parseMeminfoRamPct(data)
+}
+
+// parseMeminfoRamPct is the pure parser, split out for testability with the
+// exact kernel/lxcfs byte sequence captured in the field.
+func parseMeminfoRamPct(data []byte) (float64, bool) {
+	var total, available uint64
+	var haveTotal, haveAvail bool
+	for _, line := range strings.Split(string(data), "\n") {
+		f := strings.Fields(line)
+		if len(f) < 2 {
+			continue
+		}
+		n, perr := strconv.ParseUint(f[1], 10, 64)
+		if perr != nil {
+			continue
+		}
+		switch f[0] {
+		case "MemTotal:":
+			total = n
+			haveTotal = true
+		case "MemAvailable:":
+			available = n
+			haveAvail = true
+		}
+	}
+	if !haveTotal || !haveAvail || total == 0 || available > total {
+		return 0, false
+	}
+	return float64(total-available) / float64(total) * 100, true
 }
 
 // cgroupRAMPct returns the container-scoped RAM used %, or false if no real
