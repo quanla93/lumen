@@ -175,6 +175,7 @@ func runAgent() {
 	if msg := collector.MemoryLimitStatus(); msg != "" {
 		logger.Warn(msg)
 	}
+	logger.Info("memory diagnostics", "detail", collector.MemoryDiagnostics())
 	if cfgLoad.Path != "" {
 		logger.Info("config file loaded",
 			"path", cfgLoad.Path,

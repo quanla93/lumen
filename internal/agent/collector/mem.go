@@ -76,6 +76,35 @@ func cgroupRAMPct(hostTotal uint64) (float64, bool) {
 	return 0, false
 }
 
+// MemoryDiagnostics is a one-shot startup probe: it returns the agent's view
+// of the moving parts that decide which RAM% path wins (gopsutil vs cgroup),
+// so an operator can grep startup logs to confirm the bind-mount or cgroup
+// override is doing what they expect. Quiet on bare-host setups; useful on
+// Docker-in-LXC where Lumen has shipped four 0.6.5.x patches debugging this.
+func MemoryDiagnostics() string {
+	bind := procMeminfoIsBindMounted()
+	miSize := -1
+	if data, err := os.ReadFile("/proc/self/mountinfo"); err == nil {
+		miSize = len(data)
+	}
+	memSample := ""
+	if data, err := os.ReadFile("/proc/meminfo"); err == nil {
+		lines := strings.SplitN(string(data), "\n", 3)
+		if len(lines) > 0 {
+			memSample = lines[0]
+		}
+	}
+	cgV2Max, _ := readUint("/sys/fs/cgroup/memory.max")
+	cgV2Cur, _ := readUint("/sys/fs/cgroup/memory.current")
+	cgV1Max, _ := readUint("/sys/fs/cgroup/memory/memory.limit_in_bytes")
+	cgV1Cur, _ := readUint("/sys/fs/cgroup/memory/memory.usage_in_bytes")
+	return fmt.Sprintf(
+		"meminfo_bindmount=%v mountinfo_bytes=%d meminfo_first_line=%q "+
+			"cgv2_max=%d cgv2_cur=%d cgv1_max=%d cgv1_cur=%d",
+		bind, miSize, memSample, cgV2Max, cgV2Cur, cgV1Max, cgV1Cur,
+	)
+}
+
 // MemoryLimitStatus returns a non-empty warning when the agent runs inside a
 // cgroup (Docker, k8s, LXC) without either a memory limit OR a bind-mounted
 // /proc/meminfo to give it the right view. Either of those is enough to get
@@ -127,6 +156,13 @@ func procMeminfoIsBindMounted() bool {
 	if err != nil {
 		return false
 	}
+	return parseMountinfoForMeminfo(data)
+}
+
+// parseMountinfoForMeminfo is the pure parser, split out so a unit test can
+// feed it the exact byte sequence a real kernel produced. The integration
+// concern (os.ReadFile of a procfs pseudo-file) is in procMeminfoIsBindMounted.
+func parseMountinfoForMeminfo(data []byte) bool {
 	for _, line := range strings.Split(string(data), "\n") {
 		f := strings.Fields(line)
 		if len(f) >= 5 && f[4] == "/proc/meminfo" {

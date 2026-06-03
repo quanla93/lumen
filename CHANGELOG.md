@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.6.5.6] - 2026-06-03
+
+**Diagnostic: agent logs `meminfo_bindmount`, mountinfo length, first `/proc/meminfo` line, and both cgroup v1/v2 limit+current at startup.** Live verification on a Docker-in-LXC agent running v0.6.5.5 still showed RAM% ≈ 0.06%, even with the `/proc/meminfo` bind-mount confirmed present in both compose YAML and the kernel's `/proc/<pid>/mountinfo` (lxcfs FUSE entry, `f[4] == "/proc/meminfo"`). A unit test (`TestParseMountinfoForMeminfo`) confirms the parser handles the exact line the kernel produced — so the bug, if any, is not in parsing. This release adds a one-shot startup log line so the next reproducer surfaces which side is actually failing (`os.ReadFile` returning empty under nonroot? Cgroup numbers swapping out a correct bind-mount number? gopsutil reading the wrong file?). No behaviour change to RAM%; once the log identifies the path, the actual fix can be targeted.
+
+### Added
+
+- **`MemoryDiagnostics()` in `internal/agent/collector/mem.go`** — pure function that returns a one-line string with the bind-mount detection result, mountinfo byte count, first line of `/proc/meminfo`, and cgroup v1/v2 max+current numbers. Called once at agent startup from `cmd/lumen-agent/main.go`. Quiet on bare-host setups (cgroup numbers will be zero).
+- **`parseMountinfoForMeminfo([]byte) bool`** — pure parser split out of `procMeminfoIsBindMounted()` for testability. Backed by `TestParseMountinfoForMeminfo` in `mem_test.go` that feeds the actual kernel line captured on the Docker-in-LXC reproducer.
+
 ## [0.6.5.5] - 2026-06-03
 
 **Re-ships v0.6.5.4 after dropping arm64 from the container image build.** The v0.6.5.4 tag was pushed but the release workflow's `Push images to ghcr.io` job stalled for >1h on QEMU-emulated `linux/arm64` image build (twice — first run hit a ghcr.io 502 mid-push and the rerun never finished the hub image at all). Same v0.6.5.3 job had completed in 15 minutes the day before, so this is a runner/QEMU regression, not a code problem. No GitHub Release or ghcr image was ever published for v0.6.5.4; pull v0.6.5.5 instead.
