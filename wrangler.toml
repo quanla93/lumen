@@ -14,13 +14,23 @@ name = "lumen-landing"
 compatibility_date = "2026-06-02"
 
 [assets]
-# Source directory: pure HTML + SVG + DEPLOY.md (markdown isn't served,
-# CF ignores it).
-directory = "./brand"
+# Built output of `scripts/build-public-site.sh` — combines the
+# landing page in brand/ and the Starlight docs build into one tree:
+#
+#   public-site/
+#   ├── index.html        (landing — from brand/)
+#   ├── logo*.svg, …      (brand assets)
+#   └── docs/             (Starlight docs — built with base="/docs")
+#
+# Cloudflare's Connect-to-Git form needs `Build command:
+# `bash scripts/build-public-site.sh`` to produce this directory
+# before wrangler deploy publishes it.
+directory = "./public-site"
 
 # Behaviour when a requested path doesn't map to a file in the assets
-# directory. `single-page-application` re-serves /index.html so anchor
-# links and direct hits to non-existent paths land on the home page
-# rather than a bare 404. For our single-page landing this is the
-# right default.
+# directory. `single-page-application` re-serves /index.html for any
+# unmatched URL so the landing's anchor nav (#wedges, #install, …)
+# always lands somewhere meaningful. Starlight's /docs/* routes are
+# real files so they hit first; only typo'd top-level paths fall
+# through to the SPA index.
 not_found_handling = "single-page-application"
