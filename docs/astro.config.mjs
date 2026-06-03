@@ -39,6 +39,12 @@ export default defineConfig({
 				root: { label: "English", lang: "en" },
 				vi: { label: "Tiếng Việt", lang: "vi" },
 			},
+			components: {
+				// Override so the header logo + title link to the landing root
+				// (/) instead of the docs root (/docs/). Operators read the docs,
+				// then click the logo to leave for the landing page.
+				SiteTitle: "./src/components/SiteTitle.astro",
+			},
 			editLink: {
 				baseUrl: "https://github.com/quanla93/lumen/edit/main/docs/",
 			},
@@ -49,14 +55,6 @@ export default defineConfig({
 			// groups). The five remaining sections follow the operator
 			// journey end-to-end without forcing tab jumps for one task.
 			sidebar: [
-				{
-					label: "← Back to lumen.quanla.org",
-					link: "https://lumen.quanla.org/",
-					attrs: {
-						target: "_self",
-						"aria-label": "Back to the Lumen landing page",
-					},
-				},
 				{
 					label: "Get started",
 					autogenerate: { directory: "getting-started" },
