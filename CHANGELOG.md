@@ -6,6 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.6.5.1] - 2026-06-03
+
+**Container-aware RAM accounting.** Reported by an operator whose Lumen UI showed 9router (Docker-in-LXC) stuck at RAM 60% while Proxmox said 7.5%. Root cause: gopsutil reads `/proc/meminfo`, and a Docker container does not inherit the LXC's lxcfs `/proc/meminfo` bind mount — so the agent saw the PVE host's 11.6 GiB total instead of the LXC's 4 GiB. The same shape bites any nested setup (Docker-in-VM where the agent should report VM RAM, k8s pods with limits, …).
+
+### Fixed
+
+- **`internal/agent/collector/mem.go` reads cgroup memory directly** when a real limit is configured. cgroup v2: `memory.max`, `memory.current`, `memory.stat:file`. cgroup v1: `memory.limit_in_bytes`, `memory.usage_in_bytes`, `memory.stat:cache`. "Used" subtracts page cache to match Proxmox-style accounting. When no real limit applies (limit == "max" or ≥ host total), falls back to gopsutil — bare-host behaviour unchanged.
+- **Swap follows the same path** via `memory.swap.{max,current}` (v2) or `memsw - memory` (v1).
+
+### Added
+
+- **Startup warning** `MemoryLimitStatus()` in `mem.go`, logged once at `Warn` level from `cmd/lumen-agent/main.go` when the agent is inside a cgroup but no memory limit is set. Tells the operator their RAM% will reflect kernel host total, with the exact config keys to fix it (`mem_limit` for Docker, `lxc.cgroup2.memory.max` for LXC).
+- **Compose template hint** in `web/src/components/TokenReveal.tsx`: the generated per-agent `docker-compose.yml` now includes a commented-out `mem_limit:` line with a one-line explanation, so operators see the knob exists when they paste the file.
+
+### Notes
+
+- **Pre-existing LXC users on Proxmox**: if your container's `/proc/meminfo` already shows the right `MemTotal` (lxcfs healthy), nothing changes — gopsutil keeps reading it. The cgroup path only kicks in when a real cgroup limit is present.
+- **lxcfs FUSE death** (the `Transport endpoint is not connected` symptom that triggered this report) is a host-side issue fixed by `systemctl restart lxcfs && pct stop/start <vmid>`. The agent change does not paper over that.
+
 ## [0.6.5] - 2026-06-03
 
 **Backlog-drain hosts now read online.** Reported by an operator running a hub redeploy with the old data dir preserved: after the hub came back up, agents reconnected and `/api/ingest` returned 200 for every push, but the Dashboard kept the host cards in the yellow "stale" state for hours. Data IS flowing — the UI just couldn't tell. Root cause: the FE keyed its online/stale indicator off `snapshot.ts` (agent collection time), and a reconnected agent shipping a backlog from its bbolt buffer sends frames whose `ts` is the original (sometimes 24h-old) collection moment, even though the hub received them seconds ago.

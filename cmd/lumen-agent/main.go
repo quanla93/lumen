@@ -172,6 +172,9 @@ func runAgent() {
 		"disk_path", diskPath, "docker_socket", dockerSocket,
 		"buffer_path", bufferPath, "buffer_max_age", bufferMaxAge,
 		"buffer_drain_per_tick", drainPerTick)
+	if msg := collector.MemoryLimitStatus(); msg != "" {
+		logger.Warn(msg)
+	}
 	if cfgLoad.Path != "" {
 		logger.Info("config file loaded",
 			"path", cfgLoad.Path,
