@@ -273,8 +273,10 @@ For production-like installs, pin an image tag instead of `latest`:
 ```yaml
 services:
   lumen-agent:
-    image: ghcr.io/quanla93/lumen-agent:0.2.0
+    image: ghcr.io/quanla93/lumen-agent:0.6.5
 ```
+
+Image tags follow the GitHub release tags — see <https://github.com/quanla93/lumen/releases> for the latest stable version.
 
 Then update with the same Compose commands:
 
