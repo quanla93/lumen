@@ -32,7 +32,10 @@ export type SystemMetadata = {
 
 export type Snapshot = {
   host: string;
+  // ts: agent's collection time. Use for "how old is this datapoint".
   ts: string;
+  // received_at: hub's ingest time. Use for "is the agent reaching us".
+  received_at: string;
   cpu_pct: number;
   cpu_per_core?: number[];
   ram_pct: number;
@@ -85,7 +88,7 @@ export function HostCard({
   onSelect?: (hostName: string) => void;
 }) {
   const { locale, t } = useI18n();
-  const stale = isStale(snapshot.ts, staleAfterForIntervalMs(agentInterval), now);
+  const stale = isStale(snapshot.received_at, staleAfterForIntervalMs(agentInterval), now);
   const headerTone = cpuTone(snapshot.cpu_pct, stale);
   const updateAvailable = agentUpdateAvailable(
     snapshot.system?.agent_version,

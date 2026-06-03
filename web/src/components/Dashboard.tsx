@@ -446,7 +446,7 @@ function sortSnapshots(snapshots: Snapshot[], sortBy: SortBy, dir: SortDir): Sna
         return hb - ha; // hottest first regardless of direction; direction below flips
       }
       case "last-seen":
-        return new Date(b.ts).getTime() - new Date(a.ts).getTime();
+        return new Date(b.received_at).getTime() - new Date(a.received_at).getTime();
       case "name":
       case "tag":
       default:
@@ -458,9 +458,9 @@ function sortSnapshots(snapshots: Snapshot[], sortBy: SortBy, dir: SortDir): Sna
 
 function summarizeSnapshots(snapshots: Snapshot[], now: number, staleAfterMs: number) {
   const total = snapshots.length;
-  const stale = snapshots.filter((s) => isStale(s.ts, staleAfterMs, now)).length;
+  const stale = snapshots.filter((s) => isStale(s.received_at, staleAfterMs, now)).length;
   const online = total - stale;
-  const live = snapshots.filter((s) => !isStale(s.ts, staleAfterMs, now));
+  const live = snapshots.filter((s) => !isStale(s.received_at, staleAfterMs, now));
   return {
     total,
     online,

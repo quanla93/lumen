@@ -105,8 +105,15 @@ type StreamControl struct {
 // per-host ring buffer; clients use it to draw sparklines without a
 // cold-start gap on connect.
 type HostSnapshot struct {
-	Host       string          `json:"host"`
-	Ts         time.Time       `json:"ts"`
+	Host string `json:"host"`
+	// Ts is the agent's collection time — drifts arbitrarily into the
+	// past while a backlog is draining after hub downtime.
+	Ts time.Time `json:"ts"`
+	// ReceivedAt is server-stamped at ingest. Use this — not Ts — to
+	// decide whether the host is online: drained backlog frames carry
+	// stale Ts but fresh ReceivedAt, so liveness keyed on Ts would
+	// show "offline" while data is actively flowing in.
+	ReceivedAt time.Time       `json:"received_at"`
 	CpuPct     float64         `json:"cpu_pct"`
 	CpuPerCore []float64       `json:"cpu_per_core,omitempty"`
 	RamPct     float64         `json:"ram_pct"`
