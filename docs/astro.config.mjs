@@ -52,7 +52,10 @@ export default defineConfig({
 				{
 					label: "← Back to lumen.quanla.org",
 					link: "https://lumen.quanla.org/",
-					attrs: { target: "_self", "aria-label": "Back to the Lumen landing page" },
+					attrs: {
+						target: "_self",
+						"aria-label": "Back to the Lumen landing page",
+					},
 				},
 				{
 					label: "Get started",
