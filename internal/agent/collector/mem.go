@@ -23,6 +23,15 @@ func Memory(_ context.Context) (ramPct, swapPct float64, err error) {
 		return 0, 0, fmt.Errorf("mem.VirtualMemory: %w", err)
 	}
 	ramPct = v.UsedPercent
+	// gopsutil's UsedPercent counts SReclaimable as cache; lxcfs and other
+	// /proc/meminfo providers report it large enough that gopsutil's number
+	// reads "near zero used" while Proxmox / `free -m` show a normal usage
+	// level. Prefer the MemAvailable-based formula when the kernel exposes
+	// MemAvailable (Linux 3.14+) so RAM% lines up with what operators see
+	// in their hypervisor UI.
+	if v.Available > 0 && v.Total > 0 {
+		ramPct = float64(v.Total-v.Available) / float64(v.Total) * 100
+	}
 	if p, ok := cgroupRAMPct(v.Total); ok {
 		ramPct = p
 	}
