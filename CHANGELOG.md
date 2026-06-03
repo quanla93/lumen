@@ -20,6 +20,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Fixed
 
 - **Startup warning no longer false-fires on a correct bind-mount setup.** `MemoryLimitStatus()` (`internal/agent/collector/mem.go`) now checks `/proc/mounts` for a `/proc/meminfo` bind-mount entry first; if present, the agent has a trustworthy view and the warning stays silent. Without the bind-mount AND without a real cgroup limit, the warning fires with both fix options listed (bind-mount preferred, `mem_limit` as alternative).
+- **RAM% now matches Proxmox / `free -m` accounting.** Caught while validating the bind-mount fix above: gopsutil's `UsedPercent` counts `SReclaimable` as cache, which lxcfs reports large enough to drive the number to "near zero used" even while the LXC is actively serving traffic. `Memory()` now overrides the percent with `(Total - MemAvailable) / Total` when the kernel exposes `MemAvailable` (Linux 3.14+), matching what operators read off their hypervisor UI.
 
 ### Notes
 
