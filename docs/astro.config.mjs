@@ -32,9 +32,13 @@ export default defineConfig({
 			},
 			lastUpdated: true,
 			pagination: true,
+			// Sidebar trimmed: dropped "Integrations" and "Plugins" (their
+			// directories don't exist yet; autogenerate rendered empty
+			// groups). The five remaining sections follow the operator
+			// journey end-to-end without forcing tab jumps for one task.
 			sidebar: [
 				{
-					label: "Getting started",
+					label: "Get started",
 					autogenerate: { directory: "getting-started" },
 				},
 				{
@@ -42,27 +46,19 @@ export default defineConfig({
 					autogenerate: { directory: "install" },
 				},
 				{
-					label: "Configure",
-					autogenerate: { directory: "configure" },
-				},
-				{
-					label: "Integrations",
-					autogenerate: { directory: "integrations" },
-				},
-				{
 					label: "How-to",
 					autogenerate: { directory: "how-to" },
+				},
+				{
+					label: "Configure",
+					autogenerate: { directory: "configure" },
 				},
 				{
 					label: "Reference",
 					autogenerate: { directory: "reference" },
 				},
 				{
-					label: "Plugins",
-					autogenerate: { directory: "plugins" },
-				},
-				{
-					label: "Contributing",
+					label: "Contribute",
 					autogenerate: { directory: "contributing" },
 				},
 			],
