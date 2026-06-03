@@ -43,7 +43,9 @@ The host name you pick is **authoritative**: it overrides whatever `LUMEN_AGENT_
 
 ## Path A — Install script (recommended)
 
-The hub serves a templated install script at `/install.sh`. It downloads the matching agent binary from the same hub, writes a systemd unit, and starts the service. Run it on the target host:
+The install script lives at [`scripts/install-agent.sh`](https://github.com/quanla93/lumen/blob/main/scripts/install-agent.sh) in the repo. Two ways to run it — both produce the same systemd-managed agent:
+
+### A.1 — From your hub (URL baked in)
 
 ```bash
 curl -fsSL https://YOUR-HUB/install.sh | sudo sh -s -- \
@@ -51,10 +53,30 @@ curl -fsSL https://YOUR-HUB/install.sh | sudo sh -s -- \
   --host pve-node-01
 ```
 
-The script:
+The hub templates its own URL into the script before serving it, so you don't need `--hub`. The script then pulls the matching agent binary from `/install/lumen-agent-linux-<arch>` on the same hub.
+
+### A.2 — From GitHub raw (no hub round-trip)
+
+When the target host can reach `github.com` more reliably than the hub URL (air-gapped LANs that allow GitHub but not the hub yet, or fleet provisioning that hasn't pointed at the hub yet):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/quanla93/lumen/main/scripts/install-agent.sh \
+  | sudo sh -s -- \
+    --hub https://YOUR-HUB \
+    --token lum_PASTE_FROM_HUB_UI \
+    --host pve-node-01
+```
+
+The script detects the un-templated hub URL placeholder and falls back to whatever you pass via `--hub`. Pin a specific release tag instead of `main` for reproducibility:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/quanla93/lumen/v0.6.5/scripts/install-agent.sh | sudo sh -s -- ...
+```
+
+### What the script does (both paths)
 
 1. Detects `uname -m` to pick `linux-amd64` or `linux-arm64`.
-2. Pulls `/install/lumen-agent-linux-<arch>` from the same hub.
+2. Pulls the matching agent binary — from the hub's `/install/lumen-agent-linux-<arch>` (A.1) or from the GitHub release of the script version (A.2).
 3. Installs the binary to `/usr/local/bin/lumen-agent`.
 4. Writes `/etc/lumen-agent/lumen-agent.yaml` with hub URL + token.
 5. Drops `/etc/systemd/system/lumen-agent.service`.
@@ -66,10 +88,14 @@ You should see the host card appear on the dashboard within one collection inter
 
 ### Updating with the same script
 
-The install script is idempotent — re-running it replaces the binary and refreshes the unit while preserving the existing token + config:
+The install script is idempotent — re-running replaces the binary and refreshes the unit while preserving the existing token + config:
 
 ```bash
+# A.1 — hub-served:
 curl -fsSL https://YOUR-HUB/install.sh | sudo sh
+
+# A.2 — GitHub raw, pinned to a tag:
+curl -fsSL https://raw.githubusercontent.com/quanla93/lumen/v0.6.5/scripts/install-agent.sh | sudo sh -s -- --hub https://YOUR-HUB
 ```
 
 See [How-to — Update agents](../../how-to/update-agents/#binary--systemd-agents-no-docker) for the manual binary-swap flow if you'd rather not pipe `curl` to `sh`.

@@ -57,7 +57,9 @@ Pick the path that fits the target host:
 
 ### Path A — install.sh (recommended)
 
-The hub serves a templated install script. SSH into the target machine and run:
+Two equivalent ways to fetch the same script. Both produce the same systemd-managed agent.
+
+**From your hub** — the hub bakes its own URL into the script before serving it:
 
 ```bash
 curl -fsSL https://YOUR-HUB/install.sh | sudo sh -s -- \
@@ -65,7 +67,17 @@ curl -fsSL https://YOUR-HUB/install.sh | sudo sh -s -- \
   --host pve-01
 ```
 
-The script auto-detects the arch, pulls the matching agent binary from the same hub, writes `/etc/systemd/system/lumen-agent.service`, and starts the service. The host card appears on the dashboard within one collection interval.
+**From GitHub raw** — useful when the target reaches `github.com` more reliably than your hub, or when fleet provisioning hasn't pointed at the hub yet:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/quanla93/lumen/main/scripts/install-agent.sh \
+  | sudo sh -s -- \
+    --hub https://YOUR-HUB \
+    --token lum_PASTE_FROM_HUB_UI \
+    --host pve-01
+```
+
+Pin a release tag (e.g. `v0.6.5`) instead of `main` for reproducible installs. Either way the script auto-detects the arch, pulls the matching agent binary, writes `/etc/systemd/system/lumen-agent.service`, and starts the service. The host card appears on the dashboard within one collection interval.
 
 ### Path B — Docker Compose on the target
 
