@@ -66,6 +66,10 @@ export function TokenReveal({
     container_name: lumen-agent-${safeHostName}
     restart: unless-stopped
     user: "0:0"
+    # Uncomment and set to your container's RAM allocation if you want
+    # accurate RAM% (especially when running Docker inside an LXC/VM —
+    # otherwise the agent sees the kernel host's memory, not yours).
+    # mem_limit: 4g
     environment:
       LUMEN_HUB_URL: "${dockerHubUrl}"
       LUMEN_AGENT_TOKEN: "${token}"
