@@ -85,6 +85,22 @@ func getUserByIDWithHash(ctx context.Context, db *sql.DB, id int64) (User, strin
 	return u, hash, err
 }
 
+// GetSingleAdmin returns the single user that backs Lumen's
+// "single-admin" model. Used by the OIDC callback to find the local
+// user to bind the new session to (any OIDC login attaches to this one
+// row). Returns sql.ErrNoRows if no user is registered yet so the caller
+// can redirect to /register.
+func GetSingleAdmin(ctx context.Context, db *sql.DB) (User, error) {
+	var u User
+	err := db.QueryRowContext(ctx,
+		`SELECT id, username, created_at FROM users ORDER BY id ASC LIMIT 1`,
+	).Scan(&u.ID, &u.Username, &u.CreatedAt)
+	if err != nil {
+		return User{}, err
+	}
+	return u, nil
+}
+
 // UpdatePasswordHash rewrites the password_hash column. Caller is
 // responsible for hashing (and for verifying the current password
 // first if this is a self-service change).

@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
-import { Server, User as UserIcon, Gauge, Archive, BarChart3, ScrollText, Activity, KeyRound, Trash2, Copy, Check, Palette } from "lucide-react";
+import { Server, User as UserIcon, Gauge, Archive, BarChart3, ScrollText, Activity, KeyRound, Trash2, Copy, Check, Palette, Shield } from "lucide-react";
 import {
   hostsApi,
   authApi,
   settingsApi,
   hubStatsApi,
   apiKeysApi,
+  oidcApi,
   ApiError,
   type Host,
   type User,
@@ -18,6 +19,7 @@ import {
   type UnitsMode,
   type ReduceMotion,
   type Density,
+  type OIDCSettings,
 } from "@/lib/api";
 import { relativeTime } from "@/lib/time";
 import { copyToClipboard } from "@/lib/clipboard";
@@ -28,7 +30,7 @@ import { useConfirm } from "@/components/ConfirmDialog";
 import { usePrefs } from "@/lib/userPrefs";
 import { useI18n } from "@/i18n/useI18n";
 
-type SettingsTab = "hosts" | "account" | "display" | "runtime" | "retention" | "downsample" | "logs" | "hub-status" | "api-keys";
+type SettingsTab = "hosts" | "account" | "display" | "runtime" | "retention" | "downsample" | "logs" | "hub-status" | "api-keys" | "sso";
 
 const TABS: {
   id: SettingsTab;
@@ -41,7 +43,8 @@ const TABS: {
     | "settings.tabs.downsample"
     | "settings.tabs.logs"
     | "settings.tabs.hubStatus"
-    | "settings.tabs.apiKeys";
+    | "settings.tabs.apiKeys"
+    | "settings.tabs.sso";
   icon: typeof Server;
 }[] = [
   { id: "hosts",      labelKey: "settings.tabs.hosts",      icon: Server },
@@ -53,6 +56,7 @@ const TABS: {
   { id: "logs",       labelKey: "settings.tabs.logs",       icon: ScrollText },
   { id: "hub-status", labelKey: "settings.tabs.hubStatus",  icon: Activity },
   { id: "api-keys",   labelKey: "settings.tabs.apiKeys",    icon: KeyRound },
+  { id: "sso",        labelKey: "settings.tabs.sso",        icon: Shield },
 ];
 
 export function Settings({ user }: { user: User }) {
@@ -96,6 +100,7 @@ export function Settings({ user }: { user: User }) {
           {tab === "logs"       && <LogManagementSettings />}
           {tab === "hub-status" && <HubStatusSettings />}
           {tab === "api-keys"   && <ApiKeysSettings />}
+          {tab === "sso"        && <SSOSettings />}
         </div>
       </div>
     </div>
@@ -1395,6 +1400,147 @@ function DisplaySettings() {
           <p className="text-xs text-[color:var(--color-muted)]">{t("settings.displayDashboardHint")}</p>
         </div>
       )}
+    </div>
+  );
+}
+
+// SSOSettings — single-admin OIDC config. Labels are inline English
+// because the surface is admin-only + rarely edited; a future PR can
+// promote the strings to i18n.messages if a VI-speaking operator hits it.
+function SSOSettings() {
+  const [cfg, setCfg] = useState<OIDCSettings | null>(null);
+  const [form, setForm] = useState<OIDCSettings>({
+    enabled: false, issuer: "", client_id: "", client_secret: "",
+    has_client_secret: false, scopes: "openid email profile", expected_email: "",
+  });
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [savedAt, setSavedAt] = useState<number | null>(null);
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<{ ok: boolean; msg: string } | null>(null);
+
+  useEffect(() => {
+    oidcApi.get().then((c) => {
+      setCfg(c);
+      setForm({ ...c, client_secret: "" });
+    }).catch((err) => setError(err instanceof ApiError ? err.message : String(err)));
+  }, []);
+
+  async function testDiscovery() {
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const res = await oidcApi.testDiscovery(form.issuer);
+      setTestResult({ ok: res.ok, msg: res.ok ? "Issuer reachable; .well-known/openid-configuration OK" : (res.error ?? "Discovery failed") });
+    } catch (err) {
+      setTestResult({ ok: false, msg: err instanceof ApiError ? err.message : String(err) });
+    } finally {
+      setTesting(false);
+    }
+  }
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setBusy(true);
+    try {
+      const next = await oidcApi.put({
+        enabled: form.enabled,
+        issuer: form.issuer,
+        client_id: form.client_id,
+        client_secret: form.client_secret || undefined,
+        scopes: form.scopes,
+        expected_email: form.expected_email,
+      });
+      setCfg(next);
+      setForm({ ...next, client_secret: "" });
+      setSavedAt(Date.now());
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!cfg) {
+    return <p className="text-sm text-[color:var(--color-muted)]">Loading…</p>;
+  }
+
+  return (
+    <div className="max-w-2xl space-y-4">
+      <section>
+        <h2 className="text-base font-semibold tracking-tight mb-3">Single sign-on (OIDC)</h2>
+        <p className="text-sm text-[color:var(--color-muted)]">
+          Bind a self-hosted IdP (Authentik, Keycloak, Google, etc.) so you sign in via your OIDC provider
+          instead of the local password. Single-admin mode: only the email below can sign in via OIDC, and
+          the existing local password keeps working as a fallback.
+        </p>
+        <p className="mt-2 text-xs text-[color:var(--color-muted)]">
+          Callback URL to register with your IdP: <code className="text-[color:var(--color-fg)]">{new URL("/api/auth/oidc/callback", window.location.href).toString()}</code>
+        </p>
+      </section>
+
+      <form onSubmit={submit} className="space-y-3">
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={form.enabled} onChange={(e) => setForm({ ...form, enabled: e.target.checked })} />
+          Enable OIDC login
+        </label>
+
+        <Field label="Issuer URL">
+          <FieldInput
+            value={form.issuer}
+            placeholder="https://authentik.example.com/application/o/lumen/"
+            onChange={(e) => setForm({ ...form, issuer: e.target.value })}
+          />
+        </Field>
+
+        <Field label="Client ID">
+          <FieldInput value={form.client_id} onChange={(e) => setForm({ ...form, client_id: e.target.value })} />
+        </Field>
+
+        <Field label={cfg.has_client_secret ? "Client secret (leave blank to keep saved)" : "Client secret"}>
+          <FieldInput
+            type="password"
+            value={form.client_secret ?? ""}
+            placeholder={cfg.has_client_secret ? "•••••• (saved)" : ""}
+            onChange={(e) => setForm({ ...form, client_secret: e.target.value })}
+          />
+        </Field>
+
+        <Field label="Scopes">
+          <FieldInput value={form.scopes} onChange={(e) => setForm({ ...form, scopes: e.target.value })} />
+        </Field>
+
+        <Field label="Expected admin email">
+          <FieldInput
+            value={form.expected_email}
+            placeholder="you@example.com"
+            onChange={(e) => setForm({ ...form, expected_email: e.target.value })}
+          />
+          <p className="mt-1 text-xs text-[color:var(--color-muted)]">
+            Only this email (from the ID token's <code>email</code> claim) can sign in via OIDC. Any other identity is rejected.
+          </p>
+        </Field>
+
+        <div className="flex items-center gap-2">
+          <GhostButton type="button" disabled={!form.issuer || testing} onClick={testDiscovery}>
+            {testing ? "Testing…" : "Test discovery"}
+          </GhostButton>
+          {testResult && (
+            <span className={`text-sm ${testResult.ok ? "text-[color:var(--color-accent)]" : "text-red-500"}`}>
+              {testResult.msg}
+            </span>
+          )}
+        </div>
+
+        {error && <ErrorText message={error} />}
+        {savedAt && (
+          <p role="status" className="text-sm text-[color:var(--color-accent)]">
+            Saved at {new Date(savedAt).toLocaleTimeString()}.
+          </p>
+        )}
+        <PrimaryButton disabled={busy}>{busy ? "Saving…" : "Save"}</PrimaryButton>
+      </form>
     </div>
   );
 }

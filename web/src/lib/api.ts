@@ -111,7 +111,7 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const authApi = {
-  setupStatus: () => api<{ admin_exists: boolean }>("/api/setup-status"),
+  setupStatus: () => api<{ admin_exists: boolean; oidc_enabled: boolean }>("/api/setup-status"),
   me: () => api<User>("/api/me"),
   register: (username: string, password: string) =>
     api<User>("/api/register", {
@@ -168,6 +168,35 @@ export const settingsApi = {
     api<SettingsResponse>("/api/settings", {
       method: "PUT",
       body: JSON.stringify(s),
+    }),
+};
+
+// OIDC SSO settings — single-admin mode. expected_email must match the
+// IdP's `email` claim exactly; without it, /api/auth/oidc/callback refuses
+// any identity. client_secret is write-only over the wire (server stores
+// it AES-GCM-encrypted with the hub session secret); has_client_secret
+// tells the UI whether to render "saved" vs "unset".
+export type OIDCSettings = {
+  enabled: boolean;
+  issuer: string;
+  client_id: string;
+  client_secret?: string;
+  has_client_secret: boolean;
+  scopes: string;
+  expected_email: string;
+};
+
+export const oidcApi = {
+  get: () => api<OIDCSettings>("/api/settings/oidc"),
+  put: (s: Partial<OIDCSettings>) =>
+    api<OIDCSettings>("/api/settings/oidc", {
+      method: "PUT",
+      body: JSON.stringify(s),
+    }),
+  testDiscovery: (issuer: string) =>
+    api<{ ok: boolean; error?: string }>("/api/settings/oidc/test", {
+      method: "POST",
+      body: JSON.stringify({ issuer }),
     }),
 };
 

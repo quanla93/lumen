@@ -121,6 +121,14 @@ func Run(ctx context.Context, cfg Config) error {
 	agentPolicyHandler := hubagent.NewPolicyHandler(db, logger)
 	streamHandler := stream.New(st, logger, cfg.StreamInterval)
 	authHandlers := auth.NewHandlers(db, cfg.Secret, logger)
+	// Wire the OIDC flow against the same secret used for session JWTs +
+	// at-rest encryption of the OIDC client_secret. 10s timeout covers
+	// discovery + JWKS fetches against well-behaved IdPs.
+	authHandlers.OIDC = &auth.OIDCFlow{
+		DB:         db,
+		HubSecret:  cfg.Secret,
+		HTTPClient: &http.Client{Timeout: 10 * time.Second},
+	}
 	hostsHandlers := hosts.NewHandlers(db, st, logger)
 	settingsHandlers := settings.NewHandlers(db, logger)
 	installHandler := &install.Handler{InstallDir: cfg.InstallDir, Logger: logger}
@@ -179,6 +187,12 @@ func Run(ctx context.Context, cfg Config) error {
 	r.Post("/api/register", authHandlers.Register)
 	r.Post("/api/login", authHandlers.Login)
 	r.Post("/api/logout", authHandlers.Logout)
+	// OIDC SSO endpoints — both public because the browser arrives at
+	// /login without a session, gets bounced to the IdP, then comes back
+	// via /callback also without a session. The callback handler mints
+	// the lumen_session cookie on success.
+	r.Get("/api/auth/oidc/login", authHandlers.LoginOIDC)
+	r.Get("/api/auth/oidc/callback", authHandlers.CallbackOIDC)
 
 	// Auth + Hosts CRUD (session required)
 	r.Group(func(r chi.Router) {
@@ -199,6 +213,10 @@ func Run(ctx context.Context, cfg Config) error {
 
 		r.Get("/api/settings", settingsHandlers.Get)
 		r.Put("/api/settings", settingsHandlers.Put)
+
+		r.Get("/api/settings/oidc", authHandlers.OIDCSettingsGet)
+		r.Put("/api/settings/oidc", authHandlers.OIDCSettingsPut)
+		r.Post("/api/settings/oidc/test", authHandlers.OIDCTestDiscovery)
 
 		r.Get("/api/admin/hub-stats", hubStatsHandler.ServeHTTP)
 

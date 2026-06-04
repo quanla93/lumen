@@ -19,20 +19,93 @@ type Handlers struct {
 	DB     *sql.DB
 	Secret []byte
 	Logger *slog.Logger
+	OIDC   *OIDCFlow // nil when OIDC compiled-out / not wired; SetupStatus exposes enabled=false
 }
 
 func NewHandlers(db *sql.DB, secret []byte, logger *slog.Logger) *Handlers {
 	return &Handlers{DB: db, Secret: secret, Logger: logger}
 }
 
-// GET /api/setup-status
+// GET /api/setup-status — also reports whether OIDC is configured so the
+// login screen knows to show the "Sign in with SSO" button before any
+// session exists.
 func (h *Handlers) SetupStatus(w http.ResponseWriter, r *http.Request) {
 	exists, err := HasAny(r.Context(), h.DB)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "lookup failed")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"admin_exists": exists})
+	oidcEnabled := false
+	if h.OIDC != nil {
+		cfg, _ := LoadOIDCConfig(r.Context(), h.DB, h.Secret, false)
+		oidcEnabled = cfg.Enabled && cfg.Issuer != "" && cfg.ClientID != "" && cfg.ExpectedEmail != ""
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"admin_exists": exists,
+		"oidc_enabled": oidcEnabled,
+	})
+}
+
+// GET /api/auth/oidc/login — redirects to the IdP's authorization URL,
+// setting an encrypted state cookie the browser will round-trip back to
+// /api/auth/oidc/callback.
+func (h *Handlers) LoginOIDC(w http.ResponseWriter, r *http.Request) {
+	if h.OIDC == nil {
+		writeJSONError(w, http.StatusServiceUnavailable, "OIDC not configured")
+		return
+	}
+	url, err := h.OIDC.LoginRedirect(r.Context(), w, r)
+	if err != nil {
+		h.Logger.Warn("oidc login redirect failed", "err", err)
+		http.Redirect(w, r, "/login?sso_error="+errToQuery(err), http.StatusSeeOther)
+		return
+	}
+	http.Redirect(w, r, url, http.StatusSeeOther)
+}
+
+// GET /api/auth/oidc/callback — the IdP redirects the browser here with
+// ?code=...&state=.... We verify the code+state+ID-token, then mint the
+// same session cookie that password login uses and redirect to the app.
+func (h *Handlers) CallbackOIDC(w http.ResponseWriter, r *http.Request) {
+	if h.OIDC == nil {
+		writeJSONError(w, http.StatusServiceUnavailable, "OIDC not configured")
+		return
+	}
+	if errQ := r.URL.Query().Get("error"); errQ != "" {
+		desc := r.URL.Query().Get("error_description")
+		h.Logger.Info("oidc callback: provider returned error", "error", errQ, "desc", desc)
+		http.Redirect(w, r, "/login?sso_error="+errToQuery(errors.New(errQ+": "+desc)), http.StatusSeeOther)
+		return
+	}
+	_, err := h.OIDC.HandleCallback(r.Context(), w, r)
+	if err != nil {
+		h.Logger.Warn("oidc callback failed", "err", err)
+		http.Redirect(w, r, "/login?sso_error="+errToQuery(err), http.StatusSeeOther)
+		return
+	}
+	u, err := GetSingleAdmin(r.Context(), h.DB)
+	if err != nil {
+		h.Logger.Error("oidc callback: no local admin to bind session to", "err", err)
+		http.Redirect(w, r, "/login?sso_error=no-admin", http.StatusSeeOther)
+		return
+	}
+	if err := h.issueAndSetCookie(w, r, u.ID); err != nil {
+		h.Logger.Error("oidc callback: issue session failed", "err", err)
+		http.Redirect(w, r, "/login?sso_error=session", http.StatusSeeOther)
+		return
+	}
+	h.Logger.Info("oidc login ok", "uid", u.ID, "user", u.Username)
+	http.Redirect(w, r, "/", http.StatusSeeOther)
+}
+
+func errToQuery(err error) string {
+	// 1-line, URL-safe enough — frontend treats it as a hint only and renders
+	// its own message. Long IdP errors get truncated.
+	s := err.Error()
+	if len(s) > 200 {
+		s = s[:200]
+	}
+	return strings.ReplaceAll(strings.ReplaceAll(s, "\n", " "), "&", "%26")
 }
 
 // POST /api/register — first-admin only. 403 once any user exists.

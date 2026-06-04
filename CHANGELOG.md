@@ -6,6 +6,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-06-04
+
+**Single sign-on via OIDC.** First v0.7 feature: bind a self-hosted IdP (Authentik, Keycloak, Google, Okta, Entra) so the admin signs in via OIDC instead of (or in addition to) the local password. Single-admin scope — exactly one email from the ID token's `email` claim is allowed, matched against `Settings → SSO → Expected admin email`; everyone else is rejected at the callback regardless of IdP authentication outcome. The local password keeps working as a fallback so OIDC misconfiguration can't lock the admin out.
+
+### Added
+
+- **`/api/auth/oidc/{login,callback}` endpoints** in `internal/hub/auth/handlers.go` driving a standard OAuth 2.0 authorization-code flow against the configured IdP. JWKS-based ID token verification via [`github.com/coreos/go-oidc/v3`](https://github.com/coreos/go-oidc) (new dep), with state + nonce carried across the redirect in a 5-minute AES-GCM-encrypted `lumen_oidc_state` cookie.
+- **`/api/settings/oidc` GET/PUT + `/api/settings/oidc/test`** session-protected handlers in the auth package. UI never reads the plaintext client secret back over the wire — `has_client_secret: true` is the only signal that one exists. Empty `client_secret` on PUT means "leave saved value untouched".
+- **AES-256-GCM at-rest encryption for the OIDC client secret** (`internal/hub/auth/crypto.go`). Key derived via `SHA-256("lumen/oidc/v1" || hub_secret)` so the same `LUMEN_HUB_SECRET` reused as a JWT signing key produces a different AEAD key. **Requires `LUMEN_HUB_SECRET` to be set to a stable hex value** — without it the saved client secret becomes unreadable after restart.
+- **Settings → SSO tab** with enable toggle, issuer URL, client ID, client secret (write-only), scopes (defaults to `openid email profile`), expected admin email, and a "Test discovery" button that hits the issuer's `/.well-known/openid-configuration` before saving.
+- **Login page** renders **Sign in with SSO** next to the password form when `setup-status` reports OIDC enabled. `?sso_error=` query params from the callback surface as inline error text on the login form (then cleaned from the URL so a refresh doesn't repeat).
+- **`docs/configure/sso.md`** — single-admin scope notes, the canonical callback URL, end-to-end flow diagram, and per-provider recipes for Authentik / Keycloak / Google plus a troubleshooting section.
+
+### Changed
+
+- **`GET /api/setup-status`** now also returns `oidc_enabled`. The frontend uses it to conditionally render the SSO button without an extra round-trip.
+- **JWT signing key reuse**: the same `LUMEN_HUB_SECRET` byte sequence now keys three things — session JWT HMAC, OIDC state cookie AEAD, OIDC client-secret-at-rest AEAD. Each derives a distinct key via a labelled hash, so cross-protocol replays are impossible, but operators with auto-rotated secrets need to be aware that rotation invalidates saved OIDC configs.
+
+### Notes
+
+- **Multi-user / read-only SSO** stays on the v1.0+ roadmap. Today's single-admin model is enough for homelab + small-team deployments; multi-user implies role columns + admin promote UI + role-aware OIDC group mapping, all of which is out of v0.7.0 scope.
+- **SAML 2.0** is also deferred. The vast majority of self-hosted IdPs speak OIDC natively; SAML support would land as a separate connector if a user actually asks.
+
 ## [0.6.5.9] - 2026-06-04
 
 **Use lxcfs MemTotal as the divisor when `/host-cgroup/memory.max` reads "max".** v0.6.5.8's startup diagnostic on the user's Docker-in-LXC agent showed `host_cgroup_mounted=true` and `hcv2_cur=688181248` (the LXC's real accumulated usage, 688 MB), but `hcv2_max=0`. Inside the LXC's own cgroup namespace, the namespace's root cgroup reports `memory.max=max` because the actual 4 GiB limit lives on the parent (Proxmox's `lxc.scope/<ctid>`) which the namespace hides. v0.6.5.8's `limit > 0 && limit < hostTotal` check then rejected the unlimited number and `Memory()` returned 0 — strictly worse than v0.6.5.7. lxcfs's `MemTotal` (which gopsutil reads as `v.Total`) IS that hidden limit, so it's the right denominator.
