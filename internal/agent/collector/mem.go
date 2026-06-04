@@ -12,28 +12,41 @@ import (
 
 // Memory returns (RAM used %, Swap used %).
 //
-// When /proc/meminfo is bind-mounted from the host (LXC's lxcfs view), we
-// parse it directly and ignore gopsutil. gopsutil v4's mem.VirtualMemory
-// mixes /sys/fs/cgroup/memory.current into its Available calculation, which
-// on Docker-in-LXC silently substitutes the Docker container's own RSS
-// (a few MB) for the LXC's view (hundreds of MB) — reported as RAM% ≈ 0.06%
-// against a 4 GiB cap. The bind-mount IS the LXC view; trust it. v0.6.5.7
-// is the first release where this actually shipped — earlier 0.6.5.x patches
-// thought gopsutil was honouring /proc/meminfo and were debugging the wrong
-// thing.
+// The deployment shape that drove every v0.6.5.x patch is Docker-in-LXC:
+// the agent runs in a Docker container running inside a Proxmox LXC.
+// What the operator wants to see is the LXC's RAM% — exactly what Proxmox
+// shows. Three views are available, in priority order:
 //
-// Without a bind-mount, fall through to gopsutil + cgroup override (still
-// useful for Docker `mem_limit:`-only setups).
+//  1. **/host-cgroup bind-mount** — the operator mounts the LXC's
+//     /sys/fs/cgroup into the agent container as /host-cgroup:ro and we
+//     read memory.current / memory.max directly. This is the only path
+//     that works for Docker-in-LXC, because lxcfs serves /proc/meminfo
+//     according to the *caller's* cgroup; from inside Docker the caller's
+//     cgroup is Docker's, and lxcfs returns a near-empty view (~0.18%).
+//
+//  2. **/proc/meminfo bind-mount via lxcfs** — works on native LXC (no
+//     Docker), where the agent is in the LXC's cgroup so lxcfs's
+//     /proc/meminfo numbers ARE the LXC view. gopsutil is bypassed
+//     because gopsutil v4 mixes /sys/fs/cgroup/memory.current into
+//     Available and corrupts the lxcfs numbers.
+//
+//  3. **gopsutil + cgroup override** — bare-host Docker with `mem_limit:`,
+//     or no container at all. Existing behaviour.
 func Memory(_ context.Context) (ramPct, swapPct float64, err error) {
-	if procMeminfoIsBindMounted() {
-		if pct, ok := procMeminfoRamPct(); ok {
-			ramPct = pct
+	v, vErr := mem.VirtualMemory()
+	if vErr != nil {
+		return 0, 0, fmt.Errorf("mem.VirtualMemory: %w", vErr)
+	}
+	switch {
+	case hostCgroupAvailable():
+		if p, ok := hostCgroupRAMPct(v.Total); ok {
+			ramPct = p
 		}
-	} else {
-		v, vErr := mem.VirtualMemory()
-		if vErr != nil {
-			return 0, 0, fmt.Errorf("mem.VirtualMemory: %w", vErr)
+	case procMeminfoIsBindMounted():
+		if p, ok := procMeminfoRamPct(); ok {
+			ramPct = p
 		}
+	default:
 		ramPct = v.UsedPercent
 		if v.Available > 0 && v.Total > 0 {
 			ramPct = float64(v.Total-v.Available) / float64(v.Total) * 100
@@ -50,6 +63,43 @@ func Memory(_ context.Context) (ramPct, swapPct float64, err error) {
 		swapPct = p
 	}
 	return ramPct, swapPct, nil
+}
+
+// hostCgroupAvailable returns true when the operator bind-mounted the
+// containing cgroup tree (LXC's /sys/fs/cgroup, in the Docker-in-LXC case)
+// to /host-cgroup. Detection is "does a known memory file exist there",
+// cheap and unambiguous.
+func hostCgroupAvailable() bool {
+	if _, err := os.Stat("/host-cgroup/memory.current"); err == nil {
+		return true
+	}
+	if _, err := os.Stat("/host-cgroup/memory/memory.usage_in_bytes"); err == nil {
+		return true
+	}
+	return false
+}
+
+// hostCgroupRAMPct reads the bind-mounted LXC cgroup view (preferred) or
+// returns false. Same accounting style as cgroupRAMPct: subtract page cache
+// from current so the number matches what Proxmox displays.
+func hostCgroupRAMPct(hostTotal uint64) (float64, bool) {
+	if limit, ok := readUint("/host-cgroup/memory.max"); ok && limit > 0 && limit < hostTotal {
+		current, ok := readUint("/host-cgroup/memory.current")
+		if !ok {
+			return 0, false
+		}
+		cache := readStatKey("/host-cgroup/memory.stat", "file")
+		return pct(safeSub(current, cache), limit), true
+	}
+	if limit, ok := readUint("/host-cgroup/memory/memory.limit_in_bytes"); ok && limit > 0 && limit < hostTotal {
+		usage, ok := readUint("/host-cgroup/memory/memory.usage_in_bytes")
+		if !ok {
+			return 0, false
+		}
+		cache := readStatKey("/host-cgroup/memory/memory.stat", "cache")
+		return pct(safeSub(usage, cache), limit), true
+	}
+	return 0, false
 }
 
 // procMeminfoRamPct reads /proc/meminfo (the bind-mounted lxcfs view on
@@ -128,29 +178,60 @@ func MemoryDiagnostics() string {
 	}
 	memSample := ""
 	if data, err := os.ReadFile("/proc/meminfo"); err == nil {
-		lines := strings.SplitN(string(data), "\n", 3)
-		if len(lines) > 0 {
-			memSample = lines[0]
+		// First 3 KEY lines (Total/Free/Available) is enough to verify whether
+		// lxcfs is giving us the LXC view or the Docker-cgroup-scoped view.
+		var want = []string{"MemTotal:", "MemFree:", "MemAvailable:"}
+		var picked []string
+		for _, line := range strings.Split(string(data), "\n") {
+			for _, w := range want {
+				if strings.HasPrefix(line, w) {
+					picked = append(picked, strings.Join(strings.Fields(line), " "))
+				}
+			}
+			if len(picked) == len(want) {
+				break
+			}
 		}
+		memSample = strings.Join(picked, "; ")
 	}
 	cgV2Max, _ := readUint("/sys/fs/cgroup/memory.max")
 	cgV2Cur, _ := readUint("/sys/fs/cgroup/memory.current")
 	cgV1Max, _ := readUint("/sys/fs/cgroup/memory/memory.limit_in_bytes")
 	cgV1Cur, _ := readUint("/sys/fs/cgroup/memory/memory.usage_in_bytes")
+	hcAvail := hostCgroupAvailable()
+	hcV2Max, _ := readUint("/host-cgroup/memory.max")
+	hcV2Cur, _ := readUint("/host-cgroup/memory.current")
+	hcV1Max, _ := readUint("/host-cgroup/memory/memory.limit_in_bytes")
+	hcV1Cur, _ := readUint("/host-cgroup/memory/memory.usage_in_bytes")
 	return fmt.Sprintf(
-		"meminfo_bindmount=%v mountinfo_bytes=%d meminfo_first_line=%q "+
-			"cgv2_max=%d cgv2_cur=%d cgv1_max=%d cgv1_cur=%d",
+		"meminfo_bindmount=%v mountinfo_bytes=%d meminfo=%q "+
+			"cgv2_max=%d cgv2_cur=%d cgv1_max=%d cgv1_cur=%d "+
+			"host_cgroup_mounted=%v hcv2_max=%d hcv2_cur=%d hcv1_max=%d hcv1_cur=%d",
 		bind, miSize, memSample, cgV2Max, cgV2Cur, cgV1Max, cgV1Cur,
+		hcAvail, hcV2Max, hcV2Cur, hcV1Max, hcV1Cur,
 	)
 }
 
 // MemoryLimitStatus returns a non-empty warning when the agent runs inside a
-// cgroup (Docker, k8s, LXC) without either a memory limit OR a bind-mounted
-// /proc/meminfo to give it the right view. Either of those is enough to get
-// container-scoped RAM%; with neither, the agent reports the kernel host's
-// total, which on Docker-in-LXC/VM setups is almost never what the operator
-// wants. Empty string means the setup is already correct.
+// cgroup (Docker, k8s, LXC) without any of the signals it needs to report a
+// useful RAM%. The signals, in preference order:
+//
+//  1. /host-cgroup bind-mount — only path that works for Docker-in-LXC.
+//  2. /proc/meminfo bind-mount via lxcfs — works for native LXC.
+//  3. A real cgroup memory limit on the agent's own cgroup — works for
+//     bare-host Docker with `mem_limit:`.
+//
+// With none of those, the agent reports the kernel host's total, which is
+// almost never what the operator wants. Empty string means the setup is
+// already correct.
 func MemoryLimitStatus() string {
+	if hostCgroupAvailable() {
+		return ""
+	}
+	if procMeminfoIsBindMounted() {
+		return ""
+	}
+
 	inCgroupV2 := false
 	if _, ok := readUint("/sys/fs/cgroup/memory.current"); ok {
 		inCgroupV2 = true
@@ -165,19 +246,16 @@ func MemoryLimitStatus() string {
 		return ""
 	}
 
-	if procMeminfoIsBindMounted() {
-		return ""
-	}
 	if inCgroupV2 {
 		if _, hasLimit := readUint("/sys/fs/cgroup/memory.max"); hasLimit {
 			return ""
 		}
-		return "RAM% will use the kernel host's total — bind-mount /proc/meminfo:/proc/meminfo:ro from the host (preferred for Docker-in-LXC), or set mem_limit (Docker) / lxc.cgroup2.memory.max (LXC)"
+		return "RAM% will use the kernel host's total — for Docker-in-LXC bind-mount /sys/fs/cgroup:/host-cgroup:ro from the LXC (matches Proxmox UI); for bare-host Docker set mem_limit; for native LXC bind-mount /proc/meminfo:/proc/meminfo:ro"
 	}
 	if _, hasLimit := readUint("/sys/fs/cgroup/memory/memory.limit_in_bytes"); hasLimit {
 		return ""
 	}
-	return "RAM% will use the kernel host's total — bind-mount /proc/meminfo:/proc/meminfo:ro from the host, or set a container memory limit"
+	return "RAM% will use the kernel host's total — bind-mount /sys/fs/cgroup:/host-cgroup:ro from the host (Docker-in-LXC), bind-mount /proc/meminfo:/proc/meminfo:ro (native LXC), or set a container memory limit"
 }
 
 // procMeminfoIsBindMounted returns true when /proc/meminfo appears as its own

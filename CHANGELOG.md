@@ -6,6 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.6.5.8] - 2026-06-04
+
+**Docker-in-LXC RAM% actually matches Proxmox now.** v0.6.5.7 trusted the bind-mounted `/proc/meminfo` but field verification showed lxcfs is cgroup-aware on the read path: when the agent reads `/proc/meminfo` from inside Docker, lxcfs serves numbers computed against the Docker container's *own* cgroup (a few MB used out of 4 GiB ≈ 0.18%) — not the LXC's view. The fix needs a different signal: read the LXC's cgroup files directly. New `/sys/fs/cgroup:/host-cgroup:ro` bind-mount in the agent compose exposes the LXC's own `memory.current` and `memory.max` to the agent regardless of which nested cgroup it's running in.
+
+### Added
+
+- **`hostCgroupRAMPct` + `hostCgroupAvailable` in `internal/agent/collector/mem.go`** — when `/host-cgroup/memory.{max,current}` (v2) or `/host-cgroup/memory/memory.{limit,usage}_in_bytes` (v1) exist, compute RAM% from those (cache-subtracted, matches Proxmox accounting). This is now the first branch in `Memory()`'s priority chain.
+- **`/sys/fs/cgroup:/host-cgroup:ro` in `web/src/components/TokenReveal.tsx`** generated agent compose template, with explanatory comment on why each of the three mounts (`cpuinfo`, `meminfo`, `cgroup`) is there.
+- **Startup `memory diagnostics` log** now also reports `host_cgroup_mounted` + the four cgroup numbers (v1+v2 max+current) seen at `/host-cgroup`, so an operator can confirm the bind-mount in one log line.
+
+### Changed
+
+- **`MemoryLimitStatus` warning** updated to name all three remediation paths (Docker-in-LXC → host-cgroup; native LXC → /proc/meminfo; bare-host Docker → mem_limit) instead of only the first.
+- **`docs/install/agent-docker.md`** all four compose snippets, the `docker run` example, and the reference table updated to include the host-cgroup mount; troubleshooting section rewritten with the actual cause.
+
+### Notes
+
+- **Existing v0.6.5.x deployments**: edit `/opt/lumen-agent/docker-compose.yml` to add `- /sys/fs/cgroup:/host-cgroup:ro` under `volumes:`, then `docker compose pull && docker compose up -d --force-recreate lumen-agent`. The two existing `/proc/*` mounts can stay (no-op on Docker-in-LXC, still useful on native LXC and bare-host).
+
 ## [0.6.5.7] - 2026-06-03
 
 **RAM% on Docker-in-LXC actually works now.** v0.6.5.4–v0.6.5.6 all assumed gopsutil's `mem.VirtualMemory()` honoured the bind-mounted `/proc/meminfo` (lxcfs view). The startup diagnostic added in v0.6.5.6 proved it does not: gopsutil v4 mixes `/sys/fs/cgroup/memory.current` into its Available calculation, which on Docker-in-LXC is the Docker container's own RSS (2.1 MB out of 4 GiB ≈ 0.05%) — not the LXC's view. The bind-mount file itself reads correctly: `(MemTotal - MemAvailable) / MemTotal = (4194304 - 3956832) / 4194304 ≈ 5.66%`, matching Proxmox. Skip gopsutil for the RAM path when the bind-mount is present and parse `/proc/meminfo` directly.

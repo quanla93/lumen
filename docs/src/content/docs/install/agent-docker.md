@@ -81,10 +81,11 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
 
       # Required for accurate RAM% on Docker-in-LXC or Docker-in-VM
-      # (no-op on bare Docker). Without this, the agent sees the kernel
-      # host's memory, not the LXC/VM it runs in.
-      - /proc/meminfo:/proc/meminfo:ro
+      # (no-op on bare Docker). Without these, the agent reports a
+      # near-zero RAM% (its own RSS) instead of the LXC's view.
       - /proc/cpuinfo:/proc/cpuinfo:ro
+      - /proc/meminfo:/proc/meminfo:ro
+      - /sys/fs/cgroup:/host-cgroup:ro
 
 volumes:
   lumen-agent-data:
@@ -134,7 +135,8 @@ The host card should appear in the dashboard within one collection interval. The
 | `LUMEN_AGENT_BUFFER_DRAIN` | recommended | Number of buffered frames replayed per successful tick. |
 | `lumen-agent-data:/data` | recommended | Named volume that keeps the offline buffer across updates. |
 | `/var/run/docker.sock` mount | optional | Enables Docker container telemetry from this target host. |
-| `/proc/meminfo` + `/proc/cpuinfo` mounts | recommended | Forward the host's view of memory and CPU into the agent container. Required for accurate RAM% on Docker-in-LXC and Docker-in-VM; no-op on bare Docker. |
+| `/proc/cpuinfo` + `/proc/meminfo` mounts | recommended | Forward the host's view of CPU + memory. Required for accurate metrics on Docker-in-LXC and Docker-in-VM; no-op on bare Docker. |
+| `/sys/fs/cgroup` → `/host-cgroup:ro` mount | required on Docker-in-LXC | Lets the agent read the LXC's `memory.current` / `memory.max` directly — the only path that matches Proxmox's RAM%. Without it, lxcfs serves `/proc/meminfo` against the Docker container's own (tiny) cgroup and RAM% reports near zero. No-op on bare Docker. |
 
 ## Common compose variants
 
@@ -157,8 +159,9 @@ services:
       LUMEN_AGENT_BUFFER_PATH: "/data/buffer.db"
     volumes:
       - lumen-agent-data:/data
-      - /proc/meminfo:/proc/meminfo:ro
       - /proc/cpuinfo:/proc/cpuinfo:ro
+      - /proc/meminfo:/proc/meminfo:ro
+      - /sys/fs/cgroup:/host-cgroup:ro
 
 volumes:
   lumen-agent-data:
@@ -184,8 +187,9 @@ services:
     volumes:
       - lumen-agent-data:/data
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - /proc/meminfo:/proc/meminfo:ro
       - /proc/cpuinfo:/proc/cpuinfo:ro
+      - /proc/meminfo:/proc/meminfo:ro
+      - /sys/fs/cgroup:/host-cgroup:ro
 
 volumes:
   lumen-agent-data:
@@ -321,8 +325,9 @@ docker run -d \
   --user 0:0 \
   -v lumen-agent-data:/data \
   -v /var/run/docker.sock:/var/run/docker.sock:ro \
-  -v /proc/meminfo:/proc/meminfo:ro \
   -v /proc/cpuinfo:/proc/cpuinfo:ro \
+  -v /proc/meminfo:/proc/meminfo:ro \
+  -v /sys/fs/cgroup:/host-cgroup:ro \
   -e LUMEN_HUB_URL=https://lumen.example.lan \
   -e LUMEN_AGENT_TOKEN=lum_REPLACE_WITH_UI_TOKEN \
   -e LUMEN_AGENT_HOST=my-server \
@@ -350,4 +355,4 @@ If the container was created with `docker run`, update means removing and recrea
 : Make sure the compose file includes the `lumen-agent-data:/data` volume and `LUMEN_AGENT_BUFFER_PATH=/data/buffer.db` so the offline buffer survives container recreation.
 
 **RAM% shows the wrong number on Docker-in-LXC / Docker-in-VM**
-: Without the `/proc/meminfo:/proc/meminfo:ro` and `/proc/cpuinfo:/proc/cpuinfo:ro` bind mounts, a Docker container does not inherit its LXC's or VM's `/proc` view — the agent ends up reading the kernel host's memory total instead. Add those two mounts and recreate the container with `docker compose up -d`. The agent also logs a single `Warn` at startup naming this exact fix when it detects the bad state.
+: Three bind mounts cooperate here, and Docker-in-LXC needs all three: `/proc/cpuinfo`, `/proc/meminfo`, and `/sys/fs/cgroup` (mounted at `/host-cgroup:ro`). The `/host-cgroup` mount is what gives the agent the LXC's view of total RAM; without it, the agent reads the Docker container's own cgroup and reports a near-zero RAM% (just the agent's RSS). Add the three mounts and recreate the container with `docker compose up -d`. The agent logs `memory diagnostics ... host_cgroup_mounted=true` at startup when the setup is correct, and `MemoryLimitStatus` emits a `Warn` line naming the missing mount when it isn't.

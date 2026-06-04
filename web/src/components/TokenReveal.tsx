@@ -76,12 +76,20 @@ export function TokenReveal({
       LUMEN_AGENT_BUFFER_DRAIN: "10"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      # Forward the host's view of memory/CPU into the container. Required
-      # for accurate RAM% when running Docker inside an LXC or VM, where
-      # the container's default /proc/meminfo otherwise leaks the kernel
-      # host's RAM total. No-op on a bare Docker host.
-      - /proc/meminfo:/proc/meminfo:ro
+      # /proc/cpuinfo: forward the host's per-core info (LXC's lxcfs view)
+      # so the agent reports the LXC's core count, not the kernel host's.
       - /proc/cpuinfo:/proc/cpuinfo:ro
+      # /proc/meminfo: lxcfs view of MemTotal/MemAvailable. Needed for
+      # bare-host Docker and native LXC; on Docker-in-LXC the next line
+      # (host-cgroup) takes precedence because lxcfs serves /proc/meminfo
+      # for the *caller's* cgroup — from inside Docker that's empty.
+      - /proc/meminfo:/proc/meminfo:ro
+      # /sys/fs/cgroup: the LXC's own cgroup tree exposed read-only so the
+      # agent can read memory.current/memory.max for the LXC (matches what
+      # Proxmox shows). Without this on Docker-in-LXC, RAM% reports the
+      # Docker container's tiny RSS (~0.1%). No-op on bare-host Docker:
+      # the mount succeeds but the priority chain falls through.
+      - /sys/fs/cgroup:/host-cgroup:ro
       - lumen-agent-data:/data
 
 volumes:
