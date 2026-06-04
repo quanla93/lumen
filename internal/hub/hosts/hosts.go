@@ -58,6 +58,9 @@ type Host struct {
 	// silenced; future = alerts engine skips event+notify for this host
 	// until the time passes. Set via /api/hosts/{id}/silence.
 	SilencedUntil sql.NullInt64
+	// PublicVisible flags the host as opt-in for the unauthenticated
+	// /status page. Default false. Toggled per-host via Settings → Status.
+	PublicVisible bool
 }
 
 // newToken produces a fresh plaintext token + its SHA-256 hex hash.
@@ -97,7 +100,7 @@ func validateName(name string) error {
 const hostColumns = `id, name, created_at, last_seen_at,
 	system_os, system_hostname, system_primary_ip, system_kernel,
 	system_arch, system_cpu_model, system_uptime_seconds, system_virt_type,
-	agent_version, metadata_updated_at, silenced_until`
+	agent_version, metadata_updated_at, silenced_until, public_visible`
 
 func scanHost(scanner interface{ Scan(dest ...any) error }) (Host, error) {
 	var h Host
@@ -105,9 +108,48 @@ func scanHost(scanner interface{ Scan(dest ...any) error }) (Host, error) {
 		&h.ID, &h.Name, &h.CreatedAt, &h.LastSeenAt,
 		&h.SystemOS, &h.SystemHostname, &h.SystemPrimaryIP, &h.SystemKernel,
 		&h.SystemArch, &h.SystemCPUModel, &h.SystemUptimeSeconds, &h.SystemVirtType,
-		&h.AgentVersion, &h.MetadataUpdatedAt, &h.SilencedUntil,
+		&h.AgentVersion, &h.MetadataUpdatedAt, &h.SilencedUntil, &h.PublicVisible,
 	)
 	return h, err
+}
+
+// SetPublicVisible toggles the per-host /status page opt-in. Returns
+// ErrNotFound if no row matches.
+func SetPublicVisible(ctx context.Context, db *sql.DB, id int64, visible bool) error {
+	res, err := db.ExecContext(ctx,
+		`UPDATE hosts SET public_visible = ? WHERE id = ?`, visible, id)
+	if err != nil {
+		return fmt.Errorf("update public_visible: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// ListPublicVisible returns hosts opted into the public status page,
+// ordered by name. Used by the unauthenticated /api/public/status
+// handler so a single indexed query yields exactly what's exposed.
+func ListPublicVisible(ctx context.Context, db *sql.DB) ([]Host, error) {
+	rows, err := db.QueryContext(ctx,
+		`SELECT `+hostColumns+` FROM hosts WHERE public_visible = 1 ORDER BY name`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Host
+	for rows.Next() {
+		h, err := scanHost(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, h)
+	}
+	return out, rows.Err()
 }
 
 // SetSilence stores silenced_until on the host. Pass a zero time to

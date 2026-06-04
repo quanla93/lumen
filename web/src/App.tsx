@@ -10,6 +10,7 @@ import { Alerts } from "@/components/Alerts";
 import { CenterCard } from "@/components/CenterCard";
 import { PrefsApply } from "@/components/PrefsApply";
 import { PrefsProvider } from "@/lib/userPrefs";
+import { StatusPage } from "@/components/StatusPage";
 import { useI18n } from "@/i18n/useI18n";
 
 type View =
@@ -18,16 +19,31 @@ type View =
   | { kind: "login" }
   | { kind: "app"; user: User; tab: Tab; detailHost: string | null };
 
+// Public /status short-circuits the auth bootstrap entirely so an
+// unauthenticated visitor never hits /api/setup-status. Plain pathname
+// check is intentional — Lumen doesn't ship a router and adding one for
+// a single sibling route would be heavier than this branch.
+function isPublicStatusRoute() {
+  return typeof window !== "undefined" && window.location.pathname.replace(/\/$/, "") === "/status";
+}
+
 export default function App() {
   const { t } = useI18n();
   const [view, setView] = useState<View>({ kind: "loading" });
 
   useEffect(() => {
+    if (isPublicStatusRoute()) {
+      return;
+    }
     bootstrap().then(setView).catch((err) => {
       console.error("bootstrap failed", err);
       setView({ kind: "login" });
     });
   }, []);
+
+  if (isPublicStatusRoute()) {
+    return <StatusPage />;
+  }
 
   switch (view.kind) {
     case "loading":

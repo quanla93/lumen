@@ -39,14 +39,18 @@ type hostView struct {
 	// value (lazy-expired silence) is still surfaced as null since the
 	// alert engine treats it as expired too.
 	SilencedUntil *string `json:"silenced_until,omitempty"`
+	// PublicVisible is true when the operator opted this host into the
+	// unauthenticated /status page. Default false on new hosts.
+	PublicVisible bool `json:"public_visible"`
 }
 
 func toView(h Host, tags []Tag) hostView {
 	v := hostView{
-		ID:        h.ID,
-		Name:      h.Name,
-		CreatedAt: h.CreatedAt.UTC().Format("2006-01-02T15:04:05Z"),
-		Tags:      map[string]string{},
+		ID:            h.ID,
+		Name:          h.Name,
+		CreatedAt:     h.CreatedAt.UTC().Format("2006-01-02T15:04:05Z"),
+		Tags:          map[string]string{},
+		PublicVisible: h.PublicVisible,
 	}
 	for _, t := range tags {
 		v.Tags[t.Key] = t.Value
@@ -348,6 +352,33 @@ func (h *Handlers) Unsilence(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		h.Logger.Error("clear silence failed", "err", err, "host_id", id)
+		writeJSONError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// PUT /api/hosts/{id}/public-visible — toggles whether the host appears
+// on the unauthenticated /status page. Body: {"public_visible": true|false}.
+func (h *Handlers) SetPublicVisibility(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	var req struct {
+		PublicVisible bool `json:"public_visible"`
+	}
+	if err := decode(r, &req); err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := SetPublicVisible(r.Context(), h.DB, id, req.PublicVisible); err != nil {
+		if errors.Is(err, ErrNotFound) {
+			writeJSONError(w, http.StatusNotFound, "host not found")
+			return
+		}
+		h.Logger.Error("set public_visible failed", "err", err, "host_id", id)
 		writeJSONError(w, http.StatusInternalServerError, "internal error")
 		return
 	}

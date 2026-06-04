@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Server, User as UserIcon, Gauge, Archive, BarChart3, ScrollText, Activity, KeyRound, Trash2, Copy, Check, Palette, Shield } from "lucide-react";
+import { Server, User as UserIcon, Gauge, Archive, BarChart3, ScrollText, Activity, KeyRound, Trash2, Copy, Check, Palette, Shield, Globe } from "lucide-react";
 import {
   hostsApi,
   authApi,
@@ -7,6 +7,7 @@ import {
   hubStatsApi,
   apiKeysApi,
   oidcApi,
+  publicStatusApi,
   ApiError,
   type Host,
   type User,
@@ -20,6 +21,7 @@ import {
   type ReduceMotion,
   type Density,
   type OIDCSettings,
+  type PublicStatusConfig,
 } from "@/lib/api";
 import { relativeTime } from "@/lib/time";
 import { copyToClipboard } from "@/lib/clipboard";
@@ -30,7 +32,7 @@ import { useConfirm } from "@/components/ConfirmDialog";
 import { usePrefs } from "@/lib/userPrefs";
 import { useI18n } from "@/i18n/useI18n";
 
-type SettingsTab = "hosts" | "account" | "display" | "runtime" | "retention" | "downsample" | "logs" | "hub-status" | "api-keys" | "sso";
+type SettingsTab = "hosts" | "account" | "display" | "runtime" | "retention" | "downsample" | "logs" | "hub-status" | "api-keys" | "sso" | "status-page";
 
 const TABS: {
   id: SettingsTab;
@@ -44,19 +46,21 @@ const TABS: {
     | "settings.tabs.logs"
     | "settings.tabs.hubStatus"
     | "settings.tabs.apiKeys"
-    | "settings.tabs.sso";
+    | "settings.tabs.sso"
+    | "settings.tabs.statusPage";
   icon: typeof Server;
 }[] = [
-  { id: "hosts",      labelKey: "settings.tabs.hosts",      icon: Server },
-  { id: "account",    labelKey: "settings.tabs.account",    icon: UserIcon },
-  { id: "display",    labelKey: "settings.tabs.display",    icon: Palette },
-  { id: "runtime",    labelKey: "settings.tabs.runtime",    icon: Gauge },
-  { id: "retention",  labelKey: "settings.tabs.retention",  icon: Archive },
-  { id: "downsample", labelKey: "settings.tabs.downsample", icon: BarChart3 },
-  { id: "logs",       labelKey: "settings.tabs.logs",       icon: ScrollText },
-  { id: "hub-status", labelKey: "settings.tabs.hubStatus",  icon: Activity },
-  { id: "api-keys",   labelKey: "settings.tabs.apiKeys",    icon: KeyRound },
-  { id: "sso",        labelKey: "settings.tabs.sso",        icon: Shield },
+  { id: "hosts",       labelKey: "settings.tabs.hosts",      icon: Server },
+  { id: "account",     labelKey: "settings.tabs.account",    icon: UserIcon },
+  { id: "display",     labelKey: "settings.tabs.display",    icon: Palette },
+  { id: "runtime",     labelKey: "settings.tabs.runtime",    icon: Gauge },
+  { id: "retention",   labelKey: "settings.tabs.retention",  icon: Archive },
+  { id: "downsample",  labelKey: "settings.tabs.downsample", icon: BarChart3 },
+  { id: "logs",        labelKey: "settings.tabs.logs",       icon: ScrollText },
+  { id: "hub-status",  labelKey: "settings.tabs.hubStatus",  icon: Activity },
+  { id: "api-keys",    labelKey: "settings.tabs.apiKeys",    icon: KeyRound },
+  { id: "sso",         labelKey: "settings.tabs.sso",        icon: Shield },
+  { id: "status-page", labelKey: "settings.tabs.statusPage", icon: Globe },
 ];
 
 export function Settings({ user }: { user: User }) {
@@ -101,6 +105,7 @@ export function Settings({ user }: { user: User }) {
           {tab === "hub-status" && <HubStatusSettings />}
           {tab === "api-keys"   && <ApiKeysSettings />}
           {tab === "sso"        && <SSOSettings />}
+          {tab === "status-page" && <StatusPageSettings />}
         </div>
       </div>
     </div>
@@ -1541,6 +1546,122 @@ function SSOSettings() {
         )}
         <PrimaryButton disabled={busy}>{busy ? "Saving…" : "Save"}</PrimaryButton>
       </form>
+    </div>
+  );
+}
+
+// StatusPageSettings — admin config for the unauthenticated /status page.
+// Labels are inline English (same rationale as SSOSettings).
+function StatusPageSettings() {
+  const [cfg, setCfg] = useState<PublicStatusConfig | null>(null);
+  const [hosts, setHosts] = useState<Host[] | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [savedAt, setSavedAt] = useState<number | null>(null);
+
+  useEffect(() => {
+    publicStatusApi.getConfig().then(setCfg).catch((e) => setError(String(e)));
+    hostsApi.list().then(setHosts).catch((e) => setError(String(e)));
+  }, []);
+
+  async function submitConfig(e: React.FormEvent) {
+    e.preventDefault();
+    if (!cfg) return;
+    setError(null);
+    setBusy(true);
+    try {
+      const next = await publicStatusApi.putConfig(cfg);
+      setCfg(next);
+      setSavedAt(Date.now());
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function togglePublic(host: Host, next: boolean) {
+    if (!hosts) return;
+    setError(null);
+    try {
+      await hostsApi.setPublicVisible(host.id, next);
+      setHosts(hosts.map((h) => (h.id === host.id ? { ...h, public_visible: next } : h)));
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : String(err));
+    }
+  }
+
+  if (!cfg) {
+    return <p className="text-sm text-[color:var(--color-muted)]">Loading…</p>;
+  }
+
+  const visibleCount = hosts?.filter((h) => h.public_visible).length ?? 0;
+
+  return (
+    <div className="max-w-2xl space-y-6">
+      <section>
+        <h2 className="text-base font-semibold tracking-tight mb-3">Public status page</h2>
+        <p className="text-sm text-[color:var(--color-muted)]">
+          A read-only page at{" "}
+          <a className="underline" href="/status" target="_blank" rel="noreferrer">
+            {new URL("/status", window.location.href).toString()}
+          </a>{" "}
+          that anyone can visit (no login). Shows the hosts you opt in below, with up/stale/down state plus CPU/RAM/disk.
+          Default: hidden until you flip the toggle and tick at least one host.
+        </p>
+      </section>
+
+      <form onSubmit={submitConfig} className="space-y-3">
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={cfg.enabled}
+            onChange={(e) => setCfg({ ...cfg, enabled: e.target.checked })}
+          />
+          Publish the status page
+        </label>
+
+        <Field label="Title">
+          <FieldInput value={cfg.title} onChange={(e) => setCfg({ ...cfg, title: e.target.value })} placeholder="Status" />
+        </Field>
+
+        <Field label="Description">
+          <FieldInput value={cfg.description} onChange={(e) => setCfg({ ...cfg, description: e.target.value })} placeholder="Optional — shown under the title." />
+        </Field>
+
+        {error && <ErrorText message={error} />}
+        {savedAt && (
+          <p role="status" className="text-sm text-[color:var(--color-accent)]">
+            Saved at {new Date(savedAt).toLocaleTimeString()}.
+          </p>
+        )}
+        <PrimaryButton disabled={busy}>{busy ? "Saving…" : "Save"}</PrimaryButton>
+      </form>
+
+      <section>
+        <h3 className="text-sm font-semibold tracking-tight mb-2">Hosts on the public page ({visibleCount})</h3>
+        {!hosts ? (
+          <p className="text-sm text-[color:var(--color-muted)]">Loading hosts…</p>
+        ) : hosts.length === 0 ? (
+          <p className="text-sm text-[color:var(--color-muted)]">No hosts yet — create one in the Hosts tab.</p>
+        ) : (
+          <ul className="space-y-1.5">
+            {hosts.map((h) => (
+              <li key={h.id} className="flex items-center justify-between rounded-md border border-[color:var(--color-border)] px-3 py-2 text-sm">
+                <span>{h.name}</span>
+                <label className="flex items-center gap-2 text-xs text-[color:var(--color-muted)]">
+                  <input
+                    type="checkbox"
+                    checked={h.public_visible}
+                    onChange={(e) => togglePublic(h, e.target.checked)}
+                  />
+                  Show on /status
+                </label>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
     </div>
   );
 }

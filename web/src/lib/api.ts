@@ -41,6 +41,8 @@ export type Host = {
   // expired. Backend omits past values, so FE never needs to compare
   // to clock to decide "is the silence still alive".
   silenced_until?: string | null;
+  // Whether the host is opted into the public /status page.
+  public_visible: boolean;
 };
 
 export type CreateHostResponse = {
@@ -569,6 +571,45 @@ export const tagsApi = {
     ),
 };
 
+// Public /status page (unauthenticated). The page handler always
+// returns 200 with { enabled: false } when the operator hasn't published
+// the page, so the frontend renders a deterministic "not published"
+// notice instead of branching on HTTP status.
+export type PublicStatusHost = {
+  name: string;
+  state: "up" | "stale" | "down" | "unknown";
+  cpu_pct: number;
+  ram_pct: number;
+  disk_pct: number;
+  last_seen_at?: string;
+};
+
+export type PublicStatus = {
+  enabled: boolean;
+  title: string;
+  description: string;
+  generated_at: string;
+  hosts: PublicStatusHost[];
+};
+
+export type PublicStatusConfig = {
+  enabled: boolean;
+  title: string;
+  description: string;
+};
+
+export const publicStatusApi = {
+  // Public: no auth, mounted at /api/public/status.
+  getPublic: () => api<PublicStatus>("/api/public/status"),
+  // Admin: session-protected config GET/PUT.
+  getConfig: () => api<PublicStatusConfig>("/api/settings/public-status"),
+  putConfig: (cfg: PublicStatusConfig) =>
+    api<PublicStatusConfig>("/api/settings/public-status", {
+      method: "PUT",
+      body: JSON.stringify(cfg),
+    }),
+};
+
 export const hostsApi = {
   list: () => api<Host[]>("/api/hosts"),
   create: (name: string) =>
@@ -593,6 +634,11 @@ export const hostsApi = {
     }),
   unsilence: (id: number) =>
     api<void>(`/api/hosts/${id}/silence`, { method: "DELETE" }),
+  setPublicVisible: (id: number, public_visible: boolean) =>
+    api<void>(`/api/hosts/${id}/public-visible`, {
+      method: "PUT",
+      body: JSON.stringify({ public_visible }),
+    }),
   metrics: (id: number, q?: MetricsQuery) => {
     const params = new URLSearchParams();
     if (q?.from) params.set("from", q.from);

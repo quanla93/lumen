@@ -25,6 +25,7 @@ import (
 	"github.com/quanla93/lumen/internal/hub/install"
 	"github.com/quanla93/lumen/internal/hub/meta"
 	"github.com/quanla93/lumen/internal/hub/publicapi"
+	"github.com/quanla93/lumen/internal/hub/publicstatus"
 	"github.com/quanla93/lumen/internal/hub/retention"
 	"github.com/quanla93/lumen/internal/hub/settings"
 	"github.com/quanla93/lumen/internal/hub/storage"
@@ -158,6 +159,7 @@ func Run(ctx context.Context, cfg Config) error {
 		Logger:    logger.With("subsys", "hubstats"),
 	}
 	apiKeysHandlers := apikey.NewHandlers(db, logger.With("subsys", "apikeys"))
+	publicStatusHandlers := publicstatus.NewHandlers(db, st, logger.With("subsys", "publicstatus"))
 	userPrefsHandlers := userprefs.NewHandlers(db, logger.With("subsys", "userprefs"))
 	publicAPIHandlers := publicapi.NewHandlers(db, cfg.Version, logger.With("subsys", "publicapi"))
 	publicAPILimiter := publicapi.NewLimiter(100, 100) // 100 burst, 100/min refill
@@ -194,6 +196,11 @@ func Run(ctx context.Context, cfg Config) error {
 	r.Get("/api/auth/oidc/login", authHandlers.LoginOIDC)
 	r.Get("/api/auth/oidc/callback", authHandlers.CallbackOIDC)
 
+	// Public status page — no session, no API key. Always returns 200
+	// (`enabled:false` when the admin hasn't published it) so the
+	// frontend renders deterministically.
+	r.Get("/api/public/status", publicStatusHandlers.Get)
+
 	// Auth + Hosts CRUD (session required)
 	r.Group(func(r chi.Router) {
 		r.Use(requireSession)
@@ -217,6 +224,10 @@ func Run(ctx context.Context, cfg Config) error {
 		r.Get("/api/settings/oidc", authHandlers.OIDCSettingsGet)
 		r.Put("/api/settings/oidc", authHandlers.OIDCSettingsPut)
 		r.Post("/api/settings/oidc/test", authHandlers.OIDCTestDiscovery)
+
+		r.Get("/api/settings/public-status", publicStatusHandlers.ConfigGet)
+		r.Put("/api/settings/public-status", publicStatusHandlers.ConfigPut)
+		r.Put("/api/hosts/{id}/public-visible", hostsHandlers.SetPublicVisibility)
 
 		r.Get("/api/admin/hub-stats", hubStatsHandler.ServeHTTP)
 

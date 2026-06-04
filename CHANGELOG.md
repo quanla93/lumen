@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- **Public status page** at `/status` (unauthenticated). Per-host opt-in via a new `public_visible` column on `hosts` (migration `0018`) + global enable/title/description in **Settings → Status page**. Shows up/stale/down state plus live CPU/RAM/disk for opted-in hosts, polled every 15s. Defaults are safe — nothing is published until the operator both flips the global toggle and ticks at least one host. Tags, host metadata, container telemetry, alerts, and charts are deliberately omitted to keep the public surface narrow. See [`docs/configure/public-status.md`](./docs/src/content/docs/configure/public-status.md).
+  - `GET /api/public/status` always returns 200 with `{enabled: false, hosts: []}` when disabled so the frontend renders a deterministic "not published" notice instead of branching on HTTP status.
+  - Handler sets `Cache-Control: no-store` to keep CDN edges from pinning stale snapshots.
+  - Three new endpoints under the session-protected group: `GET/PUT /api/settings/public-status` for the global config, `PUT /api/hosts/{id}/public-visible` for per-host opt-in.
+  - Frontend `/status` route short-circuits the auth bootstrap entirely — visitors never hit `/api/setup-status`.
+
 ## [0.7.0] - 2026-06-04
 
 **Single sign-on via OIDC.** First v0.7 feature: bind a self-hosted IdP (Authentik, Keycloak, Google, Okta, Entra) so the admin signs in via OIDC instead of (or in addition to) the local password. Single-admin scope — exactly one email from the ID token's `email` claim is allowed, matched against `Settings → SSO → Expected admin email`; everyone else is rejected at the callback regardless of IdP authentication outcome. The local password keeps working as a fallback so OIDC misconfiguration can't lock the admin out.
