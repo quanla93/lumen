@@ -12,7 +12,7 @@ import (
 )
 
 // Allowed channel types.
-var AllowedChannelTypes = []string{"ntfy", "discord", "webhook", "telegram", "email"}
+var AllowedChannelTypes = []string{"ntfy", "discord", "webhook", "telegram", "email", "web_push"}
 
 var (
 	ErrChannelNotFound       = errors.New("notification channel not found")
@@ -126,6 +126,12 @@ func validateChannel(c *Channel) error {
 		return err
 	}
 	switch c.Type {
+	case "web_push":
+		// No URL on the channel itself — actual targets live in the
+		// web_push_subscriptions table and are bound per browser via the
+		// subscribe endpoint. A channel with zero subscriptions is valid
+		// (silently no-ops at dispatch time) so the operator can create
+		// the channel first and subscribe browsers afterwards.
 	case "telegram":
 		if strings.TrimSpace(cc.BotToken) == "" {
 			return ErrTelegramBotRequired

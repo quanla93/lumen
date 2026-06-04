@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -14,6 +16,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/quanla93/lumen/internal/hub/webpush"
 )
 
 // Notification is the structured event the engine emits on a state
@@ -36,13 +40,25 @@ type Notification struct {
 // budget — channels are best-effort, the loop must not block the engine.
 var dispatchClient = &http.Client{Timeout: 8 * time.Second}
 
+// DispatchDeps carries the extra resources channel handlers may need
+// that aren't carried on Channel itself — today, the web_push handler
+// reaches into the database to read subscriptions and decrypt the
+// VAPID private key. Email/webhook/etc handlers ignore it. Keeping the
+// struct optional (zero value works for everything except web_push)
+// lets test code stay terse and isolates web_push's DB dependency from
+// the other dispatch paths.
+type DispatchDeps struct {
+	DB        *sql.DB
+	HubSecret []byte
+}
+
 // Dispatch is the single entry point the engine uses. Returns an error
 // the caller logs at Warn; never panics on a misconfigured channel.
 // The logger parameter is retained for API compatibility with callers
 // that pass d.cfg.Logger / h.Logger / e.cfg.Logger, but Dispatch itself
 // has no log statements — errors propagate to the caller, which decides
 // at what level (and with what context fields) to log them.
-func Dispatch(ctx context.Context, ch Channel, n Notification, _ *slog.Logger) error {
+func Dispatch(ctx context.Context, ch Channel, n Notification, deps DispatchDeps, _ *slog.Logger) error {
 	cfg, err := ch.ParsedConfig()
 	if err != nil {
 		return err
@@ -88,9 +104,79 @@ func Dispatch(ctx context.Context, ch Channel, n Notification, _ *slog.Logger) e
 			return ErrEmailToRequired
 		}
 		return dispatchEmail(ctx, cfg, n)
+	case "web_push":
+		if deps.DB == nil {
+			return errors.New("web_push dispatch needs DB; caller did not populate DispatchDeps.DB")
+		}
+		return dispatchWebPush(ctx, deps, ch.ID, n)
 	default:
 		return fmt.Errorf("%w: %q", ErrInvalidChannelType, ch.Type)
 	}
+}
+
+// dispatchWebPush fans out the notification to every browser subscription
+// registered against the channel. Per-subscription delivery is best-effort:
+// a `Gone` (404/410) response means the browser unsubscribed and the row
+// is deleted so it stops costing dispatcher time. Any other non-2xx error
+// short-circuits the fan-out and bubbles up so the dispatcher records a
+// failed delivery (the retry loop will reattempt).
+func dispatchWebPush(ctx context.Context, deps DispatchDeps, channelID int64, n Notification) error {
+	keys, ok, err := webpush.LoadKeys(ctx, deps.DB, deps.HubSecret)
+	if err != nil {
+		return fmt.Errorf("load VAPID keys: %w", err)
+	}
+	if !ok {
+		return errors.New("VAPID keys not generated yet; configure web push in Settings")
+	}
+	subs, err := webpush.ListSubscriptions(ctx, deps.DB, channelID)
+	if err != nil {
+		return fmt.Errorf("list web_push subscriptions: %w", err)
+	}
+	if len(subs) == 0 {
+		// No subscribers is not a delivery failure — let the dispatcher
+		// mark this as sent so it stops retrying. The Settings UI lists
+		// "0 subscriptions" so the operator can correct it explicitly.
+		return nil
+	}
+	payload, err := webPushPayload(n)
+	if err != nil {
+		return err
+	}
+	for _, sub := range subs {
+		sendErr := webpush.SendOne(ctx, keys, sub, payload)
+		if sendErr == nil {
+			continue
+		}
+		if webpush.IsGone(sendErr) {
+			// Browser unsubscribed; drop the row so future fan-outs skip it.
+			_ = webpush.DeleteSubscription(ctx, deps.DB, sub.ID)
+			continue
+		}
+		return sendErr
+	}
+	return nil
+}
+
+// webPushPayload is the JSON the service worker decodes on the browser
+// side to construct the visible notification. Keep keys terse and
+// stable; the service worker has to ship with the hub binary so a
+// schema change here = service worker bump.
+func webPushPayload(n Notification) ([]byte, error) {
+	body := strings.TrimSpace(n.Message)
+	if body == "" {
+		body = fmt.Sprintf("%s on %s: value=%.2f threshold=%.2f", n.Metric, n.Host, n.Value, n.Threshold)
+	}
+	state := "FIRING"
+	if strings.EqualFold(n.State, "resolved") {
+		state = "RESOLVED"
+	}
+	title := fmt.Sprintf("[%s] %s — %s", state, n.Severity, n.RuleName)
+	return json.Marshal(map[string]any{
+		"title": title,
+		"body":  body,
+		"tag":   fmt.Sprintf("rule:%d", n.RuleID),
+		"url":   "/",
+	})
 }
 
 // ntfy: POST <url>, body = plaintext message. Title/Priority/Tags as

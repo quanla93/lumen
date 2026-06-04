@@ -15,7 +15,8 @@ import (
 )
 
 type Handlers struct {
-	DB     *sql.DB
+	DB        *sql.DB
+	HubSecret []byte // optional; required only when the Test endpoint dispatches a web_push channel
 	Logger *slog.Logger
 }
 
@@ -478,7 +479,7 @@ func (h *Handlers) TestChannel(w http.ResponseWriter, r *http.Request) {
 		Time:      time.Now().UTC(),
 	}
 	notif.Message = FormatMessage(notif) + " (test ping from Lumen)"
-	if err := Dispatch(ctx, ch, notif, h.Logger); err != nil {
+	if err := Dispatch(ctx, ch, notif, DispatchDeps{DB: h.DB, HubSecret: h.HubSecret}, h.Logger); err != nil {
 		writeJSON(w, http.StatusBadGateway, map[string]string{
 			"ok":    "false",
 			"error": err.Error(),

@@ -475,14 +475,14 @@ These were originally lumped with Cold tier in the old Phase 7 because they were
 
 ### Phase 8 — v0.7+: Polish & deferred product features
 
-- [ ] Self-hosted SSO: custom OIDC provider config (issuer/client ID/client secret/scopes/redirect URL), with local admin fallback preserved
+- [x] **Self-hosted SSO: custom OIDC provider config** (issuer / client ID / client secret / scopes / expected admin email), with local admin fallback preserved — *shipped v0.7.0 (2026-06-04)*. Single-admin scope. Settings → SSO tab + login button. Encrypted client_secret at rest via AES-GCM keyed off `LUMEN_HUB_SECRET`. Docs in `docs/configure/sso.md` with Authentik / Keycloak / Google recipes.
 - [ ] SAML2 evaluation after OIDC; implement only if dependency and configuration complexity stay acceptable for homelab/self-hosted use
 - [ ] Backup RFC/UX: local/S3-compatible backup, restore flow, encryption, retention, and whether backup belongs in core or optional module
 - [ ] External data API/export RFC follow-up: Grafana first, auth model, query shape, rate limits, and Prometheus-compatible endpoint vs Grafana datasource plugin vs plain REST
 - [ ] Grafana integration spike follow-up: prove a user can build Grafana dashboards from Lumen monitoring data without using Lumen's web UI
 - [ ] First-run onboarding flow: create admin → add first host → use generated per-agent Docker Compose setup → wait for first metrics
-- [ ] Public status page (read-only share)
-- [ ] Web Push notifications (VAPID)
+- [x] **Public status page** (read-only share) — *shipped 2026-06-04*. `/status` route, per-host opt-in via `public_visible` column, Settings → Status page tab, polls every 15s. `Cache-Control: no-store`. Docs in `docs/configure/public-status.md`.
+- [x] **Web Push notifications (VAPID)** — *shipped 2026-06-04*. New `web_push` channel type. VAPID key pair generated on first use, AES-GCM-encrypted at rest. Per-browser subscriptions in `web_push_subscriptions` table (migration 0019); 404/410 auto-prune. Service worker push + notificationclick handlers in `/sw.js`. Backend: `internal/hub/webpush` (SherClockHolmes/webpush-go dep) + `Dispatch` extended with `DispatchDeps{DB, HubSecret}`. Frontend: WebPushPanel inside the channel form. Docs in `docs/configure/web-push.md`.
 - [ ] i18n polish follow-up: expand translations to new modules after the Phase 3 foundation lands
 - [ ] Translation docs and contribution guide for adding/changing UI copy
 
@@ -490,7 +490,7 @@ These were originally lumped with Cold tier in the old Phase 7 because they were
 - [x] Keep `brand/index.html` as a standalone landing page, separate from the authenticated hub dashboard
 - [x] Evolve landing page into Lumen's public home: product positioning, install CTA, docs link, GitHub link, roadmap highlights — bilingual EN/VI (2026-06-02)
 - [x] Deployment target chosen: **Cloudflare Pages** (auto-deploy from `main` branch, build output `brand/`), production URL `https://lumen.quanla.org/`. Setup notes in `brand/DEPLOY.md`.
-- [ ] Add screenshots of Dashboard / Host detail / Alerts (placeholder pending first user feedback round)
+- [x] Add screenshots of Dashboard / Host detail / Alerts — *shipped 2026-06-03 (v0.6.5)*. Seven PNGs under `brand/screenshots/` (dashboard light + dark, host detail, settings, settings-display, alerts, mobile-dashboard) plus a screenshots section on the landing page and README.
 
 ---
 

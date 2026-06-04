@@ -54,6 +54,48 @@ self.addEventListener("activate", (event) => {
 	self.clients.claim();
 });
 
+// Web Push — display incoming alerts as system notifications and
+// focus / open the Lumen tab on click. Payload schema is defined by
+// internal/hub/alerts/notify.go::webPushPayload — keep keys in sync.
+self.addEventListener("push", (event) => {
+	if (!event.data) return;
+	let payload;
+	try {
+		payload = event.data.json();
+	} catch (_) {
+		payload = { title: "Lumen alert", body: event.data.text() };
+	}
+	event.waitUntil(
+		self.registration.showNotification(payload.title || "Lumen alert", {
+			body: payload.body || "",
+			tag: payload.tag || "lumen-alert",
+			renotify: true,
+			icon: "/icon-192.svg",
+			badge: "/icon-192.svg",
+			data: { url: payload.url || "/" },
+		}),
+	);
+});
+
+self.addEventListener("notificationclick", (event) => {
+	event.notification.close();
+	const targetURL = (event.notification.data && event.notification.data.url) || "/";
+	event.waitUntil(
+		self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((wins) => {
+			// Reuse an existing Lumen tab if one is open; otherwise open
+			// a new one. Saves the user a tab on a noisy alert hour.
+			for (const w of wins) {
+				if (w.url.includes(self.location.origin)) {
+					w.focus();
+					if ("navigate" in w) w.navigate(targetURL);
+					return;
+				}
+			}
+			return self.clients.openWindow(targetURL);
+		}),
+	);
+});
+
 self.addEventListener("fetch", (event) => {
 	const req = event.request;
 

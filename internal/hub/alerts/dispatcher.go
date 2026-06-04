@@ -46,6 +46,7 @@ func (d *Dispatcher) policyFor(severity string) policy {
 
 type DispatcherConfig struct {
 	DB           *sql.DB
+	HubSecret    []byte // needed for web_push: VAPID private key is encrypted at rest
 	Logger       *slog.Logger
 	PollInterval time.Duration // how often workers wake to drain
 	Workers      int           // parallel goroutines pulling jobs
@@ -325,7 +326,7 @@ func (d *Dispatcher) process(ctx context.Context, row pendingRow) {
 		return
 	}
 
-	dispatchErr := Dispatch(ctx, ch, notif, d.cfg.Logger)
+	dispatchErr := Dispatch(ctx, ch, notif, DispatchDeps{DB: d.cfg.DB, HubSecret: d.cfg.HubSecret}, d.cfg.Logger)
 	if dispatchErr == nil {
 		d.markSent(ctx, row.ID)
 		d.cfg.Logger.Info("alerts: delivered",

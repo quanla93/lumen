@@ -73,6 +73,7 @@ type TagsLister func(ctx context.Context) (map[string]map[string]string, error)
 // fallback eval cadence when the settings row is missing/unparseable.
 type Config struct {
 	DB              *sql.DB
+	HubSecret       []byte // optional; required only when the legacy inline-Dispatch fallback path fires a web_push channel (i.e. unit tests without a real Dispatcher wired)
 	Store           SnapshotProvider
 	Hosts           HostsLister
 	Tags            TagsLister
@@ -647,7 +648,7 @@ func (e *Engine) persistAndNotify(ctx context.Context, tr Transition, channels [
 		}
 		// Legacy synchronous fallback — only when no dispatcher wired
 		// (engine_test, or pre-Milestone-D unit harnesses).
-		if err := Dispatch(ctx, ch, notif, e.cfg.Logger); err != nil {
+		if err := Dispatch(ctx, ch, notif, DispatchDeps{DB: e.cfg.DB, HubSecret: e.cfg.HubSecret}, e.cfg.Logger); err != nil {
 			e.cfg.Logger.Warn("alerts: dispatch failed",
 				"channel", ch.Name, "type", ch.Type, "err", err)
 			continue

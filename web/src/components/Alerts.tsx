@@ -11,6 +11,7 @@ import {
   ApiError,
   hostsApi,
   tagsApi,
+  webPushApi,
   TELEGRAM_TOKEN_MASK,
   type AlertComparator,
   type AlertEvent,
@@ -25,6 +26,7 @@ import {
   type NotificationChannel,
   type NotificationChannelWrite,
   type Tag,
+  type WebPushSubscription,
 } from "@/lib/api";
 import { relativeTime } from "@/lib/time";
 import {
@@ -54,7 +56,7 @@ const TABS: { id: AlertsTab; labelKey: TranslationKey; icon: typeof BellRing }[]
 const METRICS: AlertMetric[] = ["cpu_pct", "ram_pct", "swap_pct", "disk_pct", "load1", "offline"];
 const COMPARATORS: AlertComparator[] = ["gt", "lt"];
 const SEVERITIES: AlertSeverity[] = ["info", "warning", "critical"];
-const CHANNEL_TYPES: ChannelType[] = ["ntfy", "discord", "webhook", "telegram", "email"];
+const CHANNEL_TYPES: ChannelType[] = ["ntfy", "discord", "webhook", "telegram", "email", "web_push"];
 
 const EVENT_POLL_MS = 15_000;
 
@@ -652,6 +654,7 @@ function channelIcon(type: ChannelType): typeof Cpu {
     case "webhook":  return Webhook;
     case "telegram": return Send;
     case "email":    return Mail;
+    case "web_push": return BellRing;
   }
 }
 
@@ -1262,7 +1265,7 @@ function ChannelsPanel() {
                 stays predictable regardless of channel type. */}
             <FormSection title={t("alerts.sectionConfig")} icon={channelIcon(draft.type)}>
               <div className="grid gap-3 sm:grid-cols-2">
-                {draft.type !== "telegram" && draft.type !== "email" && (
+                {draft.type !== "telegram" && draft.type !== "email" && draft.type !== "web_push" && (
                   <Field label={t("alerts.fieldUrl")} className="sm:col-span-2">
                     <FieldInput
                       type="url"
@@ -1281,6 +1284,11 @@ function ChannelsPanel() {
                       {draft.type === "webhook" && t("alerts.webhookUrlHint")}
                     </p>
                   </Field>
+                )}
+                {draft.type === "web_push" && (
+                  <div className="sm:col-span-2">
+                    <WebPushPanel channelID={typeof editingId === "number" ? editingId : null} />
+                  </div>
                 )}
                 {draft.type === "email" && (
                   <>
@@ -1867,4 +1875,145 @@ function SelectInput({
       ))}
     </select>
   );
+}
+
+// WebPushPanel — admin's per-channel browser subscription manager.
+// Inline English (admin-only surface; rare edit). Subscribe flow runs
+// entirely in the browser before POSTing the resulting PushSubscription
+// to /api/alerts/web-push/subscribe.
+function WebPushPanel({ channelID }: { channelID: number | null }) {
+  const [subs, setSubs] = useState<WebPushSubscription[] | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [okMsg, setOkMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (channelID == null) {
+      setSubs(null);
+      return;
+    }
+    webPushApi.listSubscriptions(channelID).then(setSubs).catch((e) =>
+      setErr(e instanceof ApiError ? e.message : String(e)),
+    );
+  }, [channelID]);
+
+  async function subscribeThisBrowser() {
+    if (channelID == null) return;
+    setErr(null);
+    setOkMsg(null);
+    setBusy(true);
+    try {
+      if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+        throw new Error("This browser does not support Web Push.");
+      }
+      const reg = await navigator.serviceWorker.ready;
+      const perm = await Notification.requestPermission();
+      if (perm !== "granted") {
+        throw new Error(`Notification permission ${perm}.`);
+      }
+      const vapid = await webPushApi.getVAPIDPublicKey();
+      // PushManager wants applicationServerKey as a BufferSource backed
+      // by ArrayBuffer (not SharedArrayBuffer). Going via .buffer makes
+      // TypeScript pick the right overload across browser/DOM types.
+      const keyArr = urlBase64ToUint8Array(vapid.public_key);
+      const sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: keyArr.buffer as ArrayBuffer,
+      });
+      const json = sub.toJSON();
+      const p256dh = json.keys?.p256dh ?? "";
+      const auth = json.keys?.auth ?? "";
+      if (!p256dh || !auth) {
+        throw new Error("Push subscription missing keys.");
+      }
+      const saved = await webPushApi.subscribe({
+        channel_id: channelID,
+        endpoint: sub.endpoint,
+        p256dh,
+        auth,
+        label: navigator.userAgent.slice(0, 200),
+      });
+      setSubs((cur) => {
+        const next = (cur ?? []).filter((s) => s.id !== saved.id);
+        return [...next, saved];
+      });
+      setOkMsg("Subscribed this browser.");
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function removeSub(id: number) {
+    try {
+      await webPushApi.deleteSubscription(id);
+      setSubs((cur) => (cur ?? []).filter((s) => s.id !== id));
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.message : String(e));
+    }
+  }
+
+  if (channelID == null) {
+    return (
+      <div className="rounded-md border border-dashed border-[color:var(--color-border)] p-3 text-sm text-[color:var(--color-muted)]">
+        Save the channel first, then reopen it from the channel list to subscribe this browser.
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      <p className="text-xs text-[color:var(--color-muted)]">
+        Web Push needs no URL — each browser registers itself below and gets fanned out to on every alert.
+        Subscribing requires a one-time browser permission grant + a service worker (already installed by Lumen).
+      </p>
+      <div className="flex items-center gap-2">
+        <GhostButton type="button" onClick={subscribeThisBrowser} disabled={busy}>
+          {busy ? "Subscribing…" : "Subscribe this browser"}
+        </GhostButton>
+        {okMsg && <span className="text-xs text-[color:var(--color-accent)]">{okMsg}</span>}
+        {err && <span className="text-xs text-red-500">{err}</span>}
+      </div>
+      <div className="rounded-md border border-[color:var(--color-border)]">
+        <div className="border-b border-[color:var(--color-border)] px-3 py-2 text-xs font-medium text-[color:var(--color-muted)]">
+          Subscribed browsers ({subs?.length ?? 0})
+        </div>
+        {!subs ? (
+          <div className="px-3 py-2 text-sm text-[color:var(--color-muted)]">Loading…</div>
+        ) : subs.length === 0 ? (
+          <div className="px-3 py-2 text-sm text-[color:var(--color-muted)]">No browsers yet. Click subscribe above.</div>
+        ) : (
+          <ul>
+            {subs.map((s) => (
+              <li key={s.id} className="flex items-center justify-between gap-3 border-b border-[color:var(--color-border)] px-3 py-2 text-sm last:border-b-0">
+                <div className="min-w-0">
+                  <div className="truncate font-medium">{s.label || s.endpoint}</div>
+                  <div className="truncate text-xs text-[color:var(--color-muted)]">
+                    {new URL(s.endpoint).host} · added {new Date(s.created_at).toLocaleString()}
+                  </div>
+                </div>
+                <IconButton label="Remove subscription" onClick={() => removeSub(s.id)}>
+                  <Trash2 size={14} />
+                </IconButton>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// urlBase64ToUint8Array converts a VAPID public key from base64url
+// (the format /api/alerts/web-push/vapid-public-key returns it in)
+// into the Uint8Array PushManager.subscribe expects as
+// applicationServerKey. Standard recipe from the Push API spec.
+function urlBase64ToUint8Array(base64String: string): Uint8Array {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const raw = atob(base64);
+  const out = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+  return out;
 }

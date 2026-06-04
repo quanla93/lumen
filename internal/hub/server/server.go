@@ -26,6 +26,7 @@ import (
 	"github.com/quanla93/lumen/internal/hub/meta"
 	"github.com/quanla93/lumen/internal/hub/publicapi"
 	"github.com/quanla93/lumen/internal/hub/publicstatus"
+	"github.com/quanla93/lumen/internal/hub/webpush"
 	"github.com/quanla93/lumen/internal/hub/retention"
 	"github.com/quanla93/lumen/internal/hub/settings"
 	"github.com/quanla93/lumen/internal/hub/storage"
@@ -135,13 +136,16 @@ func Run(ctx context.Context, cfg Config) error {
 	installHandler := &install.Handler{InstallDir: cfg.InstallDir, Logger: logger}
 	metaHandler := meta.New(cfg.Version)
 	alertsHandlers := alerts.NewHandlers(db, logger.With("subsys", "alerts"))
+	alertsHandlers.HubSecret = cfg.Secret
 	alertsDispatcher := alerts.NewDispatcher(alerts.DispatcherConfig{
-		DB:     db,
-		Logger: logger.With("subsys", "alerts-dispatch"),
+		DB:        db,
+		HubSecret: cfg.Secret,
+		Logger:    logger.With("subsys", "alerts-dispatch"),
 	})
 	go alertsDispatcher.Run(ctx)
 	alertsEngine := alerts.NewEngine(alerts.Config{
 		DB:              db,
+		HubSecret:       cfg.Secret,
 		Store:           st,
 		Hosts:           alerts.HostsListerFromDB(db),
 		Tags:            alerts.TagsListerFromDB(db),
@@ -160,6 +164,7 @@ func Run(ctx context.Context, cfg Config) error {
 	}
 	apiKeysHandlers := apikey.NewHandlers(db, logger.With("subsys", "apikeys"))
 	publicStatusHandlers := publicstatus.NewHandlers(db, st, logger.With("subsys", "publicstatus"))
+	webPushHandlers := &webpush.Handlers{DB: db, HubSecret: cfg.Secret, Logger: logger.With("subsys", "webpush")}
 	userPrefsHandlers := userprefs.NewHandlers(db, logger.With("subsys", "userprefs"))
 	publicAPIHandlers := publicapi.NewHandlers(db, cfg.Version, logger.With("subsys", "publicapi"))
 	publicAPILimiter := publicapi.NewLimiter(100, 100) // 100 burst, 100/min refill
@@ -249,6 +254,16 @@ func Run(ctx context.Context, cfg Config) error {
 		r.Put("/api/alerts/channels/{id}", alertsHandlers.UpdateChannel)
 		r.Delete("/api/alerts/channels/{id}", alertsHandlers.DeleteChannel)
 		r.Post("/api/alerts/channels/{id}/test", alertsHandlers.TestChannel)
+
+		// Web Push — VAPID key bootstrap + per-browser subscription
+		// management. Channel CRUD (the row in notification_channels with
+		// type='web_push') still goes through the generic /api/alerts/
+		// channels surface above.
+		r.Get("/api/alerts/web-push/vapid-public-key", webPushHandlers.GetVAPIDPublicKey)
+		r.Put("/api/alerts/web-push/subject", webPushHandlers.PutSubject)
+		r.Post("/api/alerts/web-push/subscribe", webPushHandlers.Subscribe)
+		r.Get("/api/alerts/channels/{id}/web-push/subscriptions", webPushHandlers.ListSubscriptions)
+		r.Delete("/api/alerts/web-push/subscriptions/{id}", webPushHandlers.DeleteSubscription)
 
 		r.Get("/api/alerts/events", alertsHandlers.ListEvents)
 

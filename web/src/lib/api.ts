@@ -395,7 +395,7 @@ export type AlertRuleWrite = {
   channel_ids?: number[];
 };
 
-export type ChannelType = "ntfy" | "discord" | "webhook" | "telegram" | "email";
+export type ChannelType = "ntfy" | "discord" | "webhook" | "telegram" | "email" | "web_push";
 
 export type ChannelConfig = {
   url?: string;
@@ -537,6 +537,39 @@ export type TagImpact = {
   host_count: number;
   rule_count: number;
   rule_names: string[];
+};
+
+// Web Push — bind a browser to a notification_channels row of type
+// 'web_push'. The flow is: load VAPID public key → request browser
+// permission → PushManager.subscribe → POST the resulting subscription
+// to /api/alerts/web-push/subscribe so the hub can fan out alerts to
+// it later. The hub stores one subscription per (channel_id, endpoint)
+// so the same browser re-subscribing is a no-op.
+export type WebPushSubscription = {
+  id: number;
+  channel_id: number;
+  endpoint: string;
+  label: string;
+  created_at: string;
+};
+
+export const webPushApi = {
+  getVAPIDPublicKey: () =>
+    api<{ public_key: string; subject: string }>("/api/alerts/web-push/vapid-public-key"),
+  putSubject: (subject: string) =>
+    api<void>("/api/alerts/web-push/subject", {
+      method: "PUT",
+      body: JSON.stringify({ subject }),
+    }),
+  subscribe: (body: { channel_id: number; endpoint: string; p256dh: string; auth: string; label: string }) =>
+    api<WebPushSubscription>("/api/alerts/web-push/subscribe", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  listSubscriptions: (channelID: number) =>
+    api<WebPushSubscription[]>(`/api/alerts/channels/${channelID}/web-push/subscriptions`),
+  deleteSubscription: (id: number) =>
+    api<void>(`/api/alerts/web-push/subscriptions/${id}`, { method: "DELETE" }),
 };
 
 export const tagsApi = {
