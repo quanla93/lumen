@@ -947,8 +947,36 @@ Nếu bạn (hoặc Claude) mở session mới:
 
 > Cập nhật mục này mỗi session.
 
+**Session**: 2026-06-04 (current)
+**Đang làm**: **Sprint 1 — Backup + restore (RFC 0001).** Top of Phase 8 sprint queue. v0.7.0 đã ship 3 mục (OIDC SSO, public status page, web push); RFC 0001-0009 đã commit. Bắt đầu implement RFC 0001. Migration 0020 là số kế tiếp; package `internal/hub/backup/` chưa tồn tại nên tạo mới sạch; OIDC `internal/hub/auth/crypto.go` là reference pattern cho `s3_secret_key_enc`.
+
+**Plan 5 ngày (locked, verify từng bước trước khi step tiếp)**:
+
+| Day | Output | Verify |
+|---|---|---|
+| **D1** | `internal/hub/backup/` skeleton + `crypto.go` (Argon2id + AES-256-GCM seal/open + 39-byte header + magic) + migration `0020_backup_settings.sql` (seed defaults, no new table) | `crypto_test.go`: round-trip, wrong passphrase, tampered ciphertext, header magic mismatch |
+| **D2** | `snapshot.go` (`VACUUM INTO` temp + gzip) + `target_local.go` (write/list/delete) + `target_s3.go` (aws-sdk-go-v2 BaseEndpoint + PathStyle) + `retention.go` | `snapshot_test.go` PRAGMA integrity; `retention_test.go` 20→5 deterministic mtimes |
+| **D3** | `scheduler.go` (robfig/cron/v3, hot-reload on settings change, doubling backoff to 4h then alert per RFC Q4 proposed) + `handlers.go` (6 endpoints) + `restore.go` (download/decrypt/SIGHUP self-exec with `--restore=`) + `cmd/lumen-hub/main.go` parse `--restore` flag pre-startup | Integration test: hub + MinIO Docker containers; manual backup → object exists in bucket; pull + decrypt + integrity check passes; CLI restore on fresh hub |
+| **D4** | `web/src/components/Settings.tsx` Backup tab: master switch, target select, conditional fields per target, passphrase + confirm, cron expression, retain N, Test target button, Backup now button, Recent backups list (size/age/target + Restore + Download per row). Inline EN strings (admin-only surface; same precedent as SSO tab) | tsc + web build clean; manual dev: enable → run-now → restore via UI |
+| **D5** | `docs/configure/backup.md` (passphrase guidance + per-provider walkthroughs MinIO/R2/B2/AWS + cron cheatsheet + restore CLI canonical + UI caveat + file format spec per RFC Q5 proposed + `LUMEN_HUB_SECRET` rotation section); `CHANGELOG.md` v0.7.1 entry; flip Sprint 1 checkbox; commit → push → tag v0.7.1 | docs render OK; CHANGELOG follows Keep-a-Changelog; ACTION_PLAN.md table row Sprint 1 ☐ → ✅ |
+
+**Decisions to log when shipping** (chốt giữa đường, không block start):
+- RFC Q4 — backoff after consecutive failures: implement đề xuất RFC (doubling delay up to 4h, then surface as hub-level alert event).
+- RFC Q5 — expose backup file format publicly: yes; format spec section in `docs/configure/backup.md` is authoritative.
+
+**Dependencies cần thêm vào go.mod**:
+- `github.com/aws/aws-sdk-go-v2` + `s3` + `credentials` (v1.x, pinned)
+- `github.com/robfig/cron/v3`
+- `golang.org/x/term` (CLI passphrase prompt; `golang.org/x/crypto/argon2` đã có sẵn từ auth.password)
+
+**Out of scope (đã chốt trong RFC, không vào sprint này)**: WAL/PITR, format migration, web bundle/agent binaries backup, Docker volume backup ngoài `lumen.db`, hot-swap không restart.
+
+**Trạng thái sprint queue sau D5**: Sprint 1 ✅ → next pull = Sprint 2 SAML2 (RFC 0002 đã có).
+
+---
+
 **Session**: 2026-06-02
-**Đang làm**: **v0.6.3 — density toggle on Settings → Display.** Schema (`display.density: comfortable|compact`, server validator already accepting both) was reserved in v0.6.0; v0.6.3 ships the segmented control + the CSS hook that makes the page denser. Implementation: `html[data-density="compact"] { font-size: 15px }` in `index.css` base layer — Tailwind v4's rem-based spacing/padding/gap cascade through every utility class proportionally, no per-component overrides needed. `PrefsApply` already writes `data-density` onto `<html>` since v0.6.0; v0.6.3 just gives the attribute something to do. Auto-saves on change like other Display settings. Removed 4 orphan stubs in `host.customize*` namespace that pre-dated the builder. EN + VI i18n complete. tsc + web build clean.
+**Đã làm**: **v0.6.3 — density toggle on Settings → Display.** Schema (`display.density: comfortable|compact`, server validator already accepting both) was reserved in v0.6.0; v0.6.3 ships the segmented control + the CSS hook that makes the page denser. Implementation: `html[data-density="compact"] { font-size: 15px }` in `index.css` base layer — Tailwind v4's rem-based spacing/padding/gap cascade through every utility class proportionally, no per-component overrides needed. `PrefsApply` already writes `data-density` onto `<html>` since v0.6.0; v0.6.3 just gives the attribute something to do. Auto-saves on change like other Display settings. Removed 4 orphan stubs in `host.customize*` namespace that pre-dated the builder. EN + VI i18n complete. tsc + web build clean.
 
 **Session**: 2026-06-02 (earlier)
 **Đã làm**: **v0.6.2 — saved views UI on the Dashboard customize popover.** Schema (`views[]`, `activeViewId`, server cap 5) was reserved in v0.6.0; v0.6.2 ships the UI. New section under sort + hide: list of saved views with bookmark + active badge + delete; "Save as new" form below. Apply view → writes view fields onto top-level dashboard prefs + sets activeViewId. Direct mutations to sort/hide clear activeViewId (auto-divergence). `defaultMetric` captured into views for forward compat. ID generated client-side via `crypto.randomUUID()` with fallback. Dropped three obsolete placeholder i18n keys (`customizeSavedViewsSoon`, `customizeStub`, `customizeViews`). EN + VI complete. Server validator unchanged (already validated this schema in v0.6.0).
