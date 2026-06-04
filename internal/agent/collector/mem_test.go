@@ -113,3 +113,70 @@ Inactive(anon):    56580 kB
 	}
 }
 
+// computeCgroupRAMPct must answer the Docker-in-LXC reproducer correctly:
+// LXC has a 4 GiB limit set by Proxmox on the parent cgroup, but from inside
+// the LXC's namespace memory.max reports "max" (0). memory.current = 688 MB
+// (LXC's actual usage, accumulated across all child cgroups). memory.stat's
+// "file" line = ~500 MB of page cache. Expected: (688 - 500) / 4096 ≈ 4.6%,
+// matching what Proxmox UI displays.
+func TestComputeCgroupRAMPct(t *testing.T) {
+	const (
+		MB = uint64(1024 * 1024)
+		GB = uint64(1024 * 1024 * 1024)
+	)
+	tests := []struct {
+		name                            string
+		current, limit, cache, hostTot  uint64
+		wantPct                         float64
+	}{
+		{
+			name:    "docker-in-lxc: limit=max, use hostTotal",
+			current: 688 * MB,
+			limit:   0,
+			cache:   500 * MB,
+			hostTot: 4 * GB,
+			wantPct: 4.59, // (188 MB / 4096 MB) * 100
+		},
+		{
+			name:    "docker mem_limit set, no cache",
+			current: 50 * MB,
+			limit:   512 * MB,
+			cache:   0,
+			hostTot: 16 * GB,
+			wantPct: 9.77, // (50 / 512) * 100
+		},
+		{
+			name:    "limit > hostTotal (cgroup v1 sentinel) falls back",
+			current: 200 * MB,
+			limit:   1 << 62, // way larger than any real config
+			cache:   0,
+			hostTot: 4 * GB,
+			wantPct: 4.88, // (200 / 4096) * 100
+		},
+		{
+			name:    "everything zero → 0",
+			current: 0,
+			limit:   0,
+			cache:   0,
+			hostTot: 0,
+			wantPct: 0,
+		},
+		{
+			name:    "cache exceeds current → 0 (clamped by safeSub)",
+			current: 100 * MB,
+			limit:   1 * GB,
+			cache:   200 * MB,
+			hostTot: 4 * GB,
+			wantPct: 0,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := computeCgroupRAMPct(tc.current, tc.limit, tc.cache, tc.hostTot)
+			if diff := got - tc.wantPct; diff > 0.05 || diff < -0.05 {
+				t.Fatalf("got %.4f, want ≈ %.2f (±0.05)", got, tc.wantPct)
+			}
+		})
+	}
+}
+

@@ -83,23 +83,36 @@ func hostCgroupAvailable() bool {
 // returns false. Same accounting style as cgroupRAMPct: subtract page cache
 // from current so the number matches what Proxmox displays.
 func hostCgroupRAMPct(hostTotal uint64) (float64, bool) {
-	if limit, ok := readUint("/host-cgroup/memory.max"); ok && limit > 0 && limit < hostTotal {
-		current, ok := readUint("/host-cgroup/memory.current")
-		if !ok {
-			return 0, false
-		}
+	if current, ok := readUint("/host-cgroup/memory.current"); ok {
+		limit, _ := readUint("/host-cgroup/memory.max")
 		cache := readStatKey("/host-cgroup/memory.stat", "file")
-		return pct(safeSub(current, cache), limit), true
+		return computeCgroupRAMPct(current, limit, cache, hostTotal), true
 	}
-	if limit, ok := readUint("/host-cgroup/memory/memory.limit_in_bytes"); ok && limit > 0 && limit < hostTotal {
-		usage, ok := readUint("/host-cgroup/memory/memory.usage_in_bytes")
-		if !ok {
-			return 0, false
-		}
+	if usage, ok := readUint("/host-cgroup/memory/memory.usage_in_bytes"); ok {
+		limit, _ := readUint("/host-cgroup/memory/memory.limit_in_bytes")
 		cache := readStatKey("/host-cgroup/memory/memory.stat", "cache")
-		return pct(safeSub(usage, cache), limit), true
+		return computeCgroupRAMPct(usage, limit, cache, hostTotal), true
 	}
 	return 0, false
+}
+
+// computeCgroupRAMPct is the pure formula behind hostCgroupRAMPct, exposed
+// for unit testing.
+//
+// hostTotal is the divisor when the cgroup's own memory.max reports "max"
+// (parsed as 0) or a sentinel larger than the host total. Inside the LXC's
+// own cgroup namespace, the root cgroup's memory.max is "max" because the
+// actual limit is set by the parent (Proxmox's lxc.scope) which the namespace
+// hides. lxcfs's MemTotal (which gopsutil reads as hostTotal) exposes that
+// hidden limit, so it's the right denominator.
+func computeCgroupRAMPct(current, limit, cache, hostTotal uint64) float64 {
+	if limit == 0 || limit > hostTotal {
+		limit = hostTotal
+	}
+	if limit == 0 {
+		return 0
+	}
+	return pct(safeSub(current, cache), limit)
 }
 
 // procMeminfoRamPct reads /proc/meminfo (the bind-mounted lxcfs view on

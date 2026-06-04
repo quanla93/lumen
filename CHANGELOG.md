@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.6.5.9] - 2026-06-04
+
+**Use lxcfs MemTotal as the divisor when `/host-cgroup/memory.max` reads "max".** v0.6.5.8's startup diagnostic on the user's Docker-in-LXC agent showed `host_cgroup_mounted=true` and `hcv2_cur=688181248` (the LXC's real accumulated usage, 688 MB), but `hcv2_max=0`. Inside the LXC's own cgroup namespace, the namespace's root cgroup reports `memory.max=max` because the actual 4 GiB limit lives on the parent (Proxmox's `lxc.scope/<ctid>`) which the namespace hides. v0.6.5.8's `limit > 0 && limit < hostTotal` check then rejected the unlimited number and `Memory()` returned 0 — strictly worse than v0.6.5.7. lxcfs's `MemTotal` (which gopsutil reads as `v.Total`) IS that hidden limit, so it's the right denominator.
+
+### Fixed
+
+- **`computeCgroupRAMPct` in `internal/agent/collector/mem.go`** — pure formula `(current - file_cache) / limit`, with `limit` falling back to `hostTotal` when `memory.max` parses to 0 ("max") or exceeds `hostTotal` (cgroup v1 sentinel like `2^63-1`). New `TestComputeCgroupRAMPct` seeds the LXC reproducer (current=688 MB, limit=0, cache=500 MB, hostTotal=4 GiB) and asserts ≈4.59% — the number Proxmox shows.
+
+### Notes
+
+- **Existing v0.6.5.8 deployments**: `docker compose pull && docker compose up -d --force-recreate lumen-agent`. No compose changes — the `/host-cgroup` bind-mount from v0.6.5.8 is still correct.
+- **Local smoke test** on Docker Desktop revealed an unrelated edge case: the macOS Docker VM's root cgroup has the v2 controllers listed but no `memory.current` at the namespace root (memory accounting only kicks in for child cgroups). That's a non-LXC shape, so `hostCgroupAvailable()` returns false and the code correctly falls through. Documented mentally only — not a code change.
+
 ## [0.6.5.8] - 2026-06-04
 
 **Docker-in-LXC RAM% actually matches Proxmox now.** v0.6.5.7 trusted the bind-mounted `/proc/meminfo` but field verification showed lxcfs is cgroup-aware on the read path: when the agent reads `/proc/meminfo` from inside Docker, lxcfs serves numbers computed against the Docker container's *own* cgroup (a few MB used out of 4 GiB ≈ 0.18%) — not the LXC's view. The fix needs a different signal: read the LXC's cgroup files directly. New `/sys/fs/cgroup:/host-cgroup:ro` bind-mount in the agent compose exposes the LXC's own `memory.current` and `memory.max` to the agent regardless of which nested cgroup it's running in.
