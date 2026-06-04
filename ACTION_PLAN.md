@@ -486,6 +486,66 @@ These were originally lumped with Cold tier in the old Phase 7 because they were
 - [ ] i18n polish follow-up: expand translations to new modules after the Phase 3 foundation lands
 - [ ] Translation docs and contribution guide for adding/changing UI copy
 
+#### Phase 8 — Sprint queue (2026-06-04 plan)
+
+Locked execution order. SAML2 elevated above Beszel-parity per operator decision; Power monitoring explicitly dropped after the user evaluated the four mechanisms (smart plug / IPMI / RAPL / NUT) and declined to add it. Cold tier stays deferred behind demand signal.
+
+| # | Sprint | Effort | Items |
+|---|---|---|---|
+| 1 | **Backup** | 5d | RFC 0005 → engine → CLI restore → Web UI restore → frontend |
+| 2 | **SAML2** | 5d | RFC 0006 → AuthnRequest+ACS → metadata + frontend → tests + docs |
+| 3 | **Beszel bundle 1** | 5d | GPU monitoring (2d) + Process list top-N (1.5d) + Maintenance windows (1.5d) |
+| 4 | **Notification quality** | 3d | Digest/grouping (1d) + per-host share link (1d) + Slack-native channel (0.5d) + multi-recipient email (0.5d) |
+| 5 | **Windows agent** | 4d | Cross-compile + nssm-style service install + PowerShell install script + smoke test |
+| 6 | **First-run onboarding** | 4d | 4-step guided wizard replacing ad-hoc bootstrap; Replay button in Settings |
+| 7 | **WebAuthn/passkey** | 4d | `go-webauthn` register/login flows + Settings → Account credentials list |
+| 8 | **i18n polish + translation docs** | 3d | Audit hardcoded EN strings (SSO/status/web push panels); `docs/contributing/i18n.md`; lint CI for key parity |
+| 9 | **Multi-user + TOTP 2FA** (v0.6.x backlog) | 6-7d | `role` column on users; admin/viewer middleware; Settings → Users invite flow. TOTP via `pquerna/otp` with recovery codes |
+| 10 | **External API + Grafana spike** | 8d | Wire Grafana JSON datasource against existing `/api/v1/hosts/:name/metrics`; decide Prometheus-compat or stay JSON; `docs/integrations/grafana.md` |
+| 11 | **Cold tier** (conditional) | 14d+ | ADR 0004 DuckDB feasibility → Parquet writer (`parquet-go`) → compaction → query layer → benchmark vs Beszel + Prometheus. Only if demand signal: operator queries >7d range OR SQLite >10GB on real fleet. |
+
+**Lower-priority queue** (do when capacity / user requests):
+- Hub auto-update (Watchtower-style) — 2d
+- LDAP/AD bind — 3d
+- Hibernation/sleep detection — 1d
+
+**Sprint-level scope details** (preserved here so a future session has the recipe without re-deriving):
+
+- **Backup (Sprint 1)**: `lumen.db` via SQLite `VACUUM INTO` → gzip → AES-GCM (passphrase derived via Argon2id) → local path OR S3-compatible (AWS / MinIO / R2 / B2 via `aws-sdk-go-v2` with `BaseEndpoint`). Cron scheduler (`robfig/cron/v3`). Settings → Backup tab with passphrase, target, S3 fields, cron, retention N, manual button + recent list. **Restore = CLI + Web UI both** (user choice 2026-06-04): CLI `lumen-hub --restore=<file>` is canonical/safe; Web UI is convenience (downloads + decrypts + SIGHUP self-restart, documented as "use CLI for production"). **S3 creds via Settings UI** with secret_key AES-GCM-encrypted at rest (same KEK pattern as OIDC client_secret). **Cron custom** (admin pastes expression).
+
+- **SAML2 (Sprint 2)**: `crewjam/saml` SP role. Endpoints `/api/auth/saml/{login,acs,metadata}` (public) + `/api/settings/saml{,/test-metadata}` (session). Settings keys `saml.{enabled,idp_metadata_xml,sp_entity_id,expected_nameid,sp_private_key_enc,sp_cert}`. SP key+cert auto-generated on first save, encrypted at rest. Single-admin gate: only configured `expected_nameid` is allowed in. Phase 1 = signed-not-encrypted assertions only; encryption + SLO deferred. Test against `samltest.id` public IdP first; recipes in docs for Okta classic / Azure AD enterprise / ADFS / Shibboleth.
+
+- **Beszel bundle 1 (Sprint 3)**:
+  - **GPU monitoring**: agent reads `nvidia-smi --query-gpu=...` (NVIDIA) or `rocm-smi --json` (AMD). Schema extends `HostSnapshot` with `gpus: [{name, util_pct, mem_used_mb, mem_total_mb, temp_c}]`. Host detail charts + alert metric types `gpu_util/gpu_temp/gpu_mem_pct`. Docker containers need `/dev/nvidia*` mounted — documented gotcha.
+  - **Process list top-N**: gopsutil `process.Processes()` sorted by CPU/RAM, top 10 (settings: enable/disable + N up to 50). Default OFF because cmdline can leak secrets — document the trade-off in `docs/configure/processes.md`.
+  - **Maintenance windows**: new table `maintenance_windows(id, start_at, end_at, reason, scope_tags JSON, created_by, created_at)`. Alerts engine skips rules whose host matches `scope_tags` during the window. UI: `Alerts → Maintenance` tab — create, list active/upcoming/past. Timezone-aware in UI; storage stays UTC.
+
+- **Notification quality (Sprint 4)**:
+  - **Digest**: per-channel `digest_window` setting (0=off, 1m/5m/15m/1h). Dispatcher buffers events in the window, flushes one combined notification with body `"5 alerts: …"`. Default 0 (off); trade-off documented (latency vs spam).
+  - **Per-host share link**: new table `host_share_tokens(token, host_id, expires_at, created_by, label)`. `GET /api/public/host/{token}` returns one host's read-only data plus charts. Host detail → "Share link" button mints token + copies URL. Expiry mandatory (default 7d).
+  - **Slack-native**: new channel type `slack` reusing `url` field for the Incoming Webhook URL + optional `channel` override. `dispatchSlack` formats Block Kit (color by severity, fields for host/metric/value, action button).
+  - **Multi-recipient email**: `to_addr` accepts comma-separated; SMTP `RCPT TO:` loop; per-address validation.
+
+- **Windows agent (Sprint 5)**: cross-compile for `windows/amd64` + `windows/arm64`. gopsutil already supports Windows. Default disk path `C:\`. Container collection via Docker Desktop socket (named pipe or TCP). Service registration via `golang.org/x/sys/windows/svc` (no `nssm` dep). PowerShell `install-agent.ps1` (download zip, install service, set token). Release workflow adds `lumen-agent-windows-amd64.zip` artifact. Smoke-test on Windows VM. Docs: `docs/install/agent-windows.md` with UAC elevation note.
+
+- **First-run onboarding (Sprint 6)**: 4-step wizard. (1) Welcome + create admin (reuses /register). (2) Add first host (form, mints token). (3) Generated install command (copy-paste docker-compose, prominent). (4) Wait for first metrics (live polling `/api/hosts`, success animation when one arrives). Shown when `setup-status` returns no admin OR no hosts. Settings → Onboarding has a "Replay" button so the admin can revisit. Overlay-style; doesn't refactor App routing.
+
+- **WebAuthn/passkey (Sprint 7)**: `go-webauthn/webauthn`. Schema `webauthn_credentials(user_id, credential_id, public_key, counter, transports, attestation_type, created_at, last_used_at, label)`. Endpoints: `/api/auth/webauthn/register/{begin,finish}` + `/login/{begin,finish}`. Settings → Account "Add passkey" + list with revoke. Login form: "Sign in with passkey" alongside password. Document HTTPS-required gotcha (localhost works because of WebAuthn dev exception).
+
+- **i18n polish (Sprint 8)**: grep hardcoded English in SSO/status page/web push panels/alerts channel hints; promote to `messages.ts`. Add namespace for dynamic pluralization ("1 host" / "5 hosts"). `docs/contributing/i18n.md`. CI script that fails when `en` and `vi` key sets diverge.
+
+- **Multi-user + TOTP (Sprint 9)**:
+  - **Multi-user**: `role` column on `users` (`admin` | `viewer`). `RequireRole` middleware. Settings → Users tab (list, invite via one-time signup link, set role, revoke). Existing single admin migrates as `admin`. SSO/SAML/WebAuthn bind via email. Multi-tenant scope stays in v1.
+  - **TOTP**: `pquerna/otp`. `users.totp_secret_enc` (AES-GCM keyed off hub secret). Settings → Account → Enable 2FA: QR + verify-code save. Login form gains "code" field when enabled. 10 recovery codes generated at setup, hashed at rest.
+
+- **External API + Grafana (Sprint 10)**: spike with Grafana JSON datasource against existing `/api/v1/hosts/:name/metrics` (built v0.5). Decide stick-with-JSON or add Prometheus-compatible subset (`/api/v1/prometheus/api/v1/{query,query_range}`). If Prometheus path picked: +3d. Docs: `docs/integrations/grafana.md` with datasource config + sample dashboard JSON.
+
+- **Cold tier (Sprint 11, conditional)**: only if demand signal materialises. ADR 0004 evaluates DuckDB packaging (cgo footprint, Pi memory, embedded distribution). Parquet writer with `parquet-go`, one file per (host, downsample bucket). Compaction job sweeps SQLite rows past hot window → Parquet → SQLite delete. Query layer merges hot (SQLite) + cold (Parquet) transparently. Benchmark vs Beszel + Prometheus on standard fleet shapes. `docs/how-to/reduce-disk-writes-further.md`.
+
+**Total**: ~3-4 months part-time for Sprints 1-10. Sprints 1-4 (Backup + SAML + Beszel bundle 1 + Notification quality) = "core value" month; ship → re-evaluate based on user feedback.
+
+**How to apply**: pick top of queue. When a sprint ships, tick the corresponding [ ] checkbox above (Self-hosted SSO, Public status page, Web Push already done — follow that pattern for Backup, SAML, etc.). Do not skip sprints unless a hard external blocker appears.
+
 #### Public landing / marketing site
 - [x] Keep `brand/index.html` as a standalone landing page, separate from the authenticated hub dashboard
 - [x] Evolve landing page into Lumen's public home: product positioning, install CTA, docs link, GitHub link, roadmap highlights — bilingual EN/VI (2026-06-02)
