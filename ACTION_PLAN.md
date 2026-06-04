@@ -490,19 +490,20 @@ These were originally lumped with Cold tier in the old Phase 7 because they were
 
 Locked execution order. SAML2 elevated above Beszel-parity per operator decision; Power monitoring explicitly dropped after the user evaluated the four mechanisms (smart plug / IPMI / RAPL / NUT) and declined to add it. Cold tier stays deferred behind demand signal.
 
-| # | Sprint | Effort | Items |
-|---|---|---|---|
-| 1 | **Backup** | 5d | RFC 0005 → engine → CLI restore → Web UI restore → frontend |
-| 2 | **SAML2** | 5d | RFC 0006 → AuthnRequest+ACS → metadata + frontend → tests + docs |
-| 3 | **Beszel bundle 1** | 5d | GPU monitoring (2d) + Process list top-N (1.5d) + Maintenance windows (1.5d) |
-| 4 | **Notification quality** | 3d | Digest/grouping (1d) + per-host share link (1d) + Slack-native channel (0.5d) + multi-recipient email (0.5d) |
-| 5 | **Windows agent** | 4d | Cross-compile + nssm-style service install + PowerShell install script + smoke test |
-| 6 | **First-run onboarding** | 4d | 4-step guided wizard replacing ad-hoc bootstrap; Replay button in Settings |
-| 7 | **WebAuthn/passkey** | 4d | `go-webauthn` register/login flows + Settings → Account credentials list |
-| 8 | **i18n polish + translation docs** | 3d | Audit hardcoded EN strings (SSO/status/web push panels); `docs/contributing/i18n.md`; lint CI for key parity |
-| 9 | **Multi-user + TOTP 2FA** (v0.6.x backlog) | 6-7d | `role` column on users; admin/viewer middleware; Settings → Users invite flow. TOTP via `pquerna/otp` with recovery codes |
-| 10 | **External API + Grafana spike** | 8d | Wire Grafana JSON datasource against existing `/api/v1/hosts/:name/metrics`; decide Prometheus-compat or stay JSON; `docs/integrations/grafana.md` |
-| 11 | **Cold tier** (conditional) | 14d+ | ADR 0004 DuckDB feasibility → Parquet writer (`parquet-go`) → compaction → query layer → benchmark vs Beszel + Prometheus. Only if demand signal: operator queries >7d range OR SQLite >10GB on real fleet. |
+| # | Sprint | Effort | RFC | Items |
+|---|---|---|---|---|
+| 1 | **Backup** | 5d | [RFC 0001](docs/rfc/0001-backup-restore.md) | RFC → engine → CLI restore → Web UI restore → frontend |
+| 2 | **SAML2** | 5d | [RFC 0002](docs/rfc/0002-saml-sso.md) | RFC → AuthnRequest+ACS → metadata + frontend → tests + docs |
+| 3 | **Beszel bundle 1** | 5d | [RFC 0003](docs/rfc/0003-beszel-bundle-1.md) | GPU monitoring (2d) + Process list top-N (1.5d) + Maintenance windows (1.5d) |
+| 4 | **Notification quality** | 3d | [RFC 0004](docs/rfc/0004-notification-quality.md) | Digest/grouping (1d) + per-host share link (1d) + Slack-native channel (0.5d) + multi-recipient email (0.5d) |
+| 5 | **First-run onboarding** | 4d | [RFC 0005](docs/rfc/0005-onboarding.md) | 4-step guided wizard replacing ad-hoc bootstrap; Replay button in Settings |
+| 6 | **WebAuthn/passkey** | 4d | [RFC 0006](docs/rfc/0006-webauthn.md) | `go-webauthn` register/login flows + Settings → Account credentials list |
+| 7 | **i18n polish + translation docs** | 3d | [RFC 0007](docs/rfc/0007-i18n-polish.md) | Audit hardcoded EN strings; `docs/contributing/i18n.md`; lint CI for key parity |
+| 8 | **Multi-user + TOTP 2FA** (v0.6.x backlog) | 6-7d | [RFC 0008](docs/rfc/0008-multi-user-totp.md) | `role` column on users; admin/viewer middleware; Settings → Users invite flow. TOTP via `pquerna/otp` with recovery codes |
+| 9 | **External API + Grafana spike** | 8d | [RFC 0009](docs/rfc/0009-grafana-integration.md) | Wire Grafana JSON datasource against existing `/api/v1/hosts/:name/metrics`; decide Prometheus-compat or stay JSON; `docs/integrations/grafana.md` |
+| 10 | **Cold tier** (conditional) | 14d+ | ADR 0004 (pending) | DuckDB feasibility → Parquet writer (`parquet-go`) → compaction → query layer → benchmark vs Beszel + Prometheus. Only if demand signal: operator queries >7d range OR SQLite >10GB on real fleet. |
+
+**Windows agent dropped** (2026-06-04 operator decision) — homelab fleet stays Linux + macOS. Power monitoring also explicitly dropped same session after evaluating IPMI / RAPL / NUT / smart-plug paths.
 
 **Lower-priority queue** (do when capacity / user requests):
 - Hub auto-update (Watchtower-style) — 2d
@@ -526,23 +527,21 @@ Locked execution order. SAML2 elevated above Beszel-parity per operator decision
   - **Slack-native**: new channel type `slack` reusing `url` field for the Incoming Webhook URL + optional `channel` override. `dispatchSlack` formats Block Kit (color by severity, fields for host/metric/value, action button).
   - **Multi-recipient email**: `to_addr` accepts comma-separated; SMTP `RCPT TO:` loop; per-address validation.
 
-- **Windows agent (Sprint 5)**: cross-compile for `windows/amd64` + `windows/arm64`. gopsutil already supports Windows. Default disk path `C:\`. Container collection via Docker Desktop socket (named pipe or TCP). Service registration via `golang.org/x/sys/windows/svc` (no `nssm` dep). PowerShell `install-agent.ps1` (download zip, install service, set token). Release workflow adds `lumen-agent-windows-amd64.zip` artifact. Smoke-test on Windows VM. Docs: `docs/install/agent-windows.md` with UAC elevation note.
+- **First-run onboarding (Sprint 5)**: 4-step wizard. (1) Welcome + create admin (reuses /register). (2) Add first host (form, mints token). (3) Generated install command (copy-paste docker-compose, prominent). (4) Wait for first metrics (live polling `/api/hosts`, success animation when one arrives). Shown when `setup-status` returns no admin OR no hosts. Settings → Onboarding has a "Replay" button so the admin can revisit. Overlay-style; doesn't refactor App routing.
 
-- **First-run onboarding (Sprint 6)**: 4-step wizard. (1) Welcome + create admin (reuses /register). (2) Add first host (form, mints token). (3) Generated install command (copy-paste docker-compose, prominent). (4) Wait for first metrics (live polling `/api/hosts`, success animation when one arrives). Shown when `setup-status` returns no admin OR no hosts. Settings → Onboarding has a "Replay" button so the admin can revisit. Overlay-style; doesn't refactor App routing.
+- **WebAuthn/passkey (Sprint 6)**: `go-webauthn/webauthn`. Schema `webauthn_credentials(user_id, credential_id, public_key, counter, transports, attestation_type, created_at, last_used_at, label)`. Endpoints: `/api/auth/webauthn/register/{begin,finish}` + `/login/{begin,finish}`. Settings → Account "Add passkey" + list with revoke. Login form: "Sign in with passkey" alongside password. Document HTTPS-required gotcha (localhost works because of WebAuthn dev exception).
 
-- **WebAuthn/passkey (Sprint 7)**: `go-webauthn/webauthn`. Schema `webauthn_credentials(user_id, credential_id, public_key, counter, transports, attestation_type, created_at, last_used_at, label)`. Endpoints: `/api/auth/webauthn/register/{begin,finish}` + `/login/{begin,finish}`. Settings → Account "Add passkey" + list with revoke. Login form: "Sign in with passkey" alongside password. Document HTTPS-required gotcha (localhost works because of WebAuthn dev exception).
+- **i18n polish (Sprint 7)**: grep hardcoded English in SSO/status page/web push panels/alerts channel hints; promote to `messages.ts`. Add namespace for dynamic pluralization ("1 host" / "5 hosts"). `docs/contributing/i18n.md`. CI script that fails when `en` and `vi` key sets diverge.
 
-- **i18n polish (Sprint 8)**: grep hardcoded English in SSO/status page/web push panels/alerts channel hints; promote to `messages.ts`. Add namespace for dynamic pluralization ("1 host" / "5 hosts"). `docs/contributing/i18n.md`. CI script that fails when `en` and `vi` key sets diverge.
-
-- **Multi-user + TOTP (Sprint 9)**:
+- **Multi-user + TOTP (Sprint 8)**:
   - **Multi-user**: `role` column on `users` (`admin` | `viewer`). `RequireRole` middleware. Settings → Users tab (list, invite via one-time signup link, set role, revoke). Existing single admin migrates as `admin`. SSO/SAML/WebAuthn bind via email. Multi-tenant scope stays in v1.
   - **TOTP**: `pquerna/otp`. `users.totp_secret_enc` (AES-GCM keyed off hub secret). Settings → Account → Enable 2FA: QR + verify-code save. Login form gains "code" field when enabled. 10 recovery codes generated at setup, hashed at rest.
 
-- **External API + Grafana (Sprint 10)**: spike with Grafana JSON datasource against existing `/api/v1/hosts/:name/metrics` (built v0.5). Decide stick-with-JSON or add Prometheus-compatible subset (`/api/v1/prometheus/api/v1/{query,query_range}`). If Prometheus path picked: +3d. Docs: `docs/integrations/grafana.md` with datasource config + sample dashboard JSON.
+- **External API + Grafana (Sprint 9)**: spike with Grafana JSON datasource against existing `/api/v1/hosts/:name/metrics` (built v0.5). Decide stick-with-JSON or add Prometheus-compatible subset (`/api/v1/prometheus/api/v1/{query,query_range}`). If Prometheus path picked: +3d. Docs: `docs/integrations/grafana.md` with datasource config + sample dashboard JSON.
 
-- **Cold tier (Sprint 11, conditional)**: only if demand signal materialises. ADR 0004 evaluates DuckDB packaging (cgo footprint, Pi memory, embedded distribution). Parquet writer with `parquet-go`, one file per (host, downsample bucket). Compaction job sweeps SQLite rows past hot window → Parquet → SQLite delete. Query layer merges hot (SQLite) + cold (Parquet) transparently. Benchmark vs Beszel + Prometheus on standard fleet shapes. `docs/how-to/reduce-disk-writes-further.md`.
+- **Cold tier (Sprint 10, conditional)**: only if demand signal materialises. ADR 0004 evaluates DuckDB packaging (cgo footprint, Pi memory, embedded distribution). Parquet writer with `parquet-go`, one file per (host, downsample bucket). Compaction job sweeps SQLite rows past hot window → Parquet → SQLite delete. Query layer merges hot (SQLite) + cold (Parquet) transparently. Benchmark vs Beszel + Prometheus on standard fleet shapes. `docs/how-to/reduce-disk-writes-further.md`.
 
-**Total**: ~3-4 months part-time for Sprints 1-10. Sprints 1-4 (Backup + SAML + Beszel bundle 1 + Notification quality) = "core value" month; ship → re-evaluate based on user feedback.
+**Total**: ~3 months part-time for Sprints 1-9 (after dropping Windows agent). Sprints 1-4 (Backup + SAML + Beszel bundle 1 + Notification quality) = "core value" month; ship → re-evaluate based on user feedback.
 
 **How to apply**: pick top of queue. When a sprint ships, tick the corresponding [ ] checkbox above (Self-hosted SSO, Public status page, Web Push already done — follow that pattern for Backup, SAML, etc.). Do not skip sprints unless a hard external blocker appears.
 
