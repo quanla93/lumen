@@ -74,7 +74,7 @@ func Snapshot(ctx context.Context, db *sql.DB, dir string) (SnapshotResult, erro
 
 	// Best-effort cleanup of the raw file regardless of how gzip
 	// finishes — we want at most one artifact on disk per call.
-	defer os.Remove(rawPath)
+	defer func() { _ = os.Remove(rawPath) }()
 
 	raw, err := os.Open(rawPath)
 	if err != nil {

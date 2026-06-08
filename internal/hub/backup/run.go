@@ -141,7 +141,7 @@ func RunNow(ctx context.Context, db *sql.DB, p Plan, logger *slog.Logger) (RunRe
 	if err != nil {
 		return RunResult{}, fmt.Errorf("backup: mktemp: %w", err)
 	}
-	defer os.RemoveAll(tmp)
+	defer func() { _ = os.RemoveAll(tmp) }()
 
 	snapStart := time.Now()
 	snap, err := Snapshot(ctx, db, tmp)

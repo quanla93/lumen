@@ -48,6 +48,11 @@ func hashWithArgon2(passphrase string) (string, error) {
 // time on the bytes; not constant time on the parse path (the
 // encoded form is the only public way to verify, so an attacker
 // would have to break Argon2id to exploit the parse).
+//
+// Currently exercised only by passphrase_hash_test.go; will be
+// called by the Web UI restore modal in a follow-up to surface
+// "wrong passphrase" before paying the Argon2id cost on the full
+// blob decrypt.
 func verifyPassphrase(typed, stored string) error {
 	if stored == "" {
 		return errors.New("backup: no passphrase set (use --set-passphrase or the Settings UI)")
