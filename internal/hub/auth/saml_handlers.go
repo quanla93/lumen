@@ -38,14 +38,6 @@ type SAMLSettingsView struct {
 	DiscoveredEntityID   string   `json:"discovered_entity_id,omitempty"`
 }
 
-// samlHandler bundles the per-request deps that need to be passed
-// to the SAML flow. The struct lives on Handlers so the same DB +
-// secret + public URL are reused.
-type samlHandler struct {
-	flow        *SAMLFlow
-	hubPublicFn func() string // request-time getter so deploy-time config can change
-}
-
 // samlSettingsGet — GET /api/settings/saml
 func (h *Handlers) SAMLSettingsGet(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()

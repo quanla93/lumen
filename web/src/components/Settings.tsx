@@ -9,6 +9,7 @@ import {
   oidcApi,
   publicStatusApi,
   backupApi,
+  samlApi,
   ApiError,
   type Host,
   type User,
@@ -25,6 +26,7 @@ import {
   type PublicStatusConfig,
   type BackupSettings,
   type BackupEntry,
+  type SAMLSettings,
 } from "@/lib/api";
 import { relativeTime } from "@/lib/time";
 import { copyToClipboard } from "@/lib/clipboard";
@@ -35,7 +37,7 @@ import { useConfirm } from "@/components/ConfirmDialog";
 import { usePrefs } from "@/lib/userPrefs";
 import { useI18n } from "@/i18n/useI18n";
 
-type SettingsTab = "hosts" | "account" | "display" | "runtime" | "retention" | "downsample" | "logs" | "hub-status" | "api-keys" | "sso" | "status-page" | "backup";
+type SettingsTab = "hosts" | "account" | "display" | "runtime" | "retention" | "downsample" | "logs" | "hub-status" | "api-keys" | "sso" | "saml" | "status-page" | "backup";
 
 const TABS: {
   id: SettingsTab;
@@ -50,6 +52,7 @@ const TABS: {
     | "settings.tabs.hubStatus"
     | "settings.tabs.apiKeys"
     | "settings.tabs.sso"
+    | "settings.tabs.saml"
     | "settings.tabs.statusPage"
     | "settings.tabs.backup";
   icon: typeof Server;
@@ -64,6 +67,7 @@ const TABS: {
   { id: "hub-status",  labelKey: "settings.tabs.hubStatus",  icon: Activity },
   { id: "api-keys",    labelKey: "settings.tabs.apiKeys",    icon: KeyRound },
   { id: "sso",         labelKey: "settings.tabs.sso",        icon: Shield },
+  { id: "saml",        labelKey: "settings.tabs.saml",       icon: Shield },
   { id: "status-page", labelKey: "settings.tabs.statusPage", icon: Globe },
   { id: "backup",      labelKey: "settings.tabs.backup",     icon: Database },
 ];
@@ -110,6 +114,7 @@ export function Settings({ user }: { user: User }) {
           {tab === "hub-status" && <HubStatusSettings />}
           {tab === "api-keys"   && <ApiKeysSettings />}
           {tab === "sso"        && <SSOSettings />}
+          {tab === "saml"       && <SAMLSettings />}
           {tab === "status-page" && <StatusPageSettings />}
           {tab === "backup"      && <BackupSettings />}
         </div>
@@ -1668,6 +1673,214 @@ function StatusPageSettings() {
           </ul>
         )}
       </section>
+    </div>
+  );
+}
+
+// ─── SAML sub-tab (RFC 0002) ──────────────────────────────────────────────
+
+function SAMLSettings() {
+  const [cfg, setCfg] = useState<SAMLSettings | null>(null);
+  const [busy, setBusy] = useState<"save" | "test" | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
+  const [discovered, setDiscovered] = useState<{ sso_url?: string; idp_entity_id?: string } | null>(null);
+
+  // Editable local copies
+  const [enabled, setEnabled] = useState(false);
+  const [metadataSource, setMetadataSource] = useState<"paste" | "url">("paste");
+  const [idpMetadataXML, setIdpMetadataXML] = useState("");
+  const [idpMetadataURL, setIdpMetadataURL] = useState("");
+  const [spEntityID, setSPEntityID] = useState("");
+  const [expectedNameID, setExpectedNameID] = useState("");
+  const [clockSkew, setClockSkew] = useState(60);
+
+  useEffect(() => {
+    samlApi.get().then((c) => {
+      setCfg(c);
+      setEnabled(c.enabled);
+      if (c.idp_metadata_url && !c.idp_metadata_xml) setMetadataSource("url");
+      setIdpMetadataXML(c.idp_metadata_xml ?? "");
+      setIdpMetadataURL(c.idp_metadata_url ?? "");
+      setSPEntityID(c.sp_entity_id ?? "");
+      setExpectedNameID(c.expected_nameid ?? "");
+      setClockSkew(c.allowed_clock_skew_seconds || 60);
+    }).catch((err) => {
+      setError(err instanceof ApiError ? err.message : String(err));
+    });
+  }, []);
+
+  async function save() {
+    setError(null); setInfo(null); setDiscovered(null);
+    setBusy("save");
+    try {
+      const body: Partial<SAMLSettings> = {
+        enabled,
+        idp_metadata_xml: idpMetadataXML,
+        idp_metadata_url: idpMetadataURL,
+        sp_entity_id: spEntityID,
+        expected_nameid: expectedNameID,
+        allowed_clock_skew_seconds: clockSkew,
+      };
+      const next = await samlApi.put(body);
+      setCfg(next);
+      setInfo("Saved.");
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : String(err));
+    } finally { setBusy(null); }
+  }
+
+  async function testMetadata() {
+    setError(null); setInfo(null); setDiscovered(null);
+    setBusy("test");
+    try {
+      const res = await samlApi.testMetadata(
+        metadataSource === "paste" ? idpMetadataXML : "",
+        metadataSource === "url" ? idpMetadataURL : "",
+      );
+      if (res.ok) {
+        setDiscovered({ sso_url: res.sso_url, idp_entity_id: res.idp_entity_id });
+        setInfo("IdP metadata parsed.");
+      } else {
+        setError(res.error ?? "Test failed");
+      }
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : String(err));
+    } finally { setBusy(null); }
+  }
+
+  if (!cfg) {
+    return (
+      <SettingsPanel title="SAML" description="Loading…">
+        <p className="text-sm text-[color:var(--color-muted)]">Loading SAML configuration…</p>
+        {error && <ErrorText message={error} />}
+      </SettingsPanel>
+    );
+  }
+
+  const dirty =
+    enabled !== cfg.enabled ||
+    idpMetadataXML !== (cfg.idp_metadata_xml ?? "") ||
+    idpMetadataURL !== (cfg.idp_metadata_url ?? "") ||
+    spEntityID !== (cfg.sp_entity_id ?? "") ||
+    expectedNameID !== (cfg.expected_nameid ?? "") ||
+    clockSkew !== (cfg.allowed_clock_skew_seconds || 60);
+
+  return (
+    <div className="space-y-4">
+      <SettingsPanel
+        title="SAML SSO"
+        description="Older enterprise + EDU IdPs (Okta classic, Azure AD enterprise, ADFS, Shibboleth). Use OIDC for new deployments when you can — better tooling + simpler setup."
+      >
+        <form
+          onSubmit={(e) => { e.preventDefault(); void save(); }}
+          className="space-y-4"
+        >
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={enabled}
+              onChange={(e) => setEnabled(e.target.checked)}
+            />
+            <span>Enable SAML sign-in</span>
+          </label>
+
+          <Field label="SP metadata">
+            <p className="text-xs text-[color:var(--color-muted)]">
+              Hand this URL to your IdP:{" "}
+              <a
+                className="text-[color:var(--lumen-teal)] underline"
+                href={samlApi.metadataUrl()}
+                target="_blank"
+                rel="noreferrer"
+              >
+                {samlApi.metadataUrl()}
+              </a>
+            </p>
+            <p className="mt-1 text-xs text-[color:var(--color-muted)]">
+              An SP keypair is auto-generated on first save. The SP entity ID defaults to the metadata URL; override here only if your IdP requires a fixed value.
+            </p>
+          </Field>
+
+          <Field label="IdP metadata source">
+            <SegmentedControl
+              value={metadataSource}
+              onChange={(v) => setMetadataSource(v as "paste" | "url")}
+              ariaLabel="IdP metadata source"
+              options={[
+                { value: "paste", label: "Paste XML" },
+                { value: "url", label: "Fetch URL" },
+              ]}
+            />
+          </Field>
+
+          {metadataSource === "paste" ? (
+            <Field label="IdP metadata XML">
+              <textarea
+                value={idpMetadataXML}
+                onChange={(e) => setIdpMetadataXML(e.target.value)}
+                rows={8}
+                className="w-full rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)] p-2 font-mono text-xs"
+                placeholder="<EntityDescriptor xmlns=...>"
+              />
+            </Field>
+          ) : (
+            <Field label="IdP metadata URL">
+              <FieldInput
+                value={idpMetadataURL}
+                onChange={(e) => setIdpMetadataURL(e.target.value)}
+                placeholder="https://idp.example.com/app/lumen/exk.../sso/saml/metadata"
+              />
+            </Field>
+          )}
+
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="SP entity ID (optional)">
+              <FieldInput
+                value={spEntityID}
+                onChange={(e) => setSPEntityID(e.target.value)}
+                placeholder="(defaults to metadata URL)"
+              />
+            </Field>
+            <Field label="Clock skew (seconds)">
+              <FieldInput
+                type="number" min={0} max={600}
+                value={clockSkew}
+                onChange={(e) => setClockSkew(parseInt(e.target.value || "0", 10) || 0)}
+              />
+            </Field>
+          </div>
+
+          <Field label="Expected NameID (comma-separated)">
+            <FieldInput
+              value={expectedNameID}
+              onChange={(e) => setExpectedNameID(e.target.value)}
+              placeholder="alice, bob"
+            />
+            <p className="mt-1 text-xs text-[color:var(--color-muted)]">
+              The exact NameID value(s) your IdP releases for the admin user. Case-insensitive. Required to enable.
+            </p>
+          </Field>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <GhostButton type="button" onClick={() => void testMetadata()} disabled={busy === "test"}>
+              {busy === "test" ? "Testing…" : "Test metadata"}
+            </GhostButton>
+            <PrimaryButton type="submit" disabled={!dirty || busy === "save"}>
+              {busy === "save" ? "Saving…" : "Save"}
+            </PrimaryButton>
+            {error && <ErrorText message={error} />}
+            {info && <span className="text-xs text-[color:var(--color-muted)]">{info}</span>}
+          </div>
+
+          {discovered && (
+            <div className="rounded-md border border-[color:var(--color-border)] p-3 text-xs">
+              <div><strong>SSO URL:</strong> {discovered.sso_url ?? "(none)"}</div>
+              <div><strong>IdP entity ID:</strong> {discovered.idp_entity_id ?? "(none)"}</div>
+            </div>
+          )}
+        </form>
+      </SettingsPanel>
     </div>
   );
 }
