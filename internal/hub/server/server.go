@@ -22,6 +22,7 @@ import (
 	"github.com/quanla93/lumen/internal/hub/auth"
 	"github.com/quanla93/lumen/internal/hub/backup"
 	"github.com/quanla93/lumen/internal/hub/hosts"
+	"github.com/quanla93/lumen/internal/hub/maintenance"
 	"github.com/quanla93/lumen/internal/hub/hubstats"
 	"github.com/quanla93/lumen/internal/hub/ingest"
 	"github.com/quanla93/lumen/internal/hub/install"
@@ -171,6 +172,18 @@ func Run(ctx context.Context, cfg Config) error {
 		Logger:          logger.With("subsys", "alerts"),
 	})
 	go alertsEngine.Run(ctx)
+
+	// Maintenance cacher (RFC 0003) — runs the same 30s heartbeat
+	// as retention + backup so the alerts engine sees window edits
+	// within ~30s. The bridge from cacher → engine is read on
+	// every alert tick; nil = no suppression (operators without
+	// the feature enabled see no behaviour change).
+	maintCacher := &maintenance.Cacher{
+		DB:     db,
+		Logger: logger.With("subsys", "maintenance"),
+	}
+	go maintCacher.Loop(ctx)
+
 	hubStatsHandler := &hubstats.Handler{
 		DB:        db,
 		Store:     st,
@@ -350,6 +363,17 @@ func Run(ctx context.Context, cfg Config) error {
 		r.Get("/api/backup/list", backupHandlers.List)
 		r.Post("/api/backup/restore/{name}", backupHandlers.Restore)
 		r.Get("/api/backup/download/{name}", backupHandlers.Download)
+
+		// Maintenance windows (RFC 0003)
+		maintHandlers := &maintenance.Handlers{
+			DB:     db,
+			Cacher: maintCacher,
+			Logger: logger.With("subsys", "maintenance-handlers"),
+		}
+		r.Get("/api/maintenance", maintHandlers.List)
+		r.Post("/api/maintenance", maintHandlers.Create)
+		r.Put("/api/maintenance/{id}", maintHandlers.Update)
+		r.Delete("/api/maintenance/{id}", maintHandlers.Delete)
 	})
 
 	// Public Read API — Bearer-key authenticated, per-key rate limited,

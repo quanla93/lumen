@@ -69,6 +69,22 @@ type HostsLister func(ctx context.Context) ([]string, error)
 // host_selector; an implementation that doesn't have tags can return nil.
 type TagsLister func(ctx context.Context) (map[string]map[string]string, error)
 
+// MaintenanceLister is the cached set of currently-active
+// maintenance windows per host. The engine calls it on every tick
+// (after the cacher's heartbeat refresh); a nil implementation
+// disables maintenance-window suppression entirely.
+type MaintenanceLister func(ctx context.Context) (map[string][]MaintenanceWindow, error)
+
+// MaintenanceWindow is the slim shape the engine reads from the
+// maintenance cacher — only the fields needed to decide
+// suppression (no reason text, no created_by, no scope_tags JSON
+// because the cacher already parsed it).
+type MaintenanceWindow struct {
+	StartAt   time.Time
+	EndAt     time.Time
+	ScopeTags map[string]string
+}
+
 // Config wires the engine into the rest of the hub. DefaultInterval is the
 // fallback eval cadence when the settings row is missing/unparseable.
 type Config struct {
@@ -82,11 +98,51 @@ type Config struct {
 	// own schedule. nil → fall back to inline Dispatch (legacy path,
 	// kept for the in-process tests that don't want a real DB).
 	Dispatcher *Dispatcher
+	// Maintenance is the cached set of active+upcoming maintenance
+	// windows (RFC 0003). When non-nil, the engine skips notify +
+	// event-insert for any rule whose host is in scope while a
+	// window is active. nil = no suppression.
+	Maintenance MaintenanceLister
 	Logger     *slog.Logger
 }
 
-// stateKey is per-(rule, host). For "all hosts" rules each host gets its
-// own state entry (a CPU breach on hostA doesn't fire hostB).
+// inMaintenance returns true when the host has at least one
+// currently-active window that matches the host's tag scope.
+// Used by evaluate to suppress both firing and resolved
+// transitions during planned downtime. The window's
+// ScopeTags are a parsed map; the host's tags are looked up via
+// the tagSet passed in (the same map evaluate already iterates).
+// Empty window scope matches any host.
+func inMaintenance(maintenance map[string][]MaintenanceWindow, host string, hostTags map[string]string, now time.Time) bool {
+	if len(maintenance) == 0 {
+		return false
+	}
+	wins, ok := maintenance[host]
+	if !ok {
+		// A "*" entry (maintenance["*"]) applies to all hosts whose
+		// tag set is empty — used internally for testing. The
+		// production path is per-host lookup.
+		return false
+	}
+	for _, w := range wins {
+		if now.Before(w.StartAt) || !now.Before(w.EndAt) {
+			continue
+		}
+		if len(w.ScopeTags) == 0 {
+			return true
+		}
+		for k, v := range w.ScopeTags {
+			got, ok := hostTags[k]
+			if !ok {
+				continue
+			}
+			if strings.EqualFold(got, v) {
+				return true
+			}
+		}
+	}
+	return false
+}
 type stateKey struct {
 	RuleID int64
 	Host   string
@@ -302,7 +358,7 @@ func (e *Engine) runOnce(ctx context.Context) {
 		}
 	}
 
-	transitions := e.evaluate(time.Now(), rules, snap, registered, tagSet)
+	transitions := e.evaluate(time.Now(), rules, snap, registered, tagSet, nil)
 	if len(transitions) == 0 {
 		return
 	}
@@ -324,14 +380,22 @@ func (e *Engine) runOnce(ctx context.Context) {
 // transitions a real cycle would persist/notify on, without touching
 // the DB or network. Engine state is still mutated.
 func (e *Engine) Tick(now time.Time, rules []Rule, snap []api.HostSnapshot, registered []string) []Transition {
-	return e.evaluate(now, rules, snap, registered, nil)
+	return e.evaluate(now, rules, snap, registered, nil, nil)
 }
 
 // TickWithTags is like Tick but also passes a host→tags map for rules
 // with non-empty host_selector. Tests that exercise tag selection use
 // this; the legacy Tick keeps behaviour identical for older tests.
 func (e *Engine) TickWithTags(now time.Time, rules []Rule, snap []api.HostSnapshot, registered []string, tags map[string]map[string]string) []Transition {
-	return e.evaluate(now, rules, snap, registered, tags)
+	return e.evaluate(now, rules, snap, registered, tags, nil)
+}
+
+// TickWithTagsAndMaintenance is TickWithTags plus a host→windows
+// map for suppression (RFC 0003). A host with any active window
+// matching its tag scope sees its firing+resolved transitions
+// dropped before they reach persistAndNotify.
+func (e *Engine) TickWithTagsAndMaintenance(now time.Time, rules []Rule, snap []api.HostSnapshot, registered []string, tags map[string]map[string]string, maintenance map[string][]MaintenanceWindow) []Transition {
+	return e.evaluate(now, rules, snap, registered, tags, maintenance)
 }
 
 func anySelectorUsed(rules []Rule) bool {
@@ -355,7 +419,7 @@ type Transition struct {
 
 // evaluate is the state machine — pure given inputs + the existing engine
 // map. Mutates e.state but does no IO. Test friendly.
-func (e *Engine) evaluate(now time.Time, rules []Rule, snap []api.HostSnapshot, registered []string, tagSet map[string]map[string]string) []Transition {
+func (e *Engine) evaluate(now time.Time, rules []Rule, snap []api.HostSnapshot, registered []string, tagSet map[string]map[string]string, maintenance map[string][]MaintenanceWindow) []Transition {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
@@ -403,6 +467,18 @@ func (e *Engine) evaluate(now time.Time, rules []Rule, snap []api.HostSnapshot, 
 				st.lastMetric = r.Metric
 				st.lastRuleName = r.Name
 				st.lastThreshold = r.Threshold
+				// RFC 0003: maintenance window — if any active window
+				// matches the host's tag scope, suppress the entire
+				// transition. We still flip state so the resolve
+				// transition fires when the breach clears AND the
+				// window has ended; pre-window firings that already
+				// dispatched are not recalled (the delivery queue
+				// ships them as normal).
+				if inMaintenance(maintenance, host, tagSet[host], now) {
+					st.firing = true
+					st.lastFiredAt = now
+					break
+				}
 				if r.CooldownSeconds > 0 && !st.lastFiredAt.IsZero() &&
 					now.Sub(st.lastFiredAt) < time.Duration(r.CooldownSeconds)*time.Second {
 					// Cooldown window: flip state but skip the notification.
@@ -425,6 +501,14 @@ func (e *Engine) evaluate(now time.Time, rules []Rule, snap []api.HostSnapshot, 
 					// Silenced: skip resolved notification. We may or may
 					// not have notified about the prior firing — either
 					// way the operator opted out of alerts on this host.
+					break
+				}
+				// RFC 0003: maintenance window — same suppression as
+				// the firing transition. If the breach clears inside
+				// a maintenance window, the resolve notification is
+				// also dropped (the operator doesn't need a "we're
+				// fine now" during planned downtime).
+				if inMaintenance(maintenance, host, tagSet[host], now) {
 					break
 				}
 				out = append(out, Transition{
