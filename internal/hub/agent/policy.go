@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/quanla93/lumen/internal/hub/hosts"
@@ -47,8 +48,33 @@ func (h *PolicyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Process list policy (RFC 0003). Server-side gate is read here;
+	// the agent's own env var (LUMEN_AGENT_PROCESSES) is the other
+	// half — both must be true for the collector to ship rows.
+	procsEnabled := false
+	if v, _ := settings.Get(r.Context(), h.DB, "processes.enabled"); v == "true" {
+		procsEnabled = true
+	}
+	procsTopN := 10
+	if v, _ := settings.Get(r.Context(), h.DB, "processes.top_n"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 50 {
+			procsTopN = n
+		}
+	}
+	procsSortBy := "cpu"
+	if v, _ := settings.Get(r.Context(), h.DB, "processes.sort_by"); v == "rss" {
+		procsSortBy = "rss"
+	}
+	procsRedact, _ := settings.Get(r.Context(), h.DB, "processes.redact_regex")
+
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(api.AgentPolicyResponse{CollectionInterval: interval})
+	_ = json.NewEncoder(w).Encode(api.AgentPolicyResponse{
+		CollectionInterval:    interval,
+		ProcessesEnabled:      procsEnabled,
+		ProcessesTopN:         procsTopN,
+		ProcessesSortBy:       procsSortBy,
+		ProcessesRedactRegex:  procsRedact,
+	})
 }
 
 func writeErr(w http.ResponseWriter, code int, msg string) {

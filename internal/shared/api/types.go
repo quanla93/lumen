@@ -11,6 +11,20 @@ import "time"
 // poll to learn runtime operator policy without redeploying.
 type AgentPolicyResponse struct {
 	CollectionInterval string `json:"collection_interval"`
+	// ProcessesEnabled gates the per-host process list collector.
+	// Defense in depth: the agent also requires LUMEN_AGENT_PROCESSES=true
+	// at boot. Both flags AND together — the collector is only active
+	// when the operator has opted in at both ends.
+	ProcessesEnabled bool `json:"processes_enabled"`
+	// ProcessesTopN is the cap on rows the agent ships. Default 10,
+	// max 50 (RFC 0003).
+	ProcessesTopN int `json:"processes_top_n"`
+	// ProcessesSortBy is "cpu" or "rss". Default "cpu".
+	ProcessesSortBy string `json:"processes_sort_by"`
+	// ProcessesRedactRegex overrides the defensive default that
+	// catches password=... style secrets in cmdline. Empty = use
+	// the built-in default (RFC 0003 Q2).
+	ProcessesRedactRegex string `json:"processes_redact_regex,omitempty"`
 }
 
 // ContainerInfo is one row of the running-container snapshot the agent
@@ -83,6 +97,8 @@ type IngestRequest struct {
 	TempC      float64         `json:"temp_c"`
 	Containers []ContainerInfo `json:"containers,omitempty"`
 	System     SystemMetadata  `json:"system,omitempty"`
+	GPUs       []GPUInfo       `json:"gpus,omitempty"`
+	Processes  []ProcessInfo   `json:"processes,omitempty"`
 }
 
 // StreamControl is a client → server message on /api/stream. Today only
@@ -130,4 +146,41 @@ type HostSnapshot struct {
 	Containers []ContainerInfo `json:"containers,omitempty"`
 	System     SystemMetadata  `json:"system,omitempty"`
 	CpuSeries  []float64       `json:"cpu_series,omitempty"`
+	// GPUs is live-only (not persisted) — the host detail page reads
+	// it for the per-GPU section + chart, and the alerts engine
+	// extracts worst-of values for the gpu_util / gpu_mem / gpu_temp
+	// metric types. Same lifecycle as CpuPerCore: variable-cardinality
+	// per host, no historical bucketing.
+	GPUs []GPUInfo `json:"gpus,omitempty"`
+	// Processes is live-only + opt-in (default OFF). See RFC 0003
+	// for the cmdline-leaks-secrets trade-off; the agent gates on
+	// LUMEN_AGENT_PROCESSES=true AND the server gate at
+	// processes.enabled=true (defense in depth).
+	Processes []ProcessInfo `json:"processes,omitempty"`
+}
+
+// GPUInfo is one physical GPU on a host. Multi-GPU hosts have a
+// slice of these; the alerts engine fires on the worst value
+// across the slice (documented in docs/configure/gpu.md).
+type GPUInfo struct {
+	Index      int     `json:"index"`
+	Name       string  `json:"name"`
+	UtilPct    float64 `json:"util_pct"`
+	MemUsedMB  uint64  `json:"mem_used_mb"`
+	MemTotalMB uint64  `json:"mem_total_mb"`
+	TempC      float64 `json:"temp_c"`
+}
+
+// ProcessInfo is one row in the host detail "Top processes" table.
+// Cmd is truncated to 200 chars at the agent and may be redacted
+// server-side if it matches processes.redact_regex (RFC 0003 Q2
+// proposed: defensive default that catches password=... style
+// secrets even when the operator opts in).
+type ProcessInfo struct {
+	PID    int32   `json:"pid"`
+	Name   string  `json:"name"`
+	User   string  `json:"user"`
+	CPUPct float64 `json:"cpu_pct"`
+	RSSMB  uint64  `json:"rss_mb"`
+	Cmd    string  `json:"cmd"`
 }

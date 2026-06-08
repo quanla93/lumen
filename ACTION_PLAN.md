@@ -948,7 +948,29 @@ Nếu bạn (hoặc Claude) mở session mới:
 > Cập nhật mục này mỗi session.
 
 **Session**: 2026-06-08 (current)
-**Đang làm**: **Sprint 2 — SAML2 SSO (RFC 0002).** Pulled after Sprint 1 (Backup) shipped v0.7.1 on 2026-06-08. SAML unlocks the older enterprise/EDU IdP estate where OIDC is absent or behind a higher tier. v1 ships the simplest interoperable subset: SP-initiated auth-code, signed assertions, no encryption, no SLO, single-admin gate via comma-separated `expected_nameid`. Reference: `internal/hub/auth/oidc.go` for the cookie/state pattern + `internal/hub/auth/crypto.go` for the AES-GCM KEK (distinct label `lumen/saml/v1`).
+**Đang làm**: **Sprint 3 — Beszel bundle 1 (GPU + processes + maintenance windows, RFC 0003).** Pulled after Sprints 1+2 shipped v0.7.1 (Backup) and v0.7.2 (SAML2) on 2026-06-08. Three Beszel-comparable features bundle'd into one release: GPU monitoring (NVIDIA nvidia-smi + AMD rocm-smi, live-only like per-core CPU + containers), top-N process list (gopsutil, default OFF for the cmdline-leaks-secrets trade-off), maintenance windows (alerts engine skips matching rules during a time window with tag-scope selector). Three doc pages so each topic is self-contained.
+
+**Plan 4 ngày (locked, verify từng bước trước khi step tiếp)**:
+
+| Day | Output | Verify |
+|---|---|---|
+| **D1** | `internal/shared/api` types: `GPUInfo`, `ProcessInfo`; extend `HostSnapshot` with `GPUs []GPUInfo` + `Processes []ProcessInfo`; `internal/agent/collector/gpu.go` (detect nvidia-smi / rocm-smi on $PATH, parse CSV / JSON, return empty if missing both, cache executable lookup at startup) + `internal/agent/collector/processes.go` (gopsutil `process.Processes()` → cmdline truncated to 200 chars + sort + truncate to N, off by default via env + server gate) + migration `0022_gpu_processes_maintenance.sql` (maintenance_windows table + 3 default `processes.*` settings rows) | `gpu_test.go` parses fixture nvidia-smi CSV + rocm-smi JSON; missing exec = empty slice; `processes_test.go` sorts by CPU vs RSS + top-N truncation |
+| **D2** | `internal/hub/maintenance/` package: schema loader + cached `[]MaintenanceWindow` + matchScope (subset-of-tags semantics) + handlers (4 endpoints: `POST/GET/PUT/DELETE /api/maintenance`, GET supports `?state=active|upcoming|past` filter); alerts engine integration: skip notify + skip event insert when `now ∈ [start,end]` AND `matchScope(rule.Tags, win.ScopeTags)` — reuses the host-silence pattern | `maintenance_test.go`: scope match (subset of tags), active check at edge of start_at + end_at, edit guards (no start_at edit when active, end_at extend only) |
+| **D3** | Host detail: `GPUSection` (per-GPU card with util / mem / temp progress bars + 1h time-series chart) + `ProcessesTable` (sortable); Rules form: 3 new metric types `gpu_util` / `gpu_temp` / `gpu_mem_pct` in the metric selector; Alerts → Maintenance tab (active/upcoming/past list with state badges + create form using datetime-local); Settings → Runtime: processes toggle + N + sort_by | tsc + pnpm web build clean; rules form accepts new metric types; alerts form lists maintenance windows |
+| **D4** | `docs/configure/gpu.md` (NVIDIA driver + ROCm install pointers + Docker container caveat) + `docs/configure/processes.md` (what's collected + what's NOT + cmdline-leaks-secrets trade-off) + `docs/configure/maintenance-windows.md` (when to use + tag scope semantics + timezone behaviour); `CHANGELOG.md` v0.7.3 entry; flip Sprint 3 row → ✅; commit → push → tag v0.7.3 | docs render OK; CHANGELOG format; sprint queue updated |
+
+**Decisions to log when shipping** (chốt giữa đường, không block start):
+- RFC Q1 — suppress notification for events that ALREADY fired before window started: no. Window prevents *new* firings. The notification queue ships anything already queued (matches the existing host-silence pattern).
+- RFC Q2 — redact `Cmd` if it matches `processes.redact_regex`: yes, implement as a default `(?i)(password|secret|token|api[_-]?key)\s*=` regex the operator can override via settings. Defensive default protects against accidental `password=...` exposure even when the operator opts in.
+
+**Out of scope (đã chốt trong RFC, không vào sprint này)**: per-process GPU usage, Intel iGPU, Apple Silicon GPU, vendor-specific power/fan knobs, process tree, per-process net/disk I/O, send/kill from UI, recurring maintenance windows, auto-ack of pre-window events, calendar import, per-rule maintenance windows, per-GPU alert tag override.
+
+**Trạng thái sprint queue sau D4**: Sprint 3 ✅ → next pull = Sprint 4 Notification quality (RFC 0004).
+
+---
+
+**Session**: 2026-06-08
+**Đã làm**: **Sprint 2 — SAML2 SSO (RFC 0002).** Pulled after Sprint 1 (Backup) shipped v0.7.1 on 2026-06-08. SAML unlocks the older enterprise/EDU IdP estate where OIDC is absent or behind a higher tier. v1 ships the simplest interoperable subset: SP-initiated auth-code, signed assertions, no encryption, no SLO, single-admin gate via comma-separated `expected_nameid`. Reference: `internal/hub/auth/oidc.go` for the cookie/state pattern + `internal/hub/auth/crypto.go` for the AES-GCM KEK (distinct label `lumen/saml/v1`).
 
 **Plan 4 ngày (locked, verify từng bước trước khi step tiếp)**:
 

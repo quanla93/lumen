@@ -128,6 +128,7 @@ func runAgent() {
 	bufferPath := envcfg.String("LUMEN_AGENT_BUFFER_PATH", "./lumen-agent-buffer.db")
 	bufferMaxAge := envcfg.Duration("LUMEN_AGENT_BUFFER_MAX_AGE", 24*time.Hour)
 	drainPerTick := envcfg.Int("LUMEN_AGENT_BUFFER_DRAIN", 10)
+	processesEnabled := envcfg.Bool("LUMEN_AGENT_PROCESSES", false)
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 
@@ -143,6 +144,17 @@ func runAgent() {
 
 	snd := sender.New(hubURL, token)
 	rates := &collector.Rates{}
+
+	// Per-host opt-in for the process list collector (RFC 0003).
+	// The server-side gate (processes.enabled in the settings
+	// table) is loaded later via /api/agent/policy and also
+	// writes to the same collector.ProcessesEnabled var, so the
+	// two flags AND together. We seed with the env value here so
+	// the first tick (before policy is fetched) doesn't ship a
+	// process list the operator hasn't approved.
+	collector.ProcessesEnabled = processesEnabled
+	collector.ProcessesTopN = 10
+	collector.ProcessesSortBy = "cpu"
 
 	// Offline buffer: a bbolt file under bufferPath. If Open fails (e.g.
 	// readonly filesystem in a test sandbox) we degrade gracefully — the
@@ -383,6 +395,21 @@ func collect(
 		if err != nil {
 			logger.Debug("docker containers sample partial", "err", err)
 		}
+	}
+
+	// GPU + processes (RFC 0003). Both are live-only and
+	// silently no-op when the corresponding tooling / gates are
+	// absent — a homelab host without a discrete GPU or with
+	// processes disabled never sees a warning.
+	if gpus, gerr := collector.GPU(ctx); gerr != nil {
+		logger.Debug("gpu sample failed", "err", gerr)
+	} else if len(gpus) > 0 {
+		env.GPUs = gpus
+	}
+	if procs, perr := collector.Processes(ctx); perr != nil {
+		logger.Debug("processes sample failed", "err", perr)
+	} else if len(procs) > 0 {
+		env.Processes = procs
 	}
 
 	return env
