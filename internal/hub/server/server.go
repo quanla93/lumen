@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -19,6 +20,7 @@ import (
 	"github.com/quanla93/lumen/internal/hub/alerts"
 	"github.com/quanla93/lumen/internal/hub/apikey"
 	"github.com/quanla93/lumen/internal/hub/auth"
+	"github.com/quanla93/lumen/internal/hub/backup"
 	"github.com/quanla93/lumen/internal/hub/hosts"
 	"github.com/quanla93/lumen/internal/hub/hubstats"
 	"github.com/quanla93/lumen/internal/hub/ingest"
@@ -169,6 +171,36 @@ func Run(ctx context.Context, cfg Config) error {
 	publicAPIHandlers := publicapi.NewHandlers(db, cfg.Version, logger.With("subsys", "publicapi"))
 	publicAPILimiter := publicapi.NewLimiter(100, 100) // 100 burst, 100/min refill
 	publicAPIAuthn := publicapi.Authn(db, logger.With("subsys", "publicapi"))
+
+	// Backup feature (Sprint 1 / RFC 0001) — the scheduler is the cron
+	// tick; the handlers cover the 6 Web UI endpoints; the Run func
+	// the scheduler calls builds a Plan from the current settings and
+	// runs the snapshot+seal+put+retain chain.
+	backupHandlers := &backup.Handlers{
+		DB:     db,
+		Secret: cfg.Secret,
+		DBPath: cfg.DBPath,
+		Logger: logger.With("subsys", "backup"),
+	}
+	backupScheduler := backup.NewScheduler(db, func(ctx context.Context) error {
+		// The passphrase the scheduler uses is whatever the operator
+		// most recently typed in the Web UI. We cache it in
+		// LUMEN_HUB_BACKUP_PASSPHRASE on first SetPassphrase so the
+		// scheduler can find it without re-asking. (Phase 2 of v0.7.1
+		// will move this to a small encrypted-on-disk store.)
+		pass := os.Getenv("LUMEN_HUB_BACKUP_PASSPHRASE")
+		if pass == "" {
+			return fmt.Errorf("backup scheduler: passphrase not set (set LUMEN_HUB_BACKUP_PASSPHRASE or use the Web UI's Save Passphrase button)")
+		}
+		p, err := backup.NewPlan(ctx, db, cfg.Secret, []byte(pass))
+		if err != nil {
+			return err
+		}
+		_, err = backup.RunNow(ctx, db, p, logger.With("subsys", "backup-run"))
+		return err
+	}, nil, logger.With("subsys", "backup-sched"))
+	go backupScheduler.Loop(ctx)
+
 	requireSession := auth.RequireSession(cfg.Secret)
 
 	r := chi.NewRouter()
@@ -280,6 +312,16 @@ func Run(ctx context.Context, cfg Config) error {
 		r.Post("/api/tags/{key}/values", alertsHandlers.AddTagValue)
 		r.Delete("/api/tags/{key}/values/{value}", alertsHandlers.DeleteTagValue)
 		r.Get("/api/tags/{key}/values/{value}/impact", alertsHandlers.TagValueImpact)
+
+		// Backup (RFC 0001) — 6 endpoints + 1 download stream
+		r.Get("/api/settings/backup", backupHandlers.Get)
+		r.Put("/api/settings/backup", backupHandlers.Put)
+		r.Post("/api/settings/backup/test", backupHandlers.Test)
+		r.Post("/api/backup/passphrase", backupHandlers.SetPassphrase)
+		r.Post("/api/backup/run", backupHandlers.Run)
+		r.Get("/api/backup/list", backupHandlers.List)
+		r.Post("/api/backup/restore/{name}", backupHandlers.Restore)
+		r.Get("/api/backup/download/{name}", backupHandlers.Download)
 	})
 
 	// Public Read API — Bearer-key authenticated, per-key rate limited,
