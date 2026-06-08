@@ -111,7 +111,7 @@ func LoadKeys(ctx context.Context, db *sql.DB, hubSecret []byte) (Keys, bool, er
 func SetSubject(ctx context.Context, db *sql.DB, subject string) error {
 	subject = strings.TrimSpace(subject)
 	if !strings.HasPrefix(subject, "https://") && !strings.HasPrefix(subject, "mailto:") {
-		return errors.New("VAPID subject must start with https:// or mailto:")
+		return errors.New("VAPID subject must start with https:// or mailto")
 	}
 	return settings.Set(ctx, db, SettingsKeyVAPIDSubject, subject)
 }

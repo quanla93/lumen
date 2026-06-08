@@ -138,7 +138,7 @@ func (h *Handlers) ConfigGet(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "lookup failed"})
 		return
 	}
-	writeJSON(w, http.StatusOK, ConfigView{Enabled: cfg.Enabled, Title: cfg.Title, Description: cfg.Description})
+	writeJSON(w, http.StatusOK, ConfigView(cfg))
 }
 
 // PUT /api/settings/public-status — session-protected.

@@ -278,7 +278,7 @@ func (f *OIDCFlow) HandleCallback(ctx context.Context, w http.ResponseWriter, r 
 		return "", errors.New("provider returned no email; ensure scope 'email' is granted")
 	}
 	if cfg.ExpectedEmail == "" {
-		return "", errors.New("Settings → SSO has no expected email configured")
+		return "", errors.New("settings → SSO has no expected email configured")
 	}
 	if gotEmail != cfg.ExpectedEmail {
 		return "", fmt.Errorf("OIDC email %q does not match expected %q", gotEmail, cfg.ExpectedEmail)
