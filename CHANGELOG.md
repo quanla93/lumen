@@ -6,6 +6,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.7.2] — 2026-06-08
+
+### Added
+
+- **SAML2 SSO** (Phase 8 Sprint 2, RFC 0002). Single-admin scope. Unlocks the older enterprise + EDU IdP estate (Okta classic, Azure AD enterprise, ADFS, Shibboleth, OneLogin classic) where OIDC is absent or behind a higher tier. See [`docs/configure/saml.md`](./docs/src/content/docs/configure/saml.md) for the "use OIDC if you can" callout + per-provider recipes.
+  - SP built directly on top of `github.com/crewjam/saml` low-level types (not the `samlsp` middleware — that owns its own cookie session codec which would conflict with Lumen's existing `lumen_session` JWT).
+  - `crewjam/saml/samlsp` is not imported; the `ParseMetadata` + `Metadata()` XML helpers are copied into `internal/hub/auth/saml_metadata.go` + `saml_marshal.go` so the binary doesn't drag in golang-jwt/jwt/v4.
+  - SP key + cert auto-generated on first save (2048-bit RSA, self-signed, 10 y validity, CN = SP entity ID) and AES-GCM-encrypted at rest under a SAML-distinct KEK label (`lumen/saml/v1`). Operator only pastes IdP metadata.
+  - Single-admin gate at ACS: NameID must be in the comma-separated `saml.expected_nameid` list (case-insensitive intersect-any per RFC Q4). Outside the list → ACS rejects with a clear error regardless of IdP signature outcome.
+  - Defensive re-check of `NotBefore` / `NotOnOrAfter` against the operator-configured `saml.allowed_clock_skew_seconds` (default 60 s) — crewjam's own check is the first line; this is a second opinion.
+  - SP entity ID auto-defaults to `https://<hub-public-url>/api/auth/saml/metadata` per RFC Q2 so the audience check matches trivially. Override via `saml.sp_entity_id` if your IdP requires a fixed value.
+  - Optional periodic refetch of `saml.idp_metadata_url` (1 h default) for cert rollover survival.
+  - 6 endpoints: `GET /api/auth/saml/{login,metadata}` public, `POST /api/auth/saml/acs` public, `GET /api/settings/saml` session, `PUT /api/settings/saml` session, `POST /api/settings/saml/test-metadata` session.
+  - Setup-status endpoint extended to report `saml_enabled` alongside `oidc_enabled`; Login form renders both buttons when both are enabled.
+  - `LUMEN_HUB_PUBLIC_URL` env var is required for SAML to mint a valid AuthnRequest; missing → 503 with a clear message (operator's path to fix is the env var, not a code change).
+  - Migration `0021_saml_settings.sql` seeds 8 default `saml.*` rows.
+  - Web UI: new `Settings → SAML` tab (master switch, IdP metadata source segmented as Paste / Fetch URL, conditional fields per source, SP entity ID optional, clock skew, Expected NameID comma-separated, Test metadata button that surfaces the discovered SSO URL + IdP entity ID inline, Save, SP metadata link to hand the IdP). Tab label + "Sign in with SAML" localised in EN + VI.
+
+### Dependencies
+
+- `github.com/crewjam/saml` v0.5.1.
+- (no other new dep — RSA via stdlib `crypto/rsa` + `crypto/x509`; XML via stdlib `encoding/xml`; xml-roundtrip validator from `github.com/mattermost/xml-roundtrip-validator` was a transitive add via crewjam/saml but is only used to validate the IdP metadata XML.)
+
 ## [0.7.1] — 2026-06-08
 
 ### Added
