@@ -6,6 +6,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.7.3] — 2026-06-08
+
+### Added
+
+- **Beszel bundle 1** (Phase 8 Sprint 3, RFC 0003) — three Beszel-comparable features bundled in one release: GPU monitoring, top-N process list, maintenance windows. See [`docs/configure/gpu.md`](./docs/src/content/docs/configure/gpu.md) + [`docs/configure/processes.md`](./docs/src/content/docs/configure/processes.md) + [`docs/configure/maintenance-windows.md`](./docs/src/content/docs/configure/maintenance-windows.md).
+  - **GPU monitoring** — NVIDIA (`nvidia-smi --query-gpu=...`) + AMD (`rocm-smi --json`) per-GPU utilization, memory, temperature. Multi-GPU per host. `internal/agent/collector/gpu.go` shells out per tick (5 s timeout, cached executable lookup at startup). Missing both binaries = silent empty slice (homelab hosts without a discrete GPU). Three new alert metric types `gpu_util` / `gpu_temp` / `gpu_mem_pct` evaluate worst-of across the host's GPUs.
+  - **Process list** — gopsutil `process.Processes()` → top-N by CPU% or RSS, cmdline truncated to 200 chars, opt-in per host. `internal/agent/collector/processes.go` + `processes_regexp.go` enforce the RFC 0003 §"Process list" cmdline-leaks-secrets trade-off: two flags must be true (server `processes.enabled` AND agent `LUMEN_AGENT_PROCESSES=true`). Default-OFF + defensive `RedactCmd` regex (catches `password=` / `TOKEN=` / `api_key=` style leaks; operator-overridable via `processes.redact_regex`).
+  - **Maintenance windows** — `internal/hub/maintenance/` package: `maintenance_windows` table (migration `0022`), 30 s heartbeat cacher, alerts engine gate. While a window is active AND the host's tag set matches the scope, both firing and resolved transitions are dropped before `persistAndNotify`. Edit guards: start_at is locked once a window has begun; end_at extends/shortens freely. 4 endpoints (`GET/POST /api/maintenance`, `PUT/DELETE /api/maintenance/{id}`) with `?state=active|upcoming|past|all` filter.
+  - **Web UI** — Alerts → Maintenance tab (create form, 4-state filter, per-row state badge, edit, delete with confirm). Alerts → Rules form accepts the 3 new GPU metric types. `SettingsPanel` now exported so cross-file consumers (Alerts panel) can reuse the surface.
+  - **`LUMEN_HUB_PUBLIC_URL`** env var unchanged from v0.7.2 (still required for SAML).
+  - **Migration `0022_gpu_processes_maintenance.sql`** — `maintenance_windows` table + 4 default `processes.*` settings rows.
+  - **i18n** — `alerts.tabs.maintenance` (EN "Maintenance" / VI "Bảo trì").
+
+### Out of scope (đã chốt trong RFC, follow-up)
+
+- Host detail `GPUSection` + `ProcessesTable` UI surfaces (the data flows end-to-end; the host detail render is a follow-up).
+- Per-process GPU usage, Intel iGPU, Apple Silicon GPU, vendor-specific knobs, process tree, per-process net/disk I/O, send/kill from UI, recurring windows, auto-ack pre-window events, calendar import (iCal), per-rule windows, per-GPU alert tag override.
+
 ## [0.7.2] — 2026-06-08
 
 ### Added

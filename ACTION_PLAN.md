@@ -494,7 +494,7 @@ Locked execution order. SAML2 elevated above Beszel-parity per operator decision
 |---|---|---|---|---|
 | 1 | **Backup** | 5d | [RFC 0001](docs/rfc/0001-backup-restore.md) | RFC → engine → CLI restore → Web UI restore → frontend · shipped v0.7.1 |
 | 2 | **SAML2** | 5d | [RFC 0002](docs/rfc/0002-saml-sso.md) | RFC → AuthnRequest+ACS → metadata + frontend → tests + docs · shipped v0.7.2 |
-| 3 | **Beszel bundle 1** | 5d | [RFC 0003](docs/rfc/0003-beszel-bundle-1.md) | GPU monitoring (2d) + Process list top-N (1.5d) + Maintenance windows (1.5d) |
+| 3 | **Beszel bundle 1** | 5d | [RFC 0003](docs/rfc/0003-beszel-bundle-1.md) | GPU monitoring (2d) + Process list top-N (1.5d) + Maintenance windows (1.5d) · shipped v0.7.3 |
 | 4 | **Notification quality** | 3d | [RFC 0004](docs/rfc/0004-notification-quality.md) | Digest/grouping (1d) + per-host share link (1d) + Slack-native channel (0.5d) + multi-recipient email (0.5d) |
 | 5 | **First-run onboarding** | 4d | [RFC 0005](docs/rfc/0005-onboarding.md) | 4-step guided wizard replacing ad-hoc bootstrap; Replay button in Settings |
 | 6 | **WebAuthn/passkey** | 4d | [RFC 0006](docs/rfc/0006-webauthn.md) | `go-webauthn` register/login flows + Settings → Account credentials list |
