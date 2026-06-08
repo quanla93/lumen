@@ -6,6 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.7.1] — 2026-06-08
+
+### Added
+
+- **Backup + restore** (Phase 8 Sprint 1, RFC 0001). Encrypt the hub's SQLite database on a schedule and ship it to a local path or any S3-compatible bucket (AWS S3, MinIO, Cloudflare R2, Backblaze B2, Wasabi). Restore runs either from a stopped hub (`lumen-hub --restore=<file>`, canonical) or from the Settings UI (convenience, with documented caveats). See [`docs/configure/backup.md`](./docs/src/content/docs/configure/backup.md).
+  - File format: a 39-byte fixed header (10-byte magic `LUMEN_BAK\x00` + version + 16-byte Argon2id salt + 12-byte AES-GCM nonce) + AES-256-GCM ciphertext of a gzipped SQLite snapshot. Default Argon2id params tuned to ~1 s on Raspberry Pi 4. The format is small enough to inspect with `dd if=backup.bin bs=1 count=39 | xxd` and trivial to decrypt from a third-party tool.
+  - Targets: `LocalTarget` (file mode 0600, probe-write on construction) and `S3Target` (aws-sdk-go-v2, `BaseEndpoint` + `ForcePathStyle` toggles, `ServerSideEncryptionAes256` on every PutObject, `HeadBucket` at construction time so 403/404/TLS errors surface before cron mode silently fails for hours). 512 MB download cap on restore.
+  - Scheduler: `robfig/cron/v3` with a 30 s heartbeat that hot-reloads `backup.enabled` and `backup.cron` from the settings table — operator edits apply within ~30 s, no hub restart. Consecutive failures double the backoff delay up to 4 h and surface a hub-level alert event. One successful run clears the counter.
+  - Passphrase is never stored. The hub keeps the Argon2id hash (`$argon2id$v=19$m=65536,t=3,p=4$...`) so the CLI can surface "passphrase mismatch" cleanly without seeing the plaintext twice.
+  - Restore verifies the encrypted blob (header + AES-GCM auth + gunzip + `PRAGMA integrity_check` on a fresh `*sql.DB` connection) then atomically swaps the live database, preserving the previous one as `lumen.db.before-restore-<unix>`. Pre-flight refuses if a `-wal` / `-shm` file is fresher than 5 s; `--force` overrides.
+  - CLI: `lumen-hub --restore=<file>` is a one-shot pre-startup mode. Passphrase from `LUMEN_HUB_BACKUP_PASSPHRASE` (automation) or a TTY prompt with echo disabled via `golang.org/x/term` (manual).
+  - Migration `0020_backup_settings.sql` seeds 13 default `backup.*` rows into the existing settings k/v table; no new table.
+  - 7 endpoints under the session-protected group: `GET /api/settings/backup`, `PUT /api/settings/backup`, `POST /api/settings/backup/test`, `POST /api/backup/passphrase`, `POST /api/backup/run`, `GET /api/backup/list`, `POST /api/backup/restore/{name}`, plus `GET /api/backup/download/{name}` for the per-row encrypted download.
+  - Web UI: new `Settings → Backup` tab with three panels (Configuration / Passphrase / Recent backups). Inline English copy (admin-only surface; i18n sweep is Sprint 7 territory). Tab label localised in EN + VI.
+
+### Dependencies
+
+- `github.com/aws/aws-sdk-go-v2` (and the `config` / `credentials` / `service/s3` sub-modules) — pinned to current minor.
+- `github.com/robfig/cron/v3` v3.0.1.
+- `golang.org/x/term` (for the CLI passphrase prompt). `golang.org/x/crypto/argon2` was already in the module graph (used by `auth.password.go`).
+
 ### Added
 
 - **Web Push notifications** (Phase 8 v0.7+ item). New `web_push` channel type alongside ntfy / discord / webhook / telegram / email. One channel fans out to multiple browsers — desktop Chrome/Edge/Firefox, Android, and iOS Safari (after the PWA install). VAPID key pair is generated on first use and stored in the settings table; the private key is AES-GCM-encrypted at rest with a key derived from `LUMEN_HUB_SECRET` (same scheme used for the OIDC client secret). Per-browser subscriptions live in a new `web_push_subscriptions` table (migration `0019`); 404/410 responses from the push service auto-prune dead rows. Service worker push + notificationclick handlers extend the existing `/sw.js`. Docs: [`docs/configure/web-push.md`](./docs/src/content/docs/configure/web-push.md).

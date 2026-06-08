@@ -477,7 +477,7 @@ These were originally lumped with Cold tier in the old Phase 7 because they were
 
 - [x] **Self-hosted SSO: custom OIDC provider config** (issuer / client ID / client secret / scopes / expected admin email), with local admin fallback preserved — *shipped v0.7.0 (2026-06-04)*. Single-admin scope. Settings → SSO tab + login button. Encrypted client_secret at rest via AES-GCM keyed off `LUMEN_HUB_SECRET`. Docs in `docs/configure/sso.md` with Authentik / Keycloak / Google recipes.
 - [ ] SAML2 evaluation after OIDC; implement only if dependency and configuration complexity stay acceptable for homelab/self-hosted use
-- [ ] Backup RFC/UX: local/S3-compatible backup, restore flow, encryption, retention, and whether backup belongs in core or optional module
+- [x] Backup RFC/UX: local/S3-compatible backup, restore flow, encryption, retention, and whether backup belongs in core or optional module — *shipped v0.7.1 (2026-06-08)*. Local + S3 targets, AES-256-GCM with Argon2id-derived key, cron scheduler with hot-reload + backoff, CLI restore + Web UI restore, 7 endpoints, Settings → Backup tab. Docs in `docs/configure/backup.md`.
 - [ ] External data API/export RFC follow-up: Grafana first, auth model, query shape, rate limits, and Prometheus-compatible endpoint vs Grafana datasource plugin vs plain REST
 - [ ] Grafana integration spike follow-up: prove a user can build Grafana dashboards from Lumen monitoring data without using Lumen's web UI
 - [ ] First-run onboarding flow: create admin → add first host → use generated per-agent Docker Compose setup → wait for first metrics
@@ -492,7 +492,7 @@ Locked execution order. SAML2 elevated above Beszel-parity per operator decision
 
 | # | Sprint | Effort | RFC | Items |
 |---|---|---|---|---|
-| 1 | **Backup** | 5d | [RFC 0001](docs/rfc/0001-backup-restore.md) | RFC → engine → CLI restore → Web UI restore → frontend |
+| 1 | **Backup** | 5d | [RFC 0001](docs/rfc/0001-backup-restore.md) | RFC → engine → CLI restore → Web UI restore → frontend · shipped v0.7.1 |
 | 2 | **SAML2** | 5d | [RFC 0002](docs/rfc/0002-saml-sso.md) | RFC → AuthnRequest+ACS → metadata + frontend → tests + docs |
 | 3 | **Beszel bundle 1** | 5d | [RFC 0003](docs/rfc/0003-beszel-bundle-1.md) | GPU monitoring (2d) + Process list top-N (1.5d) + Maintenance windows (1.5d) |
 | 4 | **Notification quality** | 3d | [RFC 0004](docs/rfc/0004-notification-quality.md) | Digest/grouping (1d) + per-host share link (1d) + Slack-native channel (0.5d) + multi-recipient email (0.5d) |
