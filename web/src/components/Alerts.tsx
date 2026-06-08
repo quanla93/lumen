@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   BellRing, History, Send, ShieldAlert, Cable, Tag as TagIcon,
-  Cpu, MemoryStick, HardDrive, Activity, ServerOff,
+  Cpu, MemoryStick, HardDrive, Activity, ServerOff, Wrench,
   Pencil, Trash2, Megaphone, MessagesSquare, Webhook, Mail,
   CheckCircle2, XCircle, Clock, Loader2, MinusCircle, Zap,
   VolumeX,
@@ -12,6 +12,7 @@ import {
   hostsApi,
   tagsApi,
   webPushApi,
+  maintenanceApi,
   TELEGRAM_TOKEN_MASK,
   type AlertComparator,
   type AlertEvent,
@@ -21,6 +22,7 @@ import {
   type AlertSeverity,
   type ChannelType,
   type DeliveryStatus,
+  type MaintenanceWindow,
   type DeliveryView,
   type Host,
   type NotificationChannel,
@@ -39,21 +41,23 @@ import {
 import { EmptyState, IconButton, Popover, SegmentedControl, StatusPill, Surface, Switch } from "@/components/ui";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { AlertTags } from "@/components/AlertTags";
+import { SettingsPanel } from "@/components/Settings";
 import { useI18n } from "@/i18n/useI18n";
 import type { TranslationKey } from "@/i18n/types";
 
-type AlertsTab = "active" | "history" | "deliveries" | "rules" | "channels" | "tags";
+type AlertsTab = "active" | "history" | "deliveries" | "rules" | "channels" | "tags" | "maintenance";
 
 const TABS: { id: AlertsTab; labelKey: TranslationKey; icon: typeof BellRing }[] = [
-  { id: "active",     labelKey: "alerts.tabs.active",     icon: BellRing },
-  { id: "history",    labelKey: "alerts.tabs.history",    icon: History },
-  { id: "deliveries", labelKey: "alerts.tabs.deliveries", icon: Send },
-  { id: "rules",      labelKey: "alerts.tabs.rules",      icon: ShieldAlert },
-  { id: "channels",   labelKey: "alerts.tabs.channels",   icon: Cable },
-  { id: "tags",       labelKey: "alerts.tabs.tags",       icon: TagIcon },
+  { id: "active",      labelKey: "alerts.tabs.active",      icon: BellRing },
+  { id: "history",     labelKey: "alerts.tabs.history",     icon: History },
+  { id: "deliveries",  labelKey: "alerts.tabs.deliveries",  icon: Send },
+  { id: "rules",       labelKey: "alerts.tabs.rules",       icon: ShieldAlert },
+  { id: "channels",    labelKey: "alerts.tabs.channels",    icon: Cable },
+  { id: "tags",        labelKey: "alerts.tabs.tags",        icon: TagIcon },
+  { id: "maintenance", labelKey: "alerts.tabs.maintenance", icon: Wrench },
 ];
 
-const METRICS: AlertMetric[] = ["cpu_pct", "ram_pct", "swap_pct", "disk_pct", "load1", "offline"];
+const METRICS: AlertMetric[] = ["cpu_pct", "ram_pct", "swap_pct", "disk_pct", "load1", "offline", "gpu_util", "gpu_temp", "gpu_mem_pct"];
 const COMPARATORS: AlertComparator[] = ["gt", "lt"];
 const SEVERITIES: AlertSeverity[] = ["info", "warning", "critical"];
 const CHANNEL_TYPES: ChannelType[] = ["ntfy", "discord", "webhook", "telegram", "email", "web_push"];
@@ -139,6 +143,7 @@ export function Alerts() {
         {tab === "rules"      && <RulesPanel />}
         {tab === "channels"   && <ChannelsPanel />}
         {tab === "tags"       && <AlertTags />}
+        {tab === "maintenance" && <MaintenancePanel />}
       </div>
       {/* locale is read so the relativeTime in nested rows refreshes on language change */}
       <span className="sr-only" aria-hidden>{locale}</span>
@@ -638,12 +643,15 @@ const RULE_TEMPLATES: RuleTemplate[] = [
 
 function metricIcon(metric: AlertMetric): typeof Cpu {
   switch (metric) {
-    case "cpu_pct":  return Cpu;
-    case "ram_pct":  return MemoryStick;
-    case "swap_pct": return MemoryStick;
-    case "disk_pct": return HardDrive;
-    case "load1":    return Activity;
-    case "offline":  return ServerOff;
+    case "cpu_pct":    return Cpu;
+    case "ram_pct":    return MemoryStick;
+    case "swap_pct":   return MemoryStick;
+    case "disk_pct":   return HardDrive;
+    case "load1":      return Activity;
+    case "offline":    return ServerOff;
+    case "gpu_util":   return Cpu;
+    case "gpu_temp":   return Activity;
+    case "gpu_mem_pct": return MemoryStick;
   }
 }
 
@@ -2016,4 +2024,168 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
   const out = new Uint8Array(raw.length);
   for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
   return out;
+}
+
+// MaintenancePanel — list + create / edit / delete maintenance windows
+// (RFC 0003). Mirrors the ChannelsPanel shape (single list with
+// state badges + an inline create form). Edit form is opened via
+// a row's edit button; deleting is via trash icon with a confirm
+// dialog.
+function MaintenancePanel() {
+  const [state, setState] = useState<"active" | "upcoming" | "past" | "all">("active");
+  const [windows, setWindows] = useState<MaintenanceWindow[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [editing, setEditing] = useState<MaintenanceWindow | null>(null);
+  const [draft, setDraft] = useState({ start_at: "", end_at: "", reason: "", scope: "" });
+  const confirm = useConfirm();
+
+  const refresh = useCallback(async () => {
+    setError(null);
+    try {
+      const r = await maintenanceApi.list(state);
+      setWindows(r.windows);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : String(err));
+    }
+  }, [state]);
+  useEffect(() => { void refresh(); }, [refresh]);
+
+  async function submit() {
+    setBusy(true); setError(null);
+    try {
+      const body = {
+        start_at: new Date(draft.start_at).toISOString(),
+        end_at: new Date(draft.end_at).toISOString(),
+        reason: draft.reason,
+        scope_tags: draft.scope ? Object.fromEntries(draft.scope.split(",").map((kv) => {
+          const [k, ...rest] = kv.split("=");
+          return [k.trim(), rest.join("=").trim()];
+        })) : {},
+      };
+      if (editing) {
+        await maintenanceApi.update(editing.id, body);
+      } else {
+        await maintenanceApi.create(body);
+      }
+      setDraft({ start_at: "", end_at: "", reason: "", scope: "" });
+      setEditing(null);
+      await refresh();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : String(err));
+    } finally { setBusy(false); }
+  }
+
+  async function del(w: MaintenanceWindow) {
+    if (!await confirm({
+      title: "Cancel maintenance window",
+      message: `Cancel "${w.reason || w.id}"? Active firings resume on the next alert tick.`,
+      confirmLabel: "Cancel window",
+      destructive: true,
+    })) return;
+    try { await maintenanceApi.delete(w.id); await refresh(); }
+    catch (err) { setError(err instanceof ApiError ? err.message : String(err)); }
+  }
+
+  function beginEdit(w: MaintenanceWindow) {
+    setEditing(w);
+    setDraft({
+      start_at: w.start_at.slice(0, 16),
+      end_at: w.end_at.slice(0, 16),
+      reason: w.reason,
+      scope: Object.entries(w.scope_tags).map(([k, v]) => `${k}=${v}`).join(","),
+    });
+  }
+
+  const stateBadge = (w: MaintenanceWindow): { text: string; tone: "ok" | "warn" | "muted" } => {
+    const now = Date.now();
+    const start = Date.parse(w.start_at);
+    const end = Date.parse(w.end_at);
+    if (now >= start && now < end) return { text: "active", tone: "ok" };
+    if (now < start) return { text: "upcoming", tone: "warn" };
+    return { text: "past", tone: "muted" };
+  };
+
+  return (
+    <div className="space-y-4">
+      <SettingsPanel
+        title="Maintenance windows"
+        description="Schedule planned downtime. Alerts matching the scope are suppressed while a window is active."
+      >
+        <SegmentedControl
+          value={state}
+          onChange={(v) => setState(v as typeof state)}
+          ariaLabel="Window state filter"
+          options={[
+            { value: "active", label: "Active" },
+            { value: "upcoming", label: "Upcoming" },
+            { value: "past", label: "Past" },
+            { value: "all", label: "All" },
+          ]}
+        />
+        <form
+          onSubmit={(e) => { e.preventDefault(); void submit(); }}
+          className="grid grid-cols-2 gap-3 mt-3"
+        >
+          <Field label="Start (browser time)">
+            <FieldInput type="datetime-local" value={draft.start_at} onChange={(e) => setDraft({ ...draft, start_at: e.target.value })} />
+          </Field>
+          <Field label="End (browser time)">
+            <FieldInput type="datetime-local" value={draft.end_at} onChange={(e) => setDraft({ ...draft, end_at: e.target.value })} />
+          </Field>
+          <Field label="Reason">
+            <FieldInput value={draft.reason} onChange={(e) => setDraft({ ...draft, reason: e.target.value })} placeholder="Firmware update" />
+          </Field>
+          <Field label="Tag scope">
+            <FieldInput value={draft.scope} onChange={(e) => setDraft({ ...draft, scope: e.target.value })} placeholder="env=prod, tier=db" />
+          </Field>
+          <div className="col-span-2 flex items-center gap-2">
+            <PrimaryButton type="submit" disabled={busy || !draft.start_at || !draft.end_at}>
+              {busy ? "Saving…" : editing ? "Update" : "Create"}
+            </PrimaryButton>
+            {editing && (
+              <GhostButton type="button" onClick={() => { setEditing(null); setDraft({ start_at: "", end_at: "", reason: "", scope: "" }); }}>
+                Cancel edit
+              </GhostButton>
+            )}
+            {error && <ErrorText message={error} />}
+          </div>
+        </form>
+      </SettingsPanel>
+
+      <SettingsPanel title={`${state.charAt(0).toUpperCase() + state.slice(1)} windows (${windows.length})`} description="List of windows in this state. Edit or cancel via the row actions.">
+        {windows.length === 0 ? (
+          <p className="text-sm text-[color:var(--color-muted)]">No {state} windows.</p>
+        ) : (
+          <ul className="space-y-1.5">
+            {windows.map((w) => {
+              const b = stateBadge(w);
+              return (
+                <li key={w.id} className="flex items-center justify-between rounded-md border border-[color:var(--color-border)] px-3 py-2 text-sm">
+                  <div>
+                    <div className="font-medium">
+                      {w.reason || <em className="text-[color:var(--color-muted)]">(no reason)</em>}
+                    </div>
+                    <div className="text-xs text-[color:var(--color-muted)]">
+                      {new Date(w.start_at).toLocaleString()} → {new Date(w.end_at).toLocaleString()}
+                      {Object.keys(w.scope_tags).length > 0 && (
+                        <span className="ml-2">
+                          scope: {Object.entries(w.scope_tags).map(([k, v]) => `${k}=${v}`).join(", ")}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <StatusPill tone={b.tone}>{b.text}</StatusPill>
+                    <IconButton label="Edit window" onClick={() => beginEdit(w)}><Pencil size={14} /></IconButton>
+                    <IconButton label="Cancel window" onClick={() => void del(w)}><Trash2 size={14} /></IconButton>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </SettingsPanel>
+    </div>
+  );
 }

@@ -444,7 +444,34 @@ export type AlertMetric =
   | "swap_pct"
   | "disk_pct"
   | "load1"
-  | "offline";
+  | "offline"
+  // GPU + processes (RFC 0003). The alerts engine fires on the
+  // worst-of value across the host's GPUs (multi-GPU fleet).
+  | "gpu_util"
+  | "gpu_temp"
+  | "gpu_mem_pct";
+
+export type MaintenanceWindow = {
+  id: number;
+  start_at: string;
+  end_at: string;
+  reason: string;
+  scope_tags: Record<string, string>;
+  created_at: string;
+};
+
+export const maintenanceApi = {
+  list: (state?: "active" | "upcoming" | "past" | "all") =>
+    api<{ windows: MaintenanceWindow[] }>(
+      `/api/maintenance${state ? `?state=${state}` : ""}`,
+    ),
+  create: (body: { start_at: string; end_at: string; reason: string; scope_tags: Record<string, string> }) =>
+    api<{ id: number }>("/api/maintenance", { method: "POST", body: JSON.stringify(body) }),
+  update: (id: number, body: { start_at: string; end_at: string; reason: string; scope_tags: Record<string, string> }) =>
+    api<{ ok: boolean }>(`/api/maintenance/${id}`, { method: "PUT", body: JSON.stringify(body) }),
+  delete: (id: number) =>
+    api<{ ok: boolean }>(`/api/maintenance/${id}`, { method: "DELETE" }),
+};
 
 export type AlertComparator = "gt" | "lt";
 export type AlertSeverity = "info" | "warning" | "critical";

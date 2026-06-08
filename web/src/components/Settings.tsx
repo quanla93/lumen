@@ -797,7 +797,7 @@ function DownsampleSettings() {
   );
 }
 
-function SettingsPanel({
+export function SettingsPanel({
   title,
   description,
   children,
