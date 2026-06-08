@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Server, User as UserIcon, Gauge, Archive, BarChart3, ScrollText, Activity, KeyRound, Trash2, Copy, Check, Palette, Shield, Globe } from "lucide-react";
+import { Server, User as UserIcon, Gauge, Archive, BarChart3, ScrollText, Activity, KeyRound, Trash2, Copy, Check, Palette, Shield, Globe, Database, Play, Download, RotateCcw } from "lucide-react";
 import {
   hostsApi,
   authApi,
@@ -8,6 +8,7 @@ import {
   apiKeysApi,
   oidcApi,
   publicStatusApi,
+  backupApi,
   ApiError,
   type Host,
   type User,
@@ -22,6 +23,8 @@ import {
   type Density,
   type OIDCSettings,
   type PublicStatusConfig,
+  type BackupSettings,
+  type BackupEntry,
 } from "@/lib/api";
 import { relativeTime } from "@/lib/time";
 import { copyToClipboard } from "@/lib/clipboard";
@@ -32,7 +35,7 @@ import { useConfirm } from "@/components/ConfirmDialog";
 import { usePrefs } from "@/lib/userPrefs";
 import { useI18n } from "@/i18n/useI18n";
 
-type SettingsTab = "hosts" | "account" | "display" | "runtime" | "retention" | "downsample" | "logs" | "hub-status" | "api-keys" | "sso" | "status-page";
+type SettingsTab = "hosts" | "account" | "display" | "runtime" | "retention" | "downsample" | "logs" | "hub-status" | "api-keys" | "sso" | "status-page" | "backup";
 
 const TABS: {
   id: SettingsTab;
@@ -47,7 +50,8 @@ const TABS: {
     | "settings.tabs.hubStatus"
     | "settings.tabs.apiKeys"
     | "settings.tabs.sso"
-    | "settings.tabs.statusPage";
+    | "settings.tabs.statusPage"
+    | "settings.tabs.backup";
   icon: typeof Server;
 }[] = [
   { id: "hosts",       labelKey: "settings.tabs.hosts",      icon: Server },
@@ -61,6 +65,7 @@ const TABS: {
   { id: "api-keys",    labelKey: "settings.tabs.apiKeys",    icon: KeyRound },
   { id: "sso",         labelKey: "settings.tabs.sso",        icon: Shield },
   { id: "status-page", labelKey: "settings.tabs.statusPage", icon: Globe },
+  { id: "backup",      labelKey: "settings.tabs.backup",     icon: Database },
 ];
 
 export function Settings({ user }: { user: User }) {
@@ -106,6 +111,7 @@ export function Settings({ user }: { user: User }) {
           {tab === "api-keys"   && <ApiKeysSettings />}
           {tab === "sso"        && <SSOSettings />}
           {tab === "status-page" && <StatusPageSettings />}
+          {tab === "backup"      && <BackupSettings />}
         </div>
       </div>
     </div>
@@ -1662,6 +1668,336 @@ function StatusPageSettings() {
           </ul>
         )}
       </section>
+    </div>
+  );
+}
+
+// ─── Backup sub-tab (RFC 0001) ──────────────────────────────────────────────
+
+function BackupSettings() {
+  const [cfg, setCfg] = useState<BackupSettings | null>(null);
+  const [entries, setEntries] = useState<BackupEntry[] | null>(null);
+  const [busy, setBusy] = useState<"test" | "run" | "save" | "pass" | "restore" | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
+
+  // Editable local copies
+  const [enabled, setEnabled] = useState(false);
+  const [target, setTarget] = useState<"local" | "s3">("local");
+  const [localPath, setLocalPath] = useState("");
+  const [s3Endpoint, setS3Endpoint] = useState("");
+  const [s3Region, setS3Region] = useState("auto");
+  const [s3Bucket, setS3Bucket] = useState("");
+  const [s3Prefix, setS3Prefix] = useState("lumen/");
+  const [s3AccessKey, setS3AccessKey] = useState("");
+  const [s3SecretKey, setS3SecretKey] = useState("");
+  const [s3ForcePathStyle, setS3ForcePathStyle] = useState(false);
+  const [passphrase, setPassphrase] = useState("");
+  const [cron, setCron] = useState("0 2 * * *");
+  const [retainLast, setRetainLast] = useState(14);
+
+  const refresh = useCallback(async () => {
+    setError(null);
+    try {
+      const [c, l] = await Promise.all([backupApi.get(), backupApi.list()]);
+      setCfg(c);
+      setEnabled(c.enabled);
+      setTarget(c.target);
+      setLocalPath(c.local_path);
+      setS3Endpoint(c.s3_endpoint);
+      setS3Region(c.s3_region || "auto");
+      setS3Bucket(c.s3_bucket);
+      setS3Prefix(c.s3_prefix || "lumen/");
+      setS3AccessKey(c.s3_access_key);
+      setS3ForcePathStyle(c.s3_force_path_style);
+      setCron(c.cron || "0 2 * * *");
+      setRetainLast(c.retain_last || 14);
+      setEntries(l.entries);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : String(err));
+    }
+  }, []);
+
+  useEffect(() => { void refresh(); }, [refresh]);
+
+  async function saveConfig() {
+    setError(null); setInfo(null);
+    setBusy("save");
+    try {
+      const body: Partial<BackupSettings> = {
+        enabled, target,
+        local_path: localPath,
+        s3_endpoint: s3Endpoint, s3_region: s3Region, s3_bucket: s3Bucket,
+        s3_prefix: s3Prefix, s3_access_key: s3AccessKey,
+        s3_force_path_style: s3ForcePathStyle,
+        cron, retain_last: retainLast,
+      };
+      if (s3SecretKey) body.s3_secret_key = s3SecretKey;
+      await backupApi.put(body);
+      setS3SecretKey("");
+      setInfo("Saved.");
+      await refresh();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : String(err));
+    } finally { setBusy(null); }
+  }
+
+  async function savePassphrase() {
+    if (!passphrase) {
+      setError("Passphrase is required."); return;
+    }
+    setError(null); setInfo(null);
+    setBusy("pass");
+    try {
+      await backupApi.setPassphrase(passphrase);
+      setPassphrase("");
+      setInfo("Passphrase saved. Remember: it is not stored — losing it means every backup is unrecoverable.");
+      await refresh();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : String(err));
+    } finally { setBusy(null); }
+  }
+
+  async function testTarget() {
+    setError(null); setInfo(null);
+    setBusy("test");
+    try {
+      const res = await backupApi.test();
+      setInfo(res.ok ? "Target reachable." : (res.error ?? "Target probe failed."));
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : String(err));
+    } finally { setBusy(null); }
+  }
+
+  async function runNow() {
+    if (!cfg?.has_passphrase) {
+      setError("Save a passphrase first."); return;
+    }
+    setError(null); setInfo(null);
+    setBusy("run");
+    try {
+      const typed = window.prompt("Passphrase") ?? "";
+      if (!typed) { setBusy(null); return; }
+      const res = await backupApi.runNow(typed);
+      setInfo(`Backup ${res.name} created (${(res.size_bytes/1024).toFixed(1)} KB).`);
+      await refresh();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : String(err));
+    } finally { setBusy(null); }
+  }
+
+  async function doRestore(name: string) {
+    if (!cfg?.has_passphrase) {
+      setError("Save a passphrase first."); return;
+    }
+    const typed = window.prompt(`Passphrase to restore ${name}`) ?? "";
+    if (!typed) return;
+    if (!window.confirm(
+      "Restore will replace the current database. The hub will restart. Continue?",
+    )) return;
+    setError(null); setInfo(null);
+    setBusy("restore");
+    try {
+      const res = await backupApi.restore(name, typed, false);
+      setInfo(`Restored from ${res.name}. Predecessor preserved at ${res.predecessor || "(none)"}.`);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : String(err));
+    } finally { setBusy(null); }
+  }
+
+  if (!cfg) {
+    return (
+      <SettingsPanel title="Backup" description="Loading…">
+        <p className="text-sm text-[color:var(--color-muted)]">Loading backup configuration…</p>
+        {error && <ErrorText message={error} />}
+      </SettingsPanel>
+    );
+  }
+
+  const dirty =
+    enabled !== cfg.enabled ||
+    target !== cfg.target ||
+    localPath !== cfg.local_path ||
+    s3Endpoint !== cfg.s3_endpoint ||
+    s3Region !== (cfg.s3_region || "auto") ||
+    s3Bucket !== cfg.s3_bucket ||
+    s3Prefix !== (cfg.s3_prefix || "lumen/") ||
+    s3AccessKey !== cfg.s3_access_key ||
+    s3ForcePathStyle !== cfg.s3_force_path_style ||
+    cron !== (cfg.cron || "0 2 * * *") ||
+    retainLast !== (cfg.retain_last || 14) ||
+    s3SecretKey.length > 0;
+
+  return (
+    <div className="space-y-4">
+      <SettingsPanel
+        title="Backup"
+        description="Encrypt and ship the hub's SQLite database to a local path or S3-compatible bucket. Restore via CLI (lumen-hub --restore=&lt;file&gt;) or the list below."
+      >
+        <form
+          onSubmit={(e) => { e.preventDefault(); void saveConfig(); }}
+          className="space-y-4"
+        >
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={enabled}
+              onChange={(e) => setEnabled(e.target.checked)}
+            />
+            <span>Enable scheduled backups</span>
+          </label>
+
+          <Field label="Target">
+            <SegmentedControl
+              value={target}
+              onChange={(v) => setTarget(v as "local" | "s3")}
+              ariaLabel="Backup target"
+              options={[
+                { value: "local", label: "Local path" },
+                { value: "s3", label: "S3-compatible" },
+              ]}
+            />
+          </Field>
+
+          {target === "local" ? (
+            <Field label="Local path">
+              <FieldInput
+                value={localPath}
+                onChange={(e) => setLocalPath(e.target.value)}
+                placeholder="/var/lib/lumen-backups"
+              />
+              <p className="mt-1 text-xs text-[color:var(--color-muted)]">Absolute path on the hub host. Created if missing.</p>
+            </Field>
+          ) : (
+            <div className="space-y-3 rounded-md border border-[color:var(--color-border)] p-3">
+              <Field label="Endpoint">
+                <FieldInput value={s3Endpoint} onChange={(e) => setS3Endpoint(e.target.value)} placeholder="https://s3.amazonaws.com" />
+                <p className="mt-1 text-xs text-[color:var(--color-muted)]">e.g. AWS, R2 (https://&lt;acct&gt;.r2.cloudflarestorage.com), MinIO, B2.</p>
+              </Field>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Region">
+                  <FieldInput value={s3Region} onChange={(e) => setS3Region(e.target.value)} placeholder="auto" />
+                </Field>
+                <Field label="Bucket">
+                  <FieldInput value={s3Bucket} onChange={(e) => setS3Bucket(e.target.value)} placeholder="lumen-backups" />
+                </Field>
+              </div>
+              <Field label="Prefix">
+                <FieldInput value={s3Prefix} onChange={(e) => setS3Prefix(e.target.value)} placeholder="lumen/" />
+                <p className="mt-1 text-xs text-[color:var(--color-muted)]">Object-key prefix. Trailing slash recommended.</p>
+              </Field>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Access key">
+                  <FieldInput value={s3AccessKey} onChange={(e) => setS3AccessKey(e.target.value)} />
+                </Field>
+                <Field label="Secret key">
+                  <FieldInput type="password" value={s3SecretKey} onChange={(e) => setS3SecretKey(e.target.value)} placeholder="••••••" />
+                  <p className="mt-1 text-xs text-[color:var(--color-muted)]">{cfg.has_secret_key ? "Already saved. Type a new value to replace." : "Not set."}</p>
+                </Field>
+              </div>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={s3ForcePathStyle}
+                  onChange={(e) => setS3ForcePathStyle(e.target.checked)}
+                />
+                <span>Path-style addressing (MinIO, older endpoints)</span>
+              </label>
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Cron expression">
+              <FieldInput value={cron} onChange={(e) => setCron(e.target.value)} />
+              <p className="mt-1 text-xs text-[color:var(--color-muted)]">5-field. e.g. 0 2 * * * = daily 02:00, 0 */6 * * * = every 6 hours.</p>
+            </Field>
+            <Field label="Retain last N">
+              <FieldInput
+                type="number" min={1} max={365}
+                value={retainLast}
+                onChange={(e) => setRetainLast(parseInt(e.target.value || "0", 10) || 0)}
+              />
+              <p className="mt-1 text-xs text-[color:var(--color-muted)]">Older backups are swept after each successful run.</p>
+            </Field>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <GhostButton type="button" onClick={() => void testTarget()} disabled={busy === "test"}>
+              {busy === "test" ? "Testing…" : "Test target"}
+            </GhostButton>
+            <PrimaryButton type="submit" disabled={!dirty || busy === "save"}>
+              {busy === "save" ? "Saving…" : "Save"}
+            </PrimaryButton>
+            {error && <ErrorText message={error} />}
+            {info && <span className="text-xs text-[color:var(--color-muted)]">{info}</span>}
+          </div>
+        </form>
+      </SettingsPanel>
+
+      <SettingsPanel
+        title="Passphrase"
+        description="Encrypts the backup at rest. The hash is stored; the passphrase is not — losing it means every backup is unrecoverable. Save it in your password manager."
+      >
+        <form
+          onSubmit={(e) => { e.preventDefault(); void savePassphrase(); }}
+          className="flex flex-wrap items-end gap-2"
+        >
+          <Field label="New passphrase">
+            <FieldInput
+              type="password" value={passphrase}
+              onChange={(e) => setPassphrase(e.target.value)}
+              placeholder={cfg.has_passphrase ? "(already set — type to replace)" : ""}
+            />
+          </Field>
+          <PrimaryButton type="submit" disabled={!passphrase || busy === "pass"}>
+            {busy === "pass" ? "Saving…" : "Save passphrase"}
+          </PrimaryButton>
+        </form>
+      </SettingsPanel>
+
+      <SettingsPanel
+        title="Recent backups"
+        description="Newest first. Download saves the encrypted file. Restore replaces the live database and restarts the hub — production restore should use lumen-hub --restore=&lt;file&gt; from a stopped service."
+      >
+        <div className="mb-3">
+          <GhostButton onClick={() => void runNow()} disabled={!cfg.has_passphrase || busy === "run"}>
+            <Play size={14} className="mr-1.5" />
+            {busy === "run" ? "Running…" : "Backup now"}
+          </GhostButton>
+        </div>
+        {!entries || entries.length === 0 ? (
+          <p className="text-sm text-[color:var(--color-muted)]">No backups yet.</p>
+        ) : (
+          <ul className="space-y-1.5">
+            {entries.map((e) => (
+              <li key={e.name} className="flex items-center justify-between rounded-md border border-[color:var(--color-border)] px-3 py-2 text-sm">
+                <div>
+                  <div className="font-medium">{e.name}</div>
+                  <div className="text-xs text-[color:var(--color-muted)]">
+                    {(e.size / 1024).toFixed(1)} KB · {new Date(e.created_at).toLocaleString()}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <a
+                    href={backupApi.downloadUrl(e.name)}
+                    className="inline-flex items-center gap-1 rounded-md border border-[color:var(--color-border)] px-2 py-1 text-xs hover:bg-[color:var(--color-border)]/30"
+                  >
+                    <Download size={12} /> Download
+                  </a>
+                  <button
+                    type="button"
+                    disabled={busy === "restore"}
+                    onClick={() => void doRestore(e.name)}
+                    className="inline-flex items-center gap-1 rounded-md border border-[color:var(--color-border)] px-2 py-1 text-xs hover:bg-[color:var(--color-border)]/30 disabled:opacity-50"
+                  >
+                    <RotateCcw size={12} /> Restore
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </SettingsPanel>
     </div>
   );
 }

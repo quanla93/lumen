@@ -202,6 +202,69 @@ export const oidcApi = {
     }),
 };
 
+export type BackupSettings = {
+  enabled: boolean;
+  target: "local" | "s3";
+  local_path: string;
+  s3_endpoint: string;
+  s3_region: string;
+  s3_bucket: string;
+  s3_prefix: string;
+  s3_access_key: string;
+  s3_secret_key?: string;
+  has_secret_key: boolean;
+  s3_force_path_style: boolean;
+  has_passphrase: boolean;
+  cron: string;
+  retain_last: number;
+};
+
+export type BackupEntry = {
+  name: string;
+  size: number;
+  created_at: string;
+};
+
+export type BackupRunResult = {
+  name: string;
+  size_bytes: number;
+  duration: number; // ns
+  hash: string;
+};
+
+export const backupApi = {
+  get: () => api<BackupSettings>("/api/settings/backup"),
+  put: (s: Partial<BackupSettings>) =>
+    api<{ ok: boolean }>("/api/settings/backup", {
+      method: "PUT",
+      body: JSON.stringify(s),
+    }),
+  test: () =>
+    api<{ ok: boolean; error?: string }>("/api/settings/backup/test", {
+      method: "POST",
+    }),
+  setPassphrase: (passphrase: string) =>
+    api<{ ok: boolean }>("/api/backup/passphrase", {
+      method: "POST",
+      body: JSON.stringify({ passphrase }),
+    }),
+  runNow: (passphrase: string) =>
+    api<BackupRunResult>("/api/backup/run", {
+      method: "POST",
+      body: JSON.stringify({ passphrase }),
+    }),
+  list: () => api<{ entries: BackupEntry[] }>("/api/backup/list"),
+  restore: (name: string, passphrase: string, force = false) =>
+    api<{ name: string; created_at: string; restored_to: string; predecessor: string; size_bytes: number }>(
+      `/api/backup/restore/${encodeURIComponent(name)}`,
+      {
+        method: "POST",
+        body: JSON.stringify({ passphrase, force }),
+      },
+    ),
+  downloadUrl: (name: string) => `/api/backup/download/${encodeURIComponent(name)}`,
+};
+
 export type HubStatsResponse = {
   version: string;
   started_at: string;
