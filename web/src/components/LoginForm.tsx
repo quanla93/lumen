@@ -10,14 +10,20 @@ export function LoginForm({ onSuccess }: { onSuccess: (user: User) => void }) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [oidcEnabled, setOidcEnabled] = useState(false);
+  const [samlEnabled, setSamlEnabled] = useState(false);
 
-  // Pull oidc_enabled so we know whether to render the SSO button. Done
-  // here (not in App.bootstrap) so a runtime toggle from Settings → SSO
-  // takes effect on the next mount without a route refactor.
-  // Also surface any sso_error= query param that the OIDC callback set
-  // when it bounced the user back to the login page on failure.
+  // Pull oidc_enabled / saml_enabled so we know whether to render the
+  // SSO buttons. Done here (not in App.bootstrap) so a runtime toggle
+  // from Settings → SSO / Settings → SAML takes effect on the next
+  // mount without a route refactor.
+  // Also surface any sso_error= query param that the OIDC or SAML
+  // callback set when it bounced the user back to the login page on
+  // failure.
   useEffect(() => {
-    authApi.setupStatus().then((s) => setOidcEnabled(s.oidc_enabled)).catch(() => {});
+    authApi.setupStatus().then((s) => {
+      setOidcEnabled(s.oidc_enabled);
+      setSamlEnabled(s.saml_enabled);
+    }).catch(() => {});
     const params = new URLSearchParams(window.location.search);
     const ssoErr = params.get("sso_error");
     if (ssoErr) {
@@ -69,7 +75,7 @@ export function LoginForm({ onSuccess }: { onSuccess: (user: User) => void }) {
         <PrimaryButton disabled={busy} className="w-full">
           {busy ? t("auth.signingIn") : t("auth.signIn")}
         </PrimaryButton>
-        {oidcEnabled && (
+        {(oidcEnabled || samlEnabled) && (
           <>
             <div className="flex items-center gap-3 text-xs text-[color:var(--color-muted)]">
               <span className="h-px flex-1 bg-[color:var(--color-border)]" />
@@ -78,12 +84,22 @@ export function LoginForm({ onSuccess }: { onSuccess: (user: User) => void }) {
             </div>
             {/* Full page navigation (anchor, not fetch) — the IdP needs
                 a real browser redirect to set its own session cookies. */}
-            <a
-              href="/api/auth/oidc/login"
-              className="block w-full rounded-md border border-[color:var(--color-border)] py-2 text-center text-sm font-medium text-[color:var(--color-fg)] hover:bg-[color:var(--color-border)]/40"
-            >
-              {t("auth.signInWithSSO")}
-            </a>
+            {oidcEnabled && (
+              <a
+                href="/api/auth/oidc/login"
+                className="block w-full rounded-md border border-[color:var(--color-border)] py-2 text-center text-sm font-medium text-[color:var(--color-fg)] hover:bg-[color:var(--color-border)]/40"
+              >
+                {t("auth.signInWithSSO")}
+              </a>
+            )}
+            {samlEnabled && (
+              <a
+                href="/api/auth/saml/login"
+                className="block w-full rounded-md border border-[color:var(--color-border)] py-2 text-center text-sm font-medium text-[color:var(--color-fg)] hover:bg-[color:var(--color-border)]/40"
+              >
+                {t("auth.signInWithSAML")}
+              </a>
+            )}
           </>
         )}
       </form>

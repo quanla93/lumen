@@ -18,6 +18,7 @@
 //	LUMEN_HUB_ALERT_INTERVAL      (default "15s")          - alerts engine evaluation cadence
 //	LUMEN_HUB_ADMIN_USERNAME      (default "")             - seed admin username; both this and password required to enable
 //	LUMEN_HUB_ADMIN_PASSWORD      (default "")             - seed admin plaintext password (Argon2id at write time); empty disables seed
+//	LUMEN_HUB_PUBLIC_URL          (default "")             - externally-reachable hub URL (e.g. https://lumen.example.com); required for SAML SSO to derive SP entity ID / metadata URL / ACS URL
 //
 // Phase 1 + 2 endpoints:
 //   - GET  /healthz       — liveness probe
@@ -85,6 +86,7 @@ func main() {
 	alertInterval := envcfg.Duration("LUMEN_HUB_ALERT_INTERVAL", 15*time.Second)
 	adminUsername := envcfg.String("LUMEN_HUB_ADMIN_USERNAME", "")
 	adminPassword := envcfg.String("LUMEN_HUB_ADMIN_PASSWORD", "")
+	hubPublicURL := envcfg.String("LUMEN_HUB_PUBLIC_URL", "")
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
 		Level: levelFor(dev),
@@ -122,6 +124,7 @@ func main() {
 		AlertEvalInterval:       alertInterval,
 		AdminUsername:           adminUsername,
 		AdminPassword:           adminPassword,
+		HubPublicURL:            hubPublicURL,
 		Logger:                  logger,
 	}); err != nil {
 		logger.Error("hub exited with error", "err", err)

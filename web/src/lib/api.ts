@@ -113,7 +113,7 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const authApi = {
-  setupStatus: () => api<{ admin_exists: boolean; oidc_enabled: boolean }>("/api/setup-status"),
+  setupStatus: () => api<{ admin_exists: boolean; oidc_enabled: boolean; saml_enabled: boolean }>("/api/setup-status"),
   me: () => api<User>("/api/me"),
   register: (username: string, password: string) =>
     api<User>("/api/register", {
@@ -188,6 +188,19 @@ export type OIDCSettings = {
   expected_email: string;
 };
 
+export type SAMLSettings = {
+  enabled: boolean;
+  idp_metadata_xml?: string;
+  idp_metadata_url?: string;
+  sp_entity_id?: string;
+  expected_nameid?: string;
+  has_sp_keypair: boolean;
+  sp_cert?: string;
+  allowed_clock_skew_seconds: number;
+  discovered_sso_url?: string;
+  discovered_entity_id?: string;
+};
+
 export const oidcApi = {
   get: () => api<OIDCSettings>("/api/settings/oidc"),
   put: (s: Partial<OIDCSettings>) =>
@@ -200,6 +213,21 @@ export const oidcApi = {
       method: "POST",
       body: JSON.stringify({ issuer }),
     }),
+};
+
+export const samlApi = {
+  get: () => api<SAMLSettings>("/api/settings/saml"),
+  put: (s: Partial<SAMLSettings>) =>
+    api<SAMLSettings>("/api/settings/saml", {
+      method: "PUT",
+      body: JSON.stringify(s),
+    }),
+  testMetadata: (xml: string, url: string) =>
+    api<{ ok: boolean; sso_url?: string; idp_entity_id?: string; error?: string }>(
+      "/api/settings/saml/test-metadata",
+      { method: "POST", body: JSON.stringify({ xml, url }) },
+    ),
+  metadataUrl: () => "/api/auth/saml/metadata",
 };
 
 export type BackupSettings = {

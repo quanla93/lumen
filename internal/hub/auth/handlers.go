@@ -20,6 +20,14 @@ type Handlers struct {
 	Secret []byte
 	Logger *slog.Logger
 	OIDC   *OIDCFlow // nil when OIDC compiled-out / not wired; SetupStatus exposes enabled=false
+	SAML   *SAMLFlow // nil when SAML compiled-out / not wired; SetupStatus exposes enabled=false
+
+	// HubPublicURL is the externally-reachable URL the SAML SP uses
+	// to derive its entity ID, metadata URL, and ACS URL. Set via
+	// LUMEN_HUB_PUBLIC_URL. When empty the SAML flow returns 503
+	// because the SP can't mint a valid AuthnRequest without a
+	// known public URL.
+	HubPublicURL func() string
 }
 
 func NewHandlers(db *sql.DB, secret []byte, logger *slog.Logger) *Handlers {
@@ -40,9 +48,15 @@ func (h *Handlers) SetupStatus(w http.ResponseWriter, r *http.Request) {
 		cfg, _ := LoadOIDCConfig(r.Context(), h.DB, h.Secret, false)
 		oidcEnabled = cfg.Enabled && cfg.Issuer != "" && cfg.ClientID != "" && cfg.ExpectedEmail != ""
 	}
+	samlEnabled := false
+	if h.SAML != nil {
+		cfg, _ := LoadSAMLConfig(r.Context(), h.DB, h.Secret)
+		samlEnabled = cfg.Enabled && cfg.IdPMetadataXML != "" && len(cfg.ExpectedNameIDList) > 0 && cfg.SPPrivateKeyPEM != ""
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"admin_exists": exists,
 		"oidc_enabled": oidcEnabled,
+		"saml_enabled": samlEnabled,
 	})
 }
 

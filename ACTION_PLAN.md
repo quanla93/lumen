@@ -947,8 +947,36 @@ Nếu bạn (hoặc Claude) mở session mới:
 
 > Cập nhật mục này mỗi session.
 
-**Session**: 2026-06-04 (current)
-**Đang làm**: **Sprint 1 — Backup + restore (RFC 0001).** Top of Phase 8 sprint queue. v0.7.0 đã ship 3 mục (OIDC SSO, public status page, web push); RFC 0001-0009 đã commit. Bắt đầu implement RFC 0001. Migration 0020 là số kế tiếp; package `internal/hub/backup/` chưa tồn tại nên tạo mới sạch; OIDC `internal/hub/auth/crypto.go` là reference pattern cho `s3_secret_key_enc`.
+**Session**: 2026-06-08 (current)
+**Đang làm**: **Sprint 2 — SAML2 SSO (RFC 0002).** Pulled after Sprint 1 (Backup) shipped v0.7.1 on 2026-06-08. SAML unlocks the older enterprise/EDU IdP estate where OIDC is absent or behind a higher tier. v1 ships the simplest interoperable subset: SP-initiated auth-code, signed assertions, no encryption, no SLO, single-admin gate via comma-separated `expected_nameid`. Reference: `internal/hub/auth/oidc.go` for the cookie/state pattern + `internal/hub/auth/crypto.go` for the AES-GCM KEK (distinct label `lumen/saml/v1`).
+
+**Plan 4 ngày (locked, verify từng bước trước khi step tiếp)**:
+
+| Day | Output | Verify |
+|---|---|---|
+| **D1** | `internal/hub/auth/saml.go` (SAMLConfig + LoadSAMLConfig + SaveSAMLConfig) + `saml_crypto.go` (AES-GCM with label `lumen/saml/v1` — distinct from OIDC's `lumen/oidc/v1`) + auto-gen 2048-bit RSA SP keypair on first save when `enabled=true` and no `sp_cert` row + self-sign cert (CN = SP entity ID, 10y validity) + migration `0021_saml_settings.sql` (seed 8 default rows, no new table) | `go test ./internal/hub/auth/...` still green; build all |
+| **D2** | `saml_flow.go` (LoginRedirect, HandleACS, Metadata, TestMetadata) + `saml_handlers.go` (6 endpoints: `GET /api/auth/saml/{login,acs,metadata}` public, `GET/PUT /api/settings/saml` + `POST /api/settings/saml/test-metadata` session) + wire into `server.go` + extend `setup-status` to return `saml_enabled` alongside `oidc_enabled` + LoginForm renders 2 buttons when both enabled + `expected_nameid` accepts comma-separated list (intersect-any) per RFC Q4 + SP entity ID auto-default `https://<host>/api/auth/saml/metadata` per RFC Q2 + periodic IdP metadata refresh 1h when `saml.idp_metadata_url` set per RFC Q3 | `go build ./...` clean; setup-status endpoint smoke |
+| **D3** | `saml_test.go`: parse Okta fixture, Azure AD fixture, ADFS fixture → extract SSO URL + cert + entity ID; validate known-good signed SAMLResponse (succeeds); altered byte (signature fails); NotOnOrAfter -1h (rejected); NotOnOrAfter -30s with 60s skew (accepted); NameID ≠ expected (rejected with clear error); ExpectedNameIDList with comma-separated values (intersect-any) | All tests pass; vet + lint clean |
+| **D4** | `docs/configure/saml.md` (use-OIDC-if-you-can callout + compatibility matrix + recipes for Okta classic / Azure AD enterprise / ADFS / Shibboleth / samltest.id + troubleshooting clock-skew/signature/audience/NameID-format) + `CHANGELOG.md` v0.7.2 entry + flip Sprint 2 row → ✅ + commit → push → tag v0.7.2 | docs render OK; CHANGELOG format; sprint queue updated |
+
+**Decisions to log when shipping** (chốt giữa đường, không block start):
+- RFC Q1 — "test login" popup that round-trips against the configured IdP: defer to a follow-up; the metadata test endpoint already gives the operator a high-confidence check. Adding the full popup doubles the SAML test surface and we don't have UI hooks for a modal.
+- RFC Q2 — SP entity ID auto-default vs require explicit: auto-default to `https://<host>/api/auth/saml/metadata` (the metadata URL itself) when empty. Documented in `saml.md`.
+- RFC Q3 — periodic IdP metadata refresh: 1h default when `saml.idp_metadata_url` is set; off by default. Reuses the retention heartbeat's pattern.
+- RFC Q4 — `expected_nameid` accepts multiple values: comma-separated, intersect-any (any one match accepts).
+
+**Dependencies cần thêm vào go.mod**:
+- `github.com/crewjam/saml` v0.4.x (pinned)
+- (no other new dep — RSA via stdlib `crypto/rsa` + `crypto/x509`)
+
+**Out of scope (đã chốt trong RFC, không vào sprint này)**: encrypted assertions, SLO, IdP role, attribute mapping → multi-user, IdP-initiated SSO, JIT provisioning, replay protection beyond crewjam defaults.
+
+**Trạng thái sprint queue sau D4**: Sprint 2 ✅ → next pull = Sprint 3 Beszel bundle 1 (GPU + process top-N + maintenance windows, RFC 0003).
+
+---
+
+**Session**: 2026-06-04
+**Đã làm**: **Sprint 1 — Backup + restore (RFC 0001).** Top of Phase 8 sprint queue. v0.7.0 đã ship 3 mục (OIDC SSO, public status page, web push); RFC 0001-0009 đã commit. Bắt đầu implement RFC 0001. Migration 0020 là số kế tiếp; package `internal/hub/backup/` chưa tồn tại nên tạo mới sạch; OIDC `internal/hub/auth/crypto.go` là reference pattern cho `s3_secret_key_enc`.
 
 **Plan 5 ngày (locked, verify từng bước trước khi step tiếp)**:
 

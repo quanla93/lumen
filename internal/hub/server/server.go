@@ -58,6 +58,7 @@ type Config struct {
 	AlertEvalInterval       time.Duration // alerts engine eval cadence; <=0 → 15s default
 	AdminUsername           string        // env-seeded admin; empty disables seed
 	AdminPassword           string        // plaintext at boot, hashed via Argon2id before insert
+	HubPublicURL            string        // externally-reachable hub URL (LUMEN_HUB_PUBLIC_URL); required for SAML SP
 	Logger                  *slog.Logger
 }
 
@@ -125,10 +126,24 @@ func Run(ctx context.Context, cfg Config) error {
 	agentPolicyHandler := hubagent.NewPolicyHandler(db, logger)
 	streamHandler := stream.New(st, logger, cfg.StreamInterval)
 	authHandlers := auth.NewHandlers(db, cfg.Secret, logger)
+	// HubPublicURL is required by the SAML SP to derive entity ID,
+	// metadata URL, and ACS URL. We resolve it once at startup so
+	// a misconfigured SAML doesn't crash the hub — instead the
+	// /api/auth/saml/* endpoints return 503 with a clear message
+	// until the operator sets LUMEN_HUB_PUBLIC_URL.
+	authHandlers.HubPublicURL = func() string { return cfg.HubPublicURL }
 	// Wire the OIDC flow against the same secret used for session JWTs +
 	// at-rest encryption of the OIDC client_secret. 10s timeout covers
 	// discovery + JWKS fetches against well-behaved IdPs.
 	authHandlers.OIDC = &auth.OIDCFlow{
+		DB:         db,
+		HubSecret:  cfg.Secret,
+		HTTPClient: &http.Client{Timeout: 10 * time.Second},
+	}
+	// SAML SP uses the same HTTP client timeout. The cached
+	// ServiceProvider rebuilds when settings change, so a PUT to
+	// /api/settings/saml takes effect on the next request.
+	authHandlers.SAML = &auth.SAMLFlow{
 		DB:         db,
 		HubSecret:  cfg.Secret,
 		HTTPClient: &http.Client{Timeout: 10 * time.Second},
@@ -233,6 +248,15 @@ func Run(ctx context.Context, cfg Config) error {
 	r.Get("/api/auth/oidc/login", authHandlers.LoginOIDC)
 	r.Get("/api/auth/oidc/callback", authHandlers.CallbackOIDC)
 
+	// SAML SSO endpoints — same public-auth flow as OIDC: the browser
+	// arrives at /login without a session, gets bounced to the IdP via
+	// /api/auth/saml/login, then comes back via POST to /api/auth/saml/acs.
+	// ACS is the only one that POSTs (per the SAML spec — the IdP
+	// browser-posts the SAMLResponse back, it cannot GET).
+	r.Get("/api/auth/saml/login", authHandlers.LoginSAML)
+	r.Post("/api/auth/saml/acs", authHandlers.ACSHandler)
+	r.Get("/api/auth/saml/metadata", authHandlers.MetadataSAML)
+
 	// Public status page — no session, no API key. Always returns 200
 	// (`enabled:false` when the admin hasn't published it) so the
 	// frontend renders deterministically.
@@ -261,6 +285,10 @@ func Run(ctx context.Context, cfg Config) error {
 		r.Get("/api/settings/oidc", authHandlers.OIDCSettingsGet)
 		r.Put("/api/settings/oidc", authHandlers.OIDCSettingsPut)
 		r.Post("/api/settings/oidc/test", authHandlers.OIDCTestDiscovery)
+
+		r.Get("/api/settings/saml", authHandlers.SAMLSettingsGet)
+		r.Put("/api/settings/saml", authHandlers.SAMLSettingsPut)
+		r.Post("/api/settings/saml/test-metadata", authHandlers.SAMLTestMetadata)
 
 		r.Get("/api/settings/public-status", publicStatusHandlers.ConfigGet)
 		r.Put("/api/settings/public-status", publicStatusHandlers.ConfigPut)
