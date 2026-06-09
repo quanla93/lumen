@@ -110,7 +110,7 @@ func TestWebAuthnService_RegisterBeginPersistsChallenge(t *testing.T) {
 	uid := mustCreateUser(t, db, "admin")
 	ctx := context.Background()
 
-	svc := NewWebAuthnService(db, WebAuthnConfig{
+	svc, _ := NewWebAuthnService(db, WebAuthnConfig{
 		RPID:      "localhost",
 		RPName:    "Lumen",
 		RPOrigin:  "http://localhost",
@@ -153,7 +153,7 @@ func TestWebAuthnService_RegisterFinishPersistsCredential(t *testing.T) {
 	uid := mustCreateUser(t, db, "admin")
 	ctx := context.Background()
 
-	svc := NewWebAuthnService(db, WebAuthnConfig{
+	svc, _ := NewWebAuthnService(db, WebAuthnConfig{
 		RPID: "localhost", RPName: "Lumen", RPOrigin: "http://localhost",
 		ChallengeTTL: 5 * time.Minute,
 	})
@@ -211,7 +211,7 @@ func TestWebAuthnService_LoginBeginPersistsChallenge(t *testing.T) {
 	ctx := context.Background()
 
 	// Seed one credential so the allow-list is non-empty.
-	svc := NewWebAuthnService(db, WebAuthnConfig{
+	svc, _ := NewWebAuthnService(db, WebAuthnConfig{
 		RPID: "localhost", RPName: "Lumen", RPOrigin: "http://localhost",
 		ChallengeTTL: 5 * time.Minute,
 	})
@@ -249,7 +249,7 @@ func TestWebAuthnService_LoginFinishReturnsUser(t *testing.T) {
 	uid := mustCreateUser(t, db, "admin")
 	ctx := context.Background()
 
-	svc := NewWebAuthnService(db, WebAuthnConfig{
+	svc, _ := NewWebAuthnService(db, WebAuthnConfig{
 		RPID: "localhost", RPName: "Lumen", RPOrigin: "http://localhost",
 		ChallengeTTL: 5 * time.Minute,
 	})
@@ -301,7 +301,7 @@ func TestWebAuthnService_DeleteRefusesLastPasskey(t *testing.T) {
 	uid := mustCreateUser(t, db, "admin")
 	ctx := context.Background()
 
-	svc := NewWebAuthnService(db, WebAuthnConfig{
+	svc, _ := NewWebAuthnService(db, WebAuthnConfig{
 		RPID: "localhost", RPName: "Lumen", RPOrigin: "http://localhost",
 		ChallengeTTL: 5 * time.Minute,
 	})
@@ -361,7 +361,7 @@ func TestWebAuthnService_ListReturnsMetadataOnly(t *testing.T) {
 	uid := mustCreateUser(t, db, "admin")
 	ctx := context.Background()
 
-	svc := NewWebAuthnService(db, WebAuthnConfig{
+	svc, _ := NewWebAuthnService(db, WebAuthnConfig{
 		RPID: "localhost", RPName: "Lumen", RPOrigin: "http://localhost",
 		ChallengeTTL: 5 * time.Minute,
 	})
@@ -400,7 +400,7 @@ func TestWebAuthnService_ChallengeExpiry(t *testing.T) {
 	uid := mustCreateUser(t, db, "admin")
 	ctx := context.Background()
 
-	svc := NewWebAuthnService(db, WebAuthnConfig{
+	svc, _ := NewWebAuthnService(db, WebAuthnConfig{
 		RPID: "localhost", RPName: "Lumen", RPOrigin: "http://localhost",
 		ChallengeTTL: 1 * time.Millisecond, // effectively immediate expiry
 	})
@@ -458,7 +458,7 @@ func TestWebAuthnConfig_ChallengeSessionIDsAre32Bytes(t *testing.T) {
 	uid := mustCreateUser(t, db, "admin")
 	ctx := context.Background()
 
-	svc := NewWebAuthnService(db, WebAuthnConfig{
+	svc, _ := NewWebAuthnService(db, WebAuthnConfig{
 		RPID: "localhost", RPName: "Lumen", RPOrigin: "http://localhost",
 		ChallengeTTL: 5 * time.Minute,
 	})
@@ -488,7 +488,7 @@ func TestWebAuthnService_SignCountMonotonic(t *testing.T) {
 	uid := mustCreateUser(t, db, "admin")
 	ctx := context.Background()
 
-	svc := NewWebAuthnService(db, WebAuthnConfig{
+	svc, _ := NewWebAuthnService(db, WebAuthnConfig{
 		RPID: "localhost", RPName: "Lumen", RPOrigin: "http://localhost",
 		ChallengeTTL: 5 * time.Minute,
 	})

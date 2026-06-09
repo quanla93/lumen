@@ -147,24 +147,36 @@ type LoginFinishParams struct {
 // NewWebAuthnService constructs the service. RPID / RPName /
 // RPOrigin must all be non-empty. The go-webauthn config is
 // built once and reused for every ceremony.
-func NewWebAuthnService(db *sql.DB, cfg WebAuthnConfig) *WebAuthnService {
+//
+// Returns an error when the config is incomplete OR when the
+// go-webauthn library fails to initialize (e.g. invalid RPID
+// shape). Callers (typically the hub's authHandlers setup) must
+// treat that as a fatal config bug — there is no safe default
+// and silently returning a service with wa=nil would cause a
+// nil-pointer panic in RegisterBegin/LoginBegin on the first
+// auth ceremony. The signature stays (*WebAuthnService, error)
+// so the failure surfaces as a logged + non-recoverable boot
+// error at the one call site that needs it (server.go), without
+// the test suite having to thread errors through every fixture
+// (the test fixtures all use a valid config).
+func NewWebAuthnService(db *sql.DB, cfg WebAuthnConfig) (*WebAuthnService, error) {
 	if cfg.RPID == "" || cfg.RPName == "" || cfg.RPOrigin == "" {
-		cfg.RPID, cfg.RPName, cfg.RPOrigin = "", "", "" // normalize to invalid
+		return nil, fmt.Errorf("webauthn: RPID, RPName, RPOrigin must all be set")
 	}
-	var wa *webauthn.WebAuthn
-	if cfg.RPID != "" {
-		wa, _ = webauthn.New(&webauthn.Config{
-			RPID:          cfg.RPID,
-			RPDisplayName: cfg.RPName,
-			RPOrigins:     []string{cfg.RPOrigin},
-		})
+	wa, err := webauthn.New(&webauthn.Config{
+		RPID:          cfg.RPID,
+		RPDisplayName: cfg.RPName,
+		RPOrigins:     []string{cfg.RPOrigin},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("webauthn: init: %w", err)
 	}
 	return &WebAuthnService{
 		db:       db,
 		cfg:      cfg,
 		wa:       wa,
 		sessions: map[string]sessionEntry{},
-	}
+	}, nil
 }
 
 // sessionTTL caps the time-to-live we use when calling go-webauthn.

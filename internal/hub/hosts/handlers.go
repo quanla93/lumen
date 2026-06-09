@@ -395,7 +395,19 @@ func (h *Handlers) MintShare(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
-	writeJSON(w, http.StatusCreated, share)
+	// share.Token is json:"-" so the structured response would
+	// otherwise drop the one-time bearer. We assemble an explicit
+	// payload that includes the token — CodeRabbit review finding
+	// for audit-fix C1: the plaintext token must reach the operator
+	// exactly once at mint time.
+	writeJSON(w, http.StatusCreated, map[string]any{
+		"id":         share.ID,
+		"host_id":    share.HostID,
+		"token":      share.Token,
+		"expires_at": share.ExpiresAt,
+		"label":      share.Label,
+		"created_at": share.CreatedAt,
+	})
 }
 
 // GET /api/hosts/{id}/shares — lists active shares for the host
