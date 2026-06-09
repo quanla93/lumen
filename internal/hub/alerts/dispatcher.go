@@ -47,6 +47,11 @@ func (d *Dispatcher) policyFor(severity string) policy {
 type DispatcherConfig struct {
 	DB           *sql.DB
 	HubSecret    []byte // needed for web_push: VAPID private key is encrypted at rest
+	// HubURL is the hub's public base URL (e.g. "https://lumen.example.com").
+	// Forwarded into DispatchDeps.HubURL so the Slack channel's
+	// "View in Lumen" action button has a real target instead of
+	// falling back to "https://localhost" (audit finding C3).
+	HubURL       string
 	Logger       *slog.Logger
 	PollInterval time.Duration // how often workers wake to drain
 	Workers      int           // parallel goroutines pulling jobs
@@ -138,6 +143,13 @@ func copyPolicies(src map[string]policy) map[string]policy {
 // Best-effort: a DB failure here means the engine logs and moves on
 // (the alert row still exists in alert_events; the operator can also
 // see it in the Active tab even without a notification).
+//
+// RFC 0004: if the channel has a non-empty digest_window, Enqueue
+// also stamps next_flush_at = now + window and rows_count = the
+// current count of buffered rows in the same window. The
+// claimNext() predicate uses rows_count >= 10 as the early-flush
+// trigger; without this update, a burst of 9 events would sit silent
+// for the full window even when the 10th arrives 1s later.
 func (d *Dispatcher) Enqueue(ctx context.Context, eventID int64, ch Channel, n Notification) (int64, error) {
 	payload, err := json.Marshal(n)
 	if err != nil {
@@ -147,17 +159,117 @@ func (d *Dispatcher) Enqueue(ctx context.Context, eventID int64, ch Channel, n N
 	if severity == "" {
 		severity = "warning"
 	}
+
+	// Read the channel's current config + compute the window.
+	// We re-parse on every enqueue because the operator may have
+	// edited the digest_window since the last enqueue; the column
+	// here is a per-row snapshot.
+	digestWindow := ""
+	var nextFlush sql.NullTime
+	var rowsCount int
+	if cc, perr := ch.ParsedConfig(); perr == nil {
+		if win, derr := ParseDigestWindow(cc.DigestWindow); derr == nil && win > 0 {
+			digestWindow = cc.DigestWindow
+			nextFlush = sql.NullTime{Time: time.Now().UTC().Add(win), Valid: true}
+		}
+	}
+
+	// RFC 0004 digest-window buffer accounting. We need a write-lock
+	// BEFORE the SELECT COUNT so two concurrent enqueues don't
+	// both observe count=0. SQLite's default BEGIN DEFERRED only
+	// acquires the write lock on the first WRITE; a SELECT before
+	// any write is a snapshot read. Audit finding C5.
+	//
+	// Strategy: BEGIN IMMEDIATE upgrades the BEGIN to take the
+	// write lock at txn start. Two concurrent BEGIN IMMEDIATEs
+	// serialize on the SQLite writer mutex (with the busy_timeout
+	// the hub sets at boot, the wait is bounded).
+	//
+	// Go's database/sql doesn't expose BEGIN IMMEDIATE through
+	// BeginTx, so we drive the transaction on a single Conn from
+	// the pool — without pinning the conn, Go's pool would
+	// silently hand each ExecContext a different connection and
+	// the BEGIN/COMMIT pair would land on different backends
+	// (silently broken). Conn() ensures the whole transaction
+	// rides one underlying *sqlite.Conn.
+	committed := false
+	if digestWindow != "" {
+		conn, err := d.cfg.DB.Conn(ctx)
+		if err != nil {
+			return 0, fmt.Errorf("get conn: %w", err)
+		}
+		defer conn.Close() // returns the conn to the pool
+		if _, err := conn.ExecContext(ctx, "BEGIN IMMEDIATE"); err != nil {
+			return 0, fmt.Errorf("begin immediate: %w", err)
+		}
+		defer func() {
+			if !committed {
+				_, _ = conn.ExecContext(context.Background(), "ROLLBACK")
+			}
+		}()
+		// Count current buffered rows for the early-flush rule.
+		if err := conn.QueryRowContext(ctx,
+			`SELECT COUNT(*) FROM notification_deliveries
+			 WHERE status = 'pending' AND channel_id = ? AND digest_window = ?`,
+			ch.ID, digestWindow,
+		).Scan(&rowsCount); err != nil {
+			return 0, fmt.Errorf("count pending: %w", err)
+		}
+		// New row will be #N+1 in the buffer.
+		rowsCount++
+		// Backfill rows_count on every previously buffered row
+		// so claimNext() sees the up-to-date count even when it
+		// picks a row other than the latest.
+		if rowsCount > 1 {
+			if _, err := conn.ExecContext(ctx,
+				`UPDATE notification_deliveries
+				 SET rows_count = ?
+				 WHERE status = 'pending' AND channel_id = ? AND digest_window = ?`,
+				rowsCount, ch.ID, digestWindow,
+			); err != nil {
+				return 0, fmt.Errorf("backfill rows_count: %w", err)
+			}
+		}
+		if _, err := conn.ExecContext(ctx, `
+			INSERT INTO notification_deliveries
+				(event_id, channel_id, channel_name, channel_type, severity, status, payload,
+				 digest_window, next_flush_at, rows_count)
+			VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?)`,
+			eventID, ch.ID, ch.Name, ch.Type, severity, string(payload),
+			digestWindow, nextFlush, rowsCount,
+		); err != nil {
+			return 0, fmt.Errorf("insert delivery: %w", err)
+		}
+		if _, err := conn.ExecContext(ctx, "COMMIT"); err != nil {
+			return 0, fmt.Errorf("commit enqueue: %w", err)
+		}
+		committed = true
+		// committed = true means we return via the success path —
+		// LastInsertId is available on the *sql.Conn via a fresh
+		// QueryRowContext("SELECT last_insert_rowid()").
+		var id int64
+		if err := conn.QueryRowContext(ctx, "SELECT last_insert_rowid()").Scan(&id); err != nil {
+			return 0, fmt.Errorf("last insert id: %w", err)
+		}
+		return id, nil
+	}
+
+	// Non-digest path: no transaction needed (no count/backfill).
 	res, err := d.cfg.DB.ExecContext(ctx, `
 		INSERT INTO notification_deliveries
-			(event_id, channel_id, channel_name, channel_type, severity, status, payload)
-		VALUES (?, ?, ?, ?, ?, 'pending', ?)`,
+			(event_id, channel_id, channel_name, channel_type, severity, status, payload,
+			 digest_window, next_flush_at, rows_count)
+		VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?)`,
 		eventID, ch.ID, ch.Name, ch.Type, severity, string(payload),
+		digestWindow, nextFlush, rowsCount,
 	)
 	if err != nil {
 		return 0, fmt.Errorf("insert delivery: %w", err)
 	}
-	return res.LastInsertId()
+	id, err := res.LastInsertId()
+	return id, err
 }
+
 
 // Run boots PollInterval-driven workers. Returns when ctx is cancelled.
 // Spawns Workers goroutines; each drains a few jobs per cycle. There's
@@ -235,6 +347,12 @@ type pendingRow struct {
 	Severity    string
 	Attempts    int
 	Payload     string
+	// DigestWindow is the channel's digest_window at enqueue time.
+	// Empty / "0" = single-shot (today's behaviour). Non-empty
+	// = the dispatcher should hold the row until next_flush_at
+	// passes, OR rows_count >= 10, whichever comes first.
+	DigestWindow string
+	RowsCount    int
 }
 
 // claimNext is the "find an eligible row and mark it in-flight" step.
@@ -253,19 +371,36 @@ func (d *Dispatcher) claimNext(ctx context.Context) (*pendingRow, error) {
 	var (
 		row     pendingRow
 		nextStr sql.NullTime
+		flushAt sql.NullTime
 	)
+	// RFC 0004: the WHERE clause now also gates on next_flush_at
+	// (digest window expiry) and rows_count (early-flush at N≥10).
+	// A row is eligible when:
+	//   - no digest window (digest_window = ''), OR
+	//   - window expired (next_flush_at IS NULL OR <= now), OR
+	//   - rows_count >= 10 (early-flush)
+	// We test rows_count first in the predicate so the dispatcher
+	// can drain a hot buffer in a single tick.
 	err = tx.QueryRowContext(ctx, `
 		SELECT id, event_id, channel_id, channel_name, channel_type,
-			severity, attempts, payload, next_retry_at
+			severity, attempts, payload, next_retry_at,
+			COALESCE(digest_window, ''), COALESCE(rows_count, 0), next_flush_at
 		FROM notification_deliveries
 		WHERE status = 'pending'
 		  AND (next_retry_at IS NULL OR next_retry_at <= CURRENT_TIMESTAMP)
+		  AND (
+		    COALESCE(digest_window, '') = ''
+		    OR next_flush_at IS NULL
+		    OR next_flush_at <= CURRENT_TIMESTAMP
+		    OR COALESCE(rows_count, 0) >= 10
+		  )
 		ORDER BY
 			CASE severity WHEN 'critical' THEN 0 WHEN 'warning' THEN 1 ELSE 2 END,
 			id
 		LIMIT 1`,
 	).Scan(&row.ID, &row.EventID, &row.ChannelID, &row.ChannelName,
-		&row.ChannelType, &row.Severity, &row.Attempts, &row.Payload, &nextStr)
+		&row.ChannelType, &row.Severity, &row.Attempts, &row.Payload, &nextStr,
+		&row.DigestWindow, &row.RowsCount, &flushAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -326,7 +461,7 @@ func (d *Dispatcher) process(ctx context.Context, row pendingRow) {
 		return
 	}
 
-	dispatchErr := Dispatch(ctx, ch, notif, DispatchDeps{DB: d.cfg.DB, HubSecret: d.cfg.HubSecret}, d.cfg.Logger)
+	dispatchErr := Dispatch(ctx, ch, notif, DispatchDeps{DB: d.cfg.DB, HubSecret: d.cfg.HubSecret, HubURL: d.cfg.HubURL}, d.cfg.Logger)
 	if dispatchErr == nil {
 		d.markSent(ctx, row.ID)
 		d.cfg.Logger.Info("alerts: delivered",

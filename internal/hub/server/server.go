@@ -150,6 +150,11 @@ func Run(ctx context.Context, cfg Config) error {
 		HTTPClient: &http.Client{Timeout: 10 * time.Second},
 	}
 	hostsHandlers := hosts.NewHandlers(db, st, logger)
+	// Share-token sweep (RFC 0004) — runs hourly to garbage-collect
+	// expired host_share_tokens rows. Without this, the table grows
+	// unbounded as operators mint + let-expire shares.
+	shareSweeper := &hosts.ShareSweeper{DB: db, Logger: logger.With("subsys", "share-sweep")}
+	go shareSweeper.Loop(ctx)
 	settingsHandlers := settings.NewHandlers(db, logger)
 	installHandler := &install.Handler{InstallDir: cfg.InstallDir, Logger: logger}
 	metaHandler := meta.New(cfg.Version)
@@ -158,30 +163,64 @@ func Run(ctx context.Context, cfg Config) error {
 	alertsDispatcher := alerts.NewDispatcher(alerts.DispatcherConfig{
 		DB:        db,
 		HubSecret: cfg.Secret,
+		// HubURL plumbs through to DispatchDeps.HubURL so the Slack
+		// channel's "View in Lumen" action button points at the
+		// real hub, not https://localhost. Required for Sprint 4 /
+		// RFC 0004 (post-sprint audit finding C3).
+		HubURL:    cfg.HubPublicURL,
 		Logger:    logger.With("subsys", "alerts-dispatch"),
 	})
 	go alertsDispatcher.Run(ctx)
-	alertsEngine := alerts.NewEngine(alerts.Config{
-		DB:              db,
-		HubSecret:       cfg.Secret,
-		Store:           st,
-		Hosts:           alerts.HostsListerFromDB(db),
-		Tags:            alerts.TagsListerFromDB(db),
-		Dispatcher:      alertsDispatcher,
-		DefaultInterval: cfg.AlertEvalInterval,
-		Logger:          logger.With("subsys", "alerts"),
-	})
-	go alertsEngine.Run(ctx)
 
-	// Maintenance cacher (RFC 0003) — runs the same 30s heartbeat
-	// as retention + backup so the alerts engine sees window edits
-	// within ~30s. The bridge from cacher → engine is read on
-	// every alert tick; nil = no suppression (operators without
-	// the feature enabled see no behaviour change).
+	// Maintenance cacher (RFC 0003) — built BEFORE the alerts engine
+	// so we can wire the cacher into the engine's MaintenanceLister
+	// closure. Runs the same 30s heartbeat as retention + backup so
+	// the alerts engine sees window edits within ~30s. nil lister =
+	// no suppression (operators without the feature enabled see no
+	// behaviour change).
 	maintCacher := &maintenance.Cacher{
 		DB:     db,
 		Logger: logger.With("subsys", "maintenance"),
 	}
+	hostsLister := alerts.HostsListerFromDB(db)
+	tagsLister := alerts.TagsListerFromDB(db)
+	maintLister := func(ctx context.Context) (map[string][]alerts.MaintenanceWindow, error) {
+		registered, err := hostsLister(ctx)
+		if err != nil {
+			return nil, err
+		}
+		tags, _ := tagsLister(ctx) // best-effort; nil tags still allow empty-scope windows
+		full := maintCacher.AllActive(registered, tags, time.Now())
+		if len(full) == 0 {
+			return nil, nil
+		}
+		out := make(map[string][]alerts.MaintenanceWindow, len(full))
+		for host, wins := range full {
+			sl := make([]alerts.MaintenanceWindow, 0, len(wins))
+			for _, w := range wins {
+				sl = append(sl, alerts.MaintenanceWindow{
+					StartAt:   w.StartAt,
+					EndAt:     w.EndAt,
+					ScopeTags: w.ScopeTags,
+				})
+			}
+			out[host] = sl
+		}
+		return out, nil
+	}
+
+	alertsEngine := alerts.NewEngine(alerts.Config{
+		DB:              db,
+		HubSecret:       cfg.Secret,
+		Store:           st,
+		Hosts:           hostsLister,
+		Tags:            tagsLister,
+		Dispatcher:      alertsDispatcher,
+		DefaultInterval: cfg.AlertEvalInterval,
+		Maintenance:     maintLister,
+		Logger:          logger.With("subsys", "alerts"),
+	})
+	go alertsEngine.Run(ctx)
 	go maintCacher.Loop(ctx)
 
 	hubStatsHandler := &hubstats.Handler{
@@ -274,6 +313,9 @@ func Run(ctx context.Context, cfg Config) error {
 	// (`enabled:false` when the admin hasn't published it) so the
 	// frontend renders deterministically.
 	r.Get("/api/public/status", publicStatusHandlers.Get)
+	// Unauthenticated public share view (RFC 0004). Token is the
+	// bearer credential; no session required.
+	r.Get("/api/public/host/{token}", hostsHandlers.PublicHostByToken)
 
 	// Auth + Hosts CRUD (session required)
 	r.Group(func(r chi.Router) {
@@ -289,6 +331,10 @@ func Run(ctx context.Context, cfg Config) error {
 		r.Post("/api/hosts/{id}/silence", hostsHandlers.Silence)
 		r.Delete("/api/hosts/{id}/silence", hostsHandlers.Unsilence)
 		r.Get("/api/host-tags", hostsHandlers.ListTagFacets)
+		// Share tokens (RFC 0004) — session-gated mint/list/revoke.
+		r.Post("/api/hosts/{id}/share", hostsHandlers.MintShare)
+		r.Get("/api/hosts/{id}/shares", hostsHandlers.ListShares)
+		r.Delete("/api/hosts/{id}/share/{token}", hostsHandlers.RevokeShare)
 
 		r.Post("/api/account/password", authHandlers.ChangePassword)
 

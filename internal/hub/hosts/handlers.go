@@ -358,6 +358,118 @@ func (h *Handlers) Unsilence(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// --- Share tokens (RFC 0004) ---
+
+// POST /api/hosts/{id}/share — mints a new share token. Returns the
+// plaintext token + expires_at. Token is shown ONCE.
+func (h *Handlers) MintShare(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	var req struct {
+		TTLSeconds int64  `json:"ttl_seconds"`
+		Label      string `json:"label"`
+	}
+	if err := decode(r, &req); err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	ttl := time.Duration(req.TTLSeconds) * time.Second
+	if ttl < MinShareTTL || ttl > MaxShareTTL {
+		writeJSONError(w, http.StatusBadRequest, ErrShareTTLBounds.Error())
+		return
+	}
+	share, err := MintShare(r.Context(), h.DB, id, ttl, req.Label, 0)
+	if err != nil {
+		if errors.Is(err, ErrShareTTLBounds) {
+			writeJSONError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		if errors.Is(err, ErrNotFound) {
+			writeJSONError(w, http.StatusNotFound, "host not found")
+			return
+		}
+		h.Logger.Error("mint share failed", "err", err, "host_id", id)
+		writeJSONError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	writeJSON(w, http.StatusCreated, share)
+}
+
+// GET /api/hosts/{id}/shares — lists active shares for the host
+// (metadata only, no plaintext token).
+func (h *Handlers) ListShares(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	shares, err := ListHostShares(r.Context(), h.DB, id)
+	if err != nil {
+		h.Logger.Error("list shares failed", "err", err, "host_id", id)
+		writeJSONError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	writeJSON(w, http.StatusOK, shares)
+}
+
+// DELETE /api/hosts/{id}/share/{token} — revokes a share token.
+// Filtered by (host_id, token) so the operator can only revoke
+// tokens that belong to the host named in the URL.
+func (h *Handlers) RevokeShare(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	token := chi.URLParam(r, "token")
+	if token == "" {
+		writeJSONError(w, http.StatusBadRequest, "invalid token")
+		return
+	}
+	res, err := h.DB.ExecContext(r.Context(),
+		`DELETE FROM host_share_tokens WHERE host_id = ? AND token = ?`, id, token)
+	if err != nil {
+		h.Logger.Error("revoke share failed", "err", err, "host_id", id)
+		writeJSONError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		writeJSONError(w, http.StatusNotFound, "share not found")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// GET /api/public/host/{token} — unauthenticated public view of a
+// shared host. Returns a slim payload (id + name + expires_at) —
+// no system metadata, no tags, no metrics (per RFC 0004 §"Risks").
+func (h *Handlers) PublicHostByToken(w http.ResponseWriter, r *http.Request) {
+	token := chi.URLParam(r, "token")
+	if token == "" {
+		writeJSONError(w, http.StatusNotFound, "not found")
+		return
+	}
+	payload, err := FetchByShareToken(r.Context(), h.DB, token)
+	if err != nil {
+		if errors.Is(err, ErrShareNotFound) || errors.Is(err, ErrShareInvalid) {
+			writeJSONError(w, http.StatusNotFound, "not found")
+			return
+		}
+		if errors.Is(err, ErrShareExpired) {
+			writeJSONError(w, http.StatusNotFound, "link expired")
+			return
+		}
+		h.Logger.Error("public share fetch failed", "err", err)
+		writeJSONError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	writeJSON(w, http.StatusOK, payload)
+}
+
 // PUT /api/hosts/{id}/public-visible — toggles whether the host appears
 // on the unauthenticated /status page. Body: {"public_visible": true|false}.
 func (h *Handlers) SetPublicVisibility(w http.ResponseWriter, r *http.Request) {
