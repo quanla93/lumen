@@ -6,6 +6,35 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- **WebAuthn / passkey login** (Phase 8 Sprint 6, RFC 0006). Phishing-resistant, hardware-backed credential for the Lumen admin account. `github.com/go-webauthn/webauthn v0.17.4` + 8 transitive deps. See [`docs/configure/passkeys.md`](./docs/src/content/docs/configure/passkeys.md) (HTTPS gotcha + browser support table + per-platform guidance).
+  - **Backend** (`internal/hub/auth/webauthn.go`): `WebAuthnService` wraps go-webauthn + in-memory challenge store (32-byte random session ID, 5-min TTL, single-use) + DB-backed credential store. API: `RegisterBegin` / `RegisterFinish` / `LoginBegin` / `LoginFinish` / `ListCredentials` / `GetByCredentialID` / `DeleteCredential` (refuses last-passkey+no-password) / `UpdateSignCount` (monotonic; clone detection). Migration `0025_webauthn_credentials.sql` creates the `webauthn_credentials` table (credential_id BLOB UNIQUE, public_key BLOB, attestation_type, transports JSON, sign_count, aaguid, label, backup_eligible, created_at, last_used_at) + index on `user_id`.
+  - **Errors**: `ErrWebAuthnChallengeExpired` / `ErrWebAuthnLastCredential` / `ErrWebAuthnSignCountRegression` / `ErrWebAuthnInvalidConfig`. `WebAuthnConfigFromOrigin(origin, rpName)` derives RPID=hostname from `LUMEN_HUB_PUBLIC_URL`.
+  - **Frontend** (`web/src/components/PasskeySection.tsx` + `web/src/components/LoginForm.tsx` + `web/src/lib/webauthn.ts`): Settings → Account gets a Passkeys list with add / delete; LoginForm gets a "Sign in with passkey" button. Byte-array helpers (base64url ↔ Uint8Array) for the WebAuthn JSON ↔ `navigator.credentials` round-trip. Privacy: `ListCredentials` strips `credential_id` + `public_key` from the response.
+  - **i18n EN + VI**: full passkeys.* subtree (~12 keys). Same `TranslationKey` cast workaround as OnboardingWizard — the deep passkeys.* branch falls out of LeafKeys at the recursion-depth limit.
+  - **Tests**: 11 unit tests in `internal/hub/auth/webauthn_test.go` (RegisterBegin, RegisterFinish, LoginBegin, LoginFinish, Delete refuses last passkey, List strips secrets, ChallengeExpiry, RPOriginDerivesRPID, SessionIDsAre32Bytes, SignCountMonotonic). All FAIL on pre-D1 code, all pass after D2.
+
+- **CI guard update**: `bundle-freshness` job now also greps for `passkeys.title` + `Sign in with passkey` so a future refactor that drops WebAuthn from the bundle fails CI instead of silently rendering a stale UI.
+
+- **Notification quality bundle** (Phase 8 Sprint 4, RFC 0004) — four small wins that compound. See [`docs/configure/notification-digest.md`](./docs/src/content/docs/configure/notification-digest.md) (TBD) + [`docs/configure/host-share.md`](./docs/src/content/docs/configure/host-share.md) (TBD) + [`docs/configure/alerts.md`](./docs/src/content/docs/configure/alerts.md) updates.
+  - **Per-channel `digest_window`** — buffer events for `""` / `0` / `1m` / `5m` / `15m` / `1h` then send one combined body. Early-flush at N≥10 to avoid silent drops. `internal/hub/alerts/digest.go` renders the multi-event body; `internal/hub/alerts/dispatcher.go` consults `next_flush_at` + `rows_count` columns. Migration `0023_notification_digest.sql` adds the three columns + index. 20-recipient cap on comma-separated email `to_addr`; SMTP envelope gets N×RCPT TO + `To:` header lists all.
+  - **Per-host share link** — mint a 32-byte base64url token bound to one host with a TTL (1 h .. 720 h). `internal/hub/hosts/share.go` exposes `MintShare` / `FetchByShareToken` / `RevokeShare` / `SweepExpiredShares` / `ListHostShares` (plaintext token never appears in list responses). Migration `0024_host_share_tokens.sql` creates the table + indexes. The list response strips `token_hash`; an unknown / expired / revoked token all 404 the same way so a leaked URL can't tell which case it hit.
+  - **Slack-native channel** — Block Kit message (color side bar + host/metric/value fields + "View in Lumen" action button). `internal/hub/alerts/slack.go` emits the JSON; `Dispatch.HubURL` (forwarded by the server from a new `hub.public_url` setting) roots the button. URL validation enforces `https://hooks.slack.com/services/...` so a Discord webhook can't be pasted by mistake.
+  - **Multi-recipient email** — `SplitEmailRecipients` parses comma-separated `to_addr`; per-address `looksLikeEmail` check; `MaxEmailRecipients=20` cap. `dispatchEmail` issues N×RCPT TO and the `To:` header in DATA lists every recipient.
+
+### Fixed
+
+- **Maintenance-window suppression now actually suppresses** (issue #33 / Sprint 3 follow-up). The `alerts.Engine.Config.Maintenance` field was defined but never wired in `internal/hub/server/server.go`; the `maintCacher` was constructed *after* the engine. Reordered + added `MaintenanceLister` closure that builds a `map[host][]MaintenanceWindow` per tick via the cacher's new `AllActive` method. Reopen integration test `TestRunOnce_MaintenanceWindowSuppressesFiring_Integration` covers the regression.
+
+- **Web bundle freshness guard** (CI). New `bundle-freshness` job in `.github/workflows/ci.yml` greps the emitted `web/dist/assets/index-*.js` for symbols that should be present (`settings.tabs.sso`, `settings.tabs.saml`, `alerts.tabs.maintenance`, `Sign in with SAML`, `onboarding.title`, `onboarding.replay`, `onboarding.step1.title`, `settings.onboardingReplayTitle`). Future Settings tabs that ship source without rebuilding the bundle fail CI instead of silently rendering a stale UI.
+
+### Tests
+
+- **Vitest + Testing Library** added to `web/` (Sprint 5 groundwork). 18 frontend tests pin the step-visibility logic and the wizard component. CI's `lint-web` job now runs `pnpm --filter web test` before `pnpm run typecheck`.
+
+- **Sprint 4 backend** — 24 new tests across `internal/hub/alerts/` (digest, slack, email multi-recipient) and `internal/hub/hosts/share_test.go` (mint / fetch / expired / revoked / sweep / list).
+
 ## [0.7.3] — 2026-06-08
 
 ### Added

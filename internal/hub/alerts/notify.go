@@ -34,6 +34,10 @@ type Notification struct {
 	Threshold float64   `json:"threshold"`
 	Message   string    `json:"message"`
 	Time      time.Time `json:"time"`
+	// DigestWindow is the channel's digest_window at the moment the
+	// dispatcher enqueued the row. FormatDigestBody reads it for the
+	// header line ("N alerts in last 5m:"). Empty = single-shot.
+	DigestWindow string `json:"digest_window,omitempty"`
 }
 
 // dispatchClient is the single shared HTTP client. 8s timeout is the RFC
@@ -50,6 +54,11 @@ var dispatchClient = &http.Client{Timeout: 8 * time.Second}
 type DispatchDeps struct {
 	DB        *sql.DB
 	HubSecret []byte
+	// HubURL is the hub's public base URL (e.g.
+	// "https://lumen.example.com"). Used by the Slack channel to
+	// build the "View in Lumen" action button. Empty = falls back
+	// to "https://localhost" inside dispatchSlack.
+	HubURL string
 }
 
 // Dispatch is the single entry point the engine uses. Returns an error
@@ -109,6 +118,11 @@ func Dispatch(ctx context.Context, ch Channel, n Notification, deps DispatchDeps
 			return errors.New("web_push dispatch needs DB; caller did not populate DispatchDeps.DB")
 		}
 		return dispatchWebPush(ctx, deps, ch.ID, n)
+	case "slack":
+		if cfg.URL == "" {
+			return ErrSlackURLRequired
+		}
+		return dispatchSlack(ctx, cfg, n, deps.HubURL)
 	default:
 		return fmt.Errorf("%w: %q", ErrInvalidChannelType, ch.Type)
 	}
@@ -413,8 +427,21 @@ func dispatchEmail(ctx context.Context, cfg ChannelConfig, n Notification) error
 	if err := c.Mail(cfg.FromAddr); err != nil {
 		return fmt.Errorf("email: MAIL FROM: %w", err)
 	}
-	if err := c.Rcpt(cfg.ToAddr); err != nil {
-		return fmt.Errorf("email: RCPT TO: %w", err)
+	// RFC 0004: fan out to N recipients via N×RCPT TO. The DATA
+	// body's `To:` header still lists all addresses (single
+	// header, comma-separated) so RFC 5322 clients render the
+	// full list. We bail on the first RCPT error — partial
+	// fan-out leaves the operator guessing which addresses got
+	// the message.
+	addrs := SplitEmailRecipients(cfg.ToAddr)
+	if len(addrs) == 0 {
+		// Should be caught by validateChannel, but defend in depth.
+		return ErrEmailToRequired
+	}
+	for _, a := range addrs {
+		if err := c.Rcpt(a); err != nil {
+			return fmt.Errorf("email: RCPT TO %s: %w", a, err)
+		}
 	}
 	w, err := c.Data()
 	if err != nil {

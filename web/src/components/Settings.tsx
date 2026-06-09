@@ -10,6 +10,7 @@ import {
   publicStatusApi,
   backupApi,
   samlApi,
+  userPrefsApi,
   ApiError,
   type Host,
   type User,
@@ -33,6 +34,7 @@ import { copyToClipboard } from "@/lib/clipboard";
 import { ErrorText, Field, FieldInput, GhostButton, PrimaryButton } from "@/components/CenterCard";
 import { IconButton, SegmentedControl, Surface } from "@/components/ui";
 import { TokenReveal } from "@/components/TokenReveal";
+import { PasskeySection } from "@/components/PasskeySection";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { usePrefs } from "@/lib/userPrefs";
 import { useI18n } from "@/i18n/useI18n";
@@ -72,7 +74,13 @@ const TABS: {
   { id: "backup",      labelKey: "settings.tabs.backup",     icon: Database },
 ];
 
-export function Settings({ user }: { user: User }) {
+export function Settings({
+  user,
+  onReplayOnboarding,
+}: {
+  user: User;
+  onReplayOnboarding?: () => void;
+}) {
   const { t } = useI18n();
   const [tab, setTab] = useState<SettingsTab>("hosts");
   return (
@@ -105,7 +113,7 @@ export function Settings({ user }: { user: User }) {
         </nav>
         <div>
           {tab === "hosts"      && <HostsSettings />}
-          {tab === "account"    && <AccountSettings user={user} />}
+          {tab === "account"    && <AccountSettings user={user} onReplayOnboarding={onReplayOnboarding} />}
           {tab === "display"    && <DisplaySettings />}
           {tab === "runtime"    && <RuntimeSettings />}
           {tab === "retention"  && <RetentionSettings />}
@@ -423,7 +431,13 @@ function HostTagsCell({
 
 // ─── Account sub-tab ─────────────────────────────────────────────────────────
 
-function AccountSettings({ user }: { user: User }) {
+function AccountSettings({
+  user,
+  onReplayOnboarding,
+}: {
+  user: User;
+  onReplayOnboarding?: () => void;
+}) {
   const { t } = useI18n();
   return (
     <div className="space-y-6 max-w-md">
@@ -440,6 +454,34 @@ function AccountSettings({ user }: { user: User }) {
         <h3 className="text-sm font-semibold tracking-tight mb-2">{t("settings.changePasswordTitle")}</h3>
         <ChangePasswordForm />
       </section>
+      {onReplayOnboarding && (
+        <section>
+          <h3 className="text-sm font-semibold tracking-tight mb-2">
+            {t("settings.onboardingReplayTitle")}
+          </h3>
+          <p className="text-xs text-[color:var(--color-muted)] mb-2">
+            {t("settings.onboardingReplayBody")}
+          </p>
+          <button
+            type="button"
+            onClick={async () => {
+              try {
+                await userPrefsApi.putOnboarding({ dismissedAt: null });
+              } catch {
+                // best-effort: App.tsx will re-mount from local
+                // state regardless.
+              }
+              onReplayOnboarding();
+            }}
+            className="text-sm font-medium text-[color:var(--color-accent)] hover:underline"
+          >
+            {t("settings.onboardingReplayTitle" as never) === "First-run wizard" ? t("onboarding.replay" as never) : t("onboarding.replay" as never)}
+          </button>
+        </section>
+      )}
+
+      {/* Sprint 6 / RFC 0006: passkey management. */}
+      <PasskeySection />
     </div>
   );
 }

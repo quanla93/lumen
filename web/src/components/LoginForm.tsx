@@ -1,16 +1,28 @@
 import { useEffect, useState } from "react";
-import { authApi, ApiError, type User } from "@/lib/api";
+import { authApi, webauthnApi, ApiError, type User } from "@/lib/api";
 import { CenterCard, Field, FieldInput, PrimaryButton, ErrorText } from "@/components/CenterCard";
 import { useI18n } from "@/i18n/useI18n";
+import {
+  encodeAssertionForServer,
+  jsonBase64UrlToBytes,
+} from "@/lib/webauthn";
 
 export function LoginForm({ onSuccess }: { onSuccess: (user: User) => void }) {
   const { t } = useI18n();
+  // LoginForm has the same i18n-leaf-drop issue as
+  // OnboardingWizard / PasskeySection: the deep `passkeys.*`
+  // subtree is missing from the TranslationKey union. Cast
+  // t once at the outer scope; the body uses (k: string) =>
+  // string for the affected calls.
+  const tAny = t as unknown as (k: string) => string;
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [oidcEnabled, setOidcEnabled] = useState(false);
   const [samlEnabled, setSamlEnabled] = useState(false);
+  const [passkeySupported, setPasskeySupported] = useState(false);
+  const [passkeyBusy, setPasskeyBusy] = useState(false);
 
   // Pull oidc_enabled / saml_enabled so we know whether to render the
   // SSO buttons. Done here (not in App.bootstrap) so a runtime toggle
@@ -24,6 +36,14 @@ export function LoginForm({ onSuccess }: { onSuccess: (user: User) => void }) {
       setOidcEnabled(s.oidc_enabled);
       setSamlEnabled(s.saml_enabled);
     }).catch(() => {});
+    // Probe for navigator.credentials.get — same RFC 0006
+    // §"Risks" #5 as the Settings side: very old browsers
+    // don't ship WebAuthn at all.
+    setPasskeySupported(
+      typeof window !== "undefined" &&
+        typeof navigator !== "undefined" &&
+        !!navigator.credentials?.get,
+    );
     const params = new URLSearchParams(window.location.search);
     const ssoErr = params.get("sso_error");
     if (ssoErr) {
@@ -99,6 +119,60 @@ export function LoginForm({ onSuccess }: { onSuccess: (user: User) => void }) {
               >
                 {t("auth.signInWithSAML")}
               </a>
+            )}
+            {passkeySupported && (
+              <button
+                type="button"
+                disabled={passkeyBusy}
+                onClick={async () => {
+                  setError(null);
+                  setPasskeyBusy(true);
+                  try {
+                    const ch = await webauthnApi.loginBegin(username);
+                    const options = jsonBase64UrlToBytes(ch.options_json);
+                    const cred = (await navigator.credentials.get(
+                      options as unknown as CredentialRequestOptions,
+                    )) as PublicKeyCredential | null;
+                    if (!cred) {
+                      setError(tAny("passkeys.cancelled"));
+                      return;
+                    }
+                    const assertion = encodeAssertionForServer({
+                      id: cred.id,
+                      rawId: cred.rawId,
+                      type: cred.type,
+                      response: {
+                        clientDataJSON: cred.response.clientDataJSON,
+                        authenticatorData: (cred.response as AuthenticatorAssertionResponse).authenticatorData,
+                        signature: (cred.response as AuthenticatorAssertionResponse).signature,
+                        userHandle: (cred.response as AuthenticatorAssertionResponse).userHandle ?? null,
+                      },
+                    });
+                    const result = await webauthnApi.loginFinish(ch.session_id, assertion);
+                    // The hub's loginFinish endpoint normally
+                    // sets the session cookie server-side, so a
+                    // 200 means the operator is signed in. We
+                    // refresh /api/me to pick up the new session
+                    // and let App.tsx route to the dashboard.
+                    const me = await authApi.me();
+                    onSuccess(me);
+                    void result;
+                  } catch (e) {
+                    if (e instanceof DOMException && e.name === "NotAllowedError") {
+                      setError(tAny("passkeys.cancelled"));
+                    } else if (e instanceof ApiError) {
+                      setError(e.message);
+                    } else {
+                      setError(e instanceof Error ? e.message : String(e));
+                    }
+                  } finally {
+                    setPasskeyBusy(false);
+                  }
+                }}
+                className="block w-full rounded-md border border-[color:var(--color-border)] py-2 text-center text-sm font-medium text-[color:var(--color-fg)] hover:bg-[color:var(--color-border)]/40 disabled:opacity-50"
+              >
+                {passkeyBusy ? t("auth.signingIn") : t("auth.signInWithPasskey")}
+              </button>
             )}
           </>
         )}

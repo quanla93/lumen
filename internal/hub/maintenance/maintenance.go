@@ -123,6 +123,41 @@ func (c *Cacher) ActiveAt(hostTags map[string]string, now time.Time) []Window {
 	return out
 }
 
+// AllActive builds the host→windows map the alerts engine consumes on
+// every tick. Pure: no IO, no DB call — uses the in-memory cache that
+// Refresh populates on the cacher's 30s heartbeat. Hosts with no
+// currently-active matching window are omitted (the engine treats
+// missing keys as "no suppression", same as the empty-map case).
+//
+// hostTags may be nil — hosts whose tag set is nil only match windows
+// whose scope is empty (see ActiveAt's call to matchScope).
+//
+// hosts may be nil — returns an empty map. Callers typically pass the
+// result of alerts.HostsListerFromDB(ctx) so the engine sees the
+// canonical host list (not just the ones the in-memory snapshot has
+// reported on this tick).
+//
+// The closure that wraps this method (built in server.go) converts
+// each Window to the alerts.MaintenanceWindow slim shape so the
+// engine doesn't have to import the maintenance package.
+func (c *Cacher) AllActive(hosts []string, hostTags map[string]map[string]string, now time.Time) map[string][]Window {
+	if len(hosts) == 0 {
+		return nil
+	}
+	var out map[string][]Window
+	for _, host := range hosts {
+		wins := c.ActiveAt(hostTags[host], now)
+		if len(wins) == 0 {
+			continue
+		}
+		if out == nil {
+			out = make(map[string][]Window, len(hosts))
+		}
+		out[host] = wins
+	}
+	return out
+}
+
 // List returns the cached windows filtered by state (active,
 // upcoming, past). Used by the GET /api/maintenance handler.
 func (c *Cacher) List(state string, now time.Time) []Window {

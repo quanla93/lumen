@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { authApi, ApiError, type User } from "@/lib/api";
+import { authApi, hostsApi, userPrefsApi, ApiError, type User, type Host } from "@/lib/api";
 import { LoginForm } from "@/components/LoginForm";
 import { RegisterForm } from "@/components/RegisterForm";
 import { AppShell, type Tab } from "@/components/AppShell";
@@ -11,6 +11,8 @@ import { CenterCard } from "@/components/CenterCard";
 import { PrefsApply } from "@/components/PrefsApply";
 import { PrefsProvider } from "@/lib/userPrefs";
 import { StatusPage } from "@/components/StatusPage";
+import { OnboardingWizard } from "@/components/OnboardingWizard";
+import { shouldShowWizard } from "@/lib/hosts";
 import { useI18n } from "@/i18n/useI18n";
 
 type View =
@@ -69,39 +71,17 @@ export default function App() {
         />
       );
     case "app": {
-      const onHome = () =>
-        setView({ ...view, tab: "dashboard", detailHost: null });
-      const onTabChange = (tab: Tab) =>
-        setView({ ...view, tab, detailHost: null });
-      const onSelectHost = (name: string) =>
-        setView({ ...view, detailHost: name });
-      const onBack = () => setView({ ...view, detailHost: null });
-
-      let body;
-      if (view.tab === "dashboard") {
-        body = view.detailHost ? (
-          <HostDetail hostName={view.detailHost} onBack={onBack} />
-        ) : (
-          <Dashboard onSelectHost={onSelectHost} onNavigateToSettings={() => onTabChange("settings")} />
-        );
-      } else if (view.tab === "alerts") {
-        body = <Alerts />;
-      } else {
-        body = <Settings user={view.user} />;
-      }
       return (
-        <PrefsProvider>
-          <PrefsApply />
-          <AppShell
-            user={view.user}
-            tab={view.tab}
-            onTabChange={onTabChange}
-            onHome={onHome}
-            onLogout={() => setView({ kind: "login" })}
-          >
-            {body}
-          </AppShell>
-        </PrefsProvider>
+        <AppView
+          user={view.user}
+          tab={view.tab}
+          detailHost={view.detailHost}
+          onHome={() => setView({ ...view, tab: "dashboard", detailHost: null })}
+          onTabChange={(tab) => setView({ ...view, tab, detailHost: null })}
+          onSelectHost={(name) => setView({ ...view, detailHost: name })}
+          onBack={() => setView({ ...view, detailHost: null })}
+          onLogout={() => setView({ kind: "login" })}
+        />
       );
     }
   }
@@ -121,4 +101,109 @@ async function bootstrap(): Promise<View> {
     }
     throw err;
   }
+}
+
+// AppView owns the post-auth view shell. It hosts the OnboardingWizard
+// (Sprint 5 / RFC 0005) above the AppShell + body. The wizard polls
+// the host list and self-closes once the operator has a host that
+// reported metrics — at which point the body is just the regular
+// Dashboard / Settings / Alerts tab.
+function AppView({
+  user,
+  tab,
+  detailHost,
+  onHome,
+  onTabChange,
+  onSelectHost,
+  onBack,
+  onLogout,
+}: {
+  user: User;
+  tab: Tab;
+  detailHost: string | null;
+  onHome: () => void;
+  onTabChange: (tab: Tab) => void;
+  onSelectHost: (name: string) => void;
+  onBack: () => void;
+  onLogout: () => void;
+}) {
+  const [hosts, setHosts] = useState<Host[]>([]);
+  const [dismissedAt, setDismissedAt] = useState<string | null>(null);
+  // Force-mount toggle. Bumping this number tears down + re-mounts
+  // the wizard so the "Replay onboarding" button in Settings →
+  // Account can clear `dismissedAt` AND have the wizard re-evaluate
+  // step visibility from a fresh state on the next render.
+  const [replayNonce, setReplayNonce] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    const refresh = () => {
+      Promise.all([hostsApi.list(), userPrefsApi.get()])
+        .then(([list, prefs]) => {
+          if (cancelled) return;
+          setHosts(list);
+          setDismissedAt(prefs.onboarding?.dismissedAt ?? null);
+        })
+        .catch(() => {});
+    };
+    refresh();
+    const id = window.setInterval(refresh, 5_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [replayNonce]);
+
+  // The wizard must re-render whenever the operator clicks
+  // "Replay" so shouldShowWizard(hosts, null, true) returns true
+  // again. We key the wizard on a value that changes only when
+  // replayNonce bumps — that way normal hosts/dismissed state
+  // updates don't tear down the wizard mid-flow.
+  const wizardKey = `wizard-${replayNonce}`;
+
+  let body;
+  if (tab === "dashboard") {
+    body = detailHost ? (
+      <HostDetail hostName={detailHost} onBack={onBack} />
+    ) : (
+      <Dashboard onSelectHost={onSelectHost} onNavigateToSettings={() => onTabChange("settings")} />
+    );
+  } else if (tab === "alerts") {
+    body = <Alerts />;
+  } else {
+    body = <Settings user={user} onReplayOnboarding={() => setReplayNonce((n) => n + 1)} />;
+  }
+
+  return (
+    <PrefsProvider>
+      <PrefsApply />
+      {shouldShowWizard(hosts, dismissedAt, true) && (
+        <OnboardingWizard
+          key={wizardKey}
+          hosts={hosts}
+          dismissedAt={dismissedAt}
+          onDismissed={async (when) => {
+            setDismissedAt(when);
+            try {
+              await userPrefsApi.putOnboarding({ dismissedAt: when });
+            } catch {
+              // best-effort: the local state is the source of truth
+              // for this session; the next /api/me/prefs will pick
+              // it up on the next bootstrap.
+            }
+          }}
+          onHostsChange={setHosts}
+        />
+      )}
+      <AppShell
+        user={user}
+        tab={tab}
+        onTabChange={onTabChange}
+        onHome={onHome}
+        onLogout={onLogout}
+      >
+        {body}
+      </AppShell>
+    </PrefsProvider>
+  );
 }
