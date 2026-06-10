@@ -333,3 +333,235 @@ func mustMaintenanceMap(t *testing.T, ctx context.Context, lister MaintenanceLis
 	}
 	return m
 }
+
+// TestRunOnce_MaintenanceWindowSuppressesResolved_Integration pins
+// the symmetric guarantee: a resolved transition is also dropped
+// while a window is active. RFC 0003 §"Risks" notes that an
+// operator doesn't need a "we're fine now" during planned
+// downtime. Without this, a flap inside the window would queue
+// useless resolved notifications.
+func TestRunOnce_MaintenanceWindowSuppressesResolved_Integration(t *testing.T) {
+	db := openMaintIntegrationDB(t)
+	ctx := context.Background()
+	now := time.Now().UTC()
+
+	// Host + window.
+	mustInsertHost(t, db, "host-a", "tok-a")
+	if _, err := db.ExecContext(ctx,
+		`INSERT INTO maintenance_windows (start_at, end_at, reason, scope_tags) VALUES (?, ?, ?, ?)`,
+		now.Add(-30*time.Second), now.Add(30*time.Minute), "deploy", "{}",
+	); err != nil {
+		t.Fatalf("seed window: %v", err)
+	}
+	// Engine + cacher.
+	cacher := &maintenance.Cacher{DB: db}
+	if err := cacher.Refresh(ctx); err != nil {
+		t.Fatalf("cacher.Refresh: %v", err)
+	}
+	lister := func(ctx context.Context) (map[string][]MaintenanceWindow, error) {
+		registered, _ := HostsListerFromDB(db)(ctx)
+		full := cacher.AllActive(registered, nil, time.Now())
+		return toAlertsMaintenanceMap(full), nil
+	}
+	// Pre-warm state: fire first, then resolve while window is active.
+	engine := NewEngine(Config{Logger: silentLog()})
+	rule := Rule{ID: 1, Name: "cpu high", Metric: "cpu_pct", Comparator: "gt",
+		Threshold: 50, ForSeconds: 0, Enabled: true, Severity: "warning"}
+	tr := engine.TickWithTagsAndMaintenance(now, []Rule{rule},
+		[]api.HostSnapshot{{Host: "host-a", Ts: now, CpuPct: 90}},
+		[]string{"host-a"}, nil, mustMaintenanceMap(t, ctx, lister))
+	if len(tr) != 0 {
+		t.Fatalf("t=0: expected 0 (firing suppressed by window), got %+v", tr)
+	}
+	// Now bring CPU down — without the resolved-suppress, a
+	// resolve transition would emit.
+	tr = engine.TickWithTagsAndMaintenance(now.Add(10*time.Second), []Rule{rule},
+		[]api.HostSnapshot{{Host: "host-a", Ts: now.Add(10 * time.Second), CpuPct: 10}},
+		[]string{"host-a"}, nil, mustMaintenanceMap(t, ctx, lister))
+	if len(tr) != 0 {
+		t.Errorf("t=10: expected 0 (resolve suppressed by window), got %+v", tr)
+	}
+}
+
+// TestRunOnce_MaintenanceWindowCoversMultipleHosts_Integration
+// pins that the suppression is host-scoped per window entry — a
+// window with empty scope_tags must apply to ALL hosts, not just
+// the first one the engine happens to evaluate. Catches a class
+// of bug where the inMaintenance lookup keyed on a stale host
+// map from a prior tick.
+func TestRunOnce_MaintenanceWindowCoversMultipleHosts_Integration(t *testing.T) {
+	db := openMaintIntegrationDB(t)
+	ctx := context.Background()
+	now := time.Now().UTC()
+
+	mustInsertHost(t, db, "host-a", "tok-a")
+	mustInsertHost(t, db, "host-b", "tok-b")
+	if _, err := db.ExecContext(ctx,
+		`INSERT INTO maintenance_windows (start_at, end_at, reason, scope_tags) VALUES (?, ?, ?, ?)`,
+		now.Add(-30*time.Second), now.Add(30*time.Minute), "all-hosts", "{}",
+	); err != nil {
+		t.Fatalf("seed window: %v", err)
+	}
+	cacher := &maintenance.Cacher{DB: db}
+	if err := cacher.Refresh(ctx); err != nil {
+		t.Fatalf("cacher.Refresh: %v", err)
+	}
+	lister := func(ctx context.Context) (map[string][]MaintenanceWindow, error) {
+		registered, _ := HostsListerFromDB(db)(ctx)
+		full := cacher.AllActive(registered, nil, time.Now())
+		return toAlertsMaintenanceMap(full), nil
+	}
+	engine := NewEngine(Config{Logger: silentLog()})
+	rule := Rule{ID: 1, Name: "cpu high", Metric: "cpu_pct", Comparator: "gt",
+		Threshold: 50, ForSeconds: 0, Enabled: true, Severity: "warning"}
+	tr := engine.TickWithTagsAndMaintenance(now, []Rule{rule},
+		[]api.HostSnapshot{
+			{Host: "host-a", Ts: now, CpuPct: 90},
+			{Host: "host-b", Ts: now, CpuPct: 91},
+		},
+		[]string{"host-a", "host-b"}, nil, mustMaintenanceMap(t, ctx, lister))
+	if len(tr) != 0 {
+		t.Errorf("expected 0 transitions (both hosts suppressed), got %+v", tr)
+	}
+}
+
+// TestRunOnce_MaintenanceWindowNotYetStarted_Integration pins the
+// time bound: a window whose start_at is in the future does NOT
+// suppress — a half-applied window (operator created it with a
+// 5-min pre-delay) must allow alerts in the meantime. Catches a
+// class of bug where inMaintenance ignores the start_at check
+// and only honors end_at.
+func TestRunOnce_MaintenanceWindowNotYetStarted_Integration(t *testing.T) {
+	db := openMaintIntegrationDB(t)
+	ctx := context.Background()
+	now := time.Now().UTC()
+
+	mustInsertHost(t, db, "host-a", "tok-a")
+	// Window starts in 10 minutes — we're evaluating at `now`.
+	if _, err := db.ExecContext(ctx,
+		`INSERT INTO maintenance_windows (start_at, end_at, reason, scope_tags) VALUES (?, ?, ?, ?)`,
+		now.Add(10*time.Minute), now.Add(40*time.Minute), "scheduled", "{}",
+	); err != nil {
+		t.Fatalf("seed window: %v", err)
+	}
+	cacher := &maintenance.Cacher{DB: db}
+	if err := cacher.Refresh(ctx); err != nil {
+		t.Fatalf("cacher.Refresh: %v", err)
+	}
+	lister := func(ctx context.Context) (map[string][]MaintenanceWindow, error) {
+		registered, _ := HostsListerFromDB(db)(ctx)
+		full := cacher.AllActive(registered, nil, time.Now())
+		return toAlertsMaintenanceMap(full), nil
+	}
+	engine := NewEngine(Config{Logger: silentLog()})
+	rule := Rule{ID: 1, Name: "cpu high", Metric: "cpu_pct", Comparator: "gt",
+		Threshold: 50, ForSeconds: 0, Enabled: true, Severity: "warning"}
+	tr := engine.TickWithTagsAndMaintenance(now, []Rule{rule},
+		[]api.HostSnapshot{{Host: "host-a", Ts: now, CpuPct: 90}},
+		[]string{"host-a"}, nil, mustMaintenanceMap(t, ctx, lister))
+	if len(tr) != 1 || tr[0].State != "firing" {
+		t.Fatalf("window not yet active — alert MUST fire. got %+v", tr)
+	}
+}
+
+// TestRunOnce_MaintenanceWindowExpiredDuringSuppression_Integration
+// pins the recovery path: while the window is active, the
+// breach is suppressed; once the window ends, the NEXT breach
+// must fire. Without the time bound on suppression, a breach
+// that started inside the window would stay suppressed
+// forever (because the engine never sees it).
+func TestRunOnce_MaintenanceWindowExpiredDuringSuppression_Integration(t *testing.T) {
+	db := openMaintIntegrationDB(t)
+	ctx := context.Background()
+	now := time.Now().UTC()
+
+	mustInsertHost(t, db, "host-a", "tok-a")
+	// Window covers t=0 + t=30s (both still active when those
+	// ticks fire), but ends before t=1m so the third tick
+	// (the new breach) sees no window. Pins the recovery
+	// path: a window ending between two ticks must NOT leave
+	// a "stuck suppressed" state on the engine.
+	if _, err := db.ExecContext(ctx,
+		`INSERT INTO maintenance_windows (start_at, end_at, reason, scope_tags) VALUES (?, ?, ?, ?)`,
+		now.Add(-1*time.Minute), now.Add(45*time.Second), "short", "{}",
+	); err != nil {
+		t.Fatalf("seed window: %v", err)
+	}
+	cacher := &maintenance.Cacher{DB: db}
+	if err := cacher.Refresh(ctx); err != nil {
+		t.Fatalf("cacher.Refresh: %v", err)
+	}
+	lister := func(ctx context.Context) (map[string][]MaintenanceWindow, error) {
+		registered, _ := HostsListerFromDB(db)(ctx)
+		full := cacher.AllActive(registered, nil, time.Now())
+		return toAlertsMaintenanceMap(full), nil
+	}
+	engine := NewEngine(Config{Logger: silentLog()})
+	rule := Rule{ID: 1, Name: "cpu high", Metric: "cpu_pct", Comparator: "gt",
+		Threshold: 50, ForSeconds: 0, Enabled: true, Severity: "warning"}
+
+	// t=0: window active, breach suppressed.
+	tr := engine.TickWithTagsAndMaintenance(now, []Rule{rule},
+		[]api.HostSnapshot{{Host: "host-a", Ts: now, CpuPct: 90}},
+		[]string{"host-a"}, nil, mustMaintenanceMap(t, ctx, lister))
+	if len(tr) != 0 {
+		t.Errorf("t=0: expected 0 (window active), got %+v", tr)
+	}
+	// t=30s: clear the breach (CPU drops to 10). Window still
+	// active so any state transition (here: resolve) is
+	// suppressed. The state machine resets st.firing=false
+	// even though the resolve notification isn't emitted.
+	tr = engine.TickWithTagsAndMaintenance(now.Add(30*time.Second), []Rule{rule},
+		[]api.HostSnapshot{{Host: "host-a", Ts: now.Add(30 * time.Second), CpuPct: 10}},
+		[]string{"host-a"}, nil, mustMaintenanceMap(t, ctx, lister))
+	if len(tr) != 0 {
+		t.Errorf("t=30s: expected 0 (resolve suppressed by window), got %+v", tr)
+	}
+	// t=1m: window has expired, CPU breaches again — the NEW
+	// breach must fire (not a re-firing of the prior one,
+	// which was itself suppressed so the engine never emitted
+	// it but still flipped state.firing=true).
+	tr = engine.TickWithTagsAndMaintenance(now.Add(time.Minute), []Rule{rule},
+		[]api.HostSnapshot{{Host: "host-a", Ts: now.Add(time.Minute), CpuPct: 90}},
+		[]string{"host-a"}, nil, mustMaintenanceMap(t, ctx, lister))
+	if len(tr) != 1 || tr[0].State != "firing" {
+		t.Errorf("t=1m: window expired, new breach MUST fire. got %+v", tr)
+	}
+}
+
+// --- helpers for the new edge-case tests ---
+
+func mustInsertHost(t *testing.T, db *sql.DB, name, tokenHash string) {
+	t.Helper()
+	if _, err := db.Exec(`INSERT INTO hosts (name, token_hash) VALUES (?, ?)`, name, tokenHash); err != nil {
+		t.Fatalf("insert host %q: %v", name, err)
+	}
+}
+
+// silentLog returns a logger that discards everything. Keeps the
+// alerts-engine debug noise off the test output.
+func silentLog() *slog.Logger {
+	return slog.New(slog.NewTextHandler(io.Discard, nil))
+}
+
+// toAlertsMaintenanceMap converts a maintenance package
+// host→[]Window map to the alerts package host→[]MaintenanceWindow
+// shape the engine consumes. Same shape server.go:177-200 builds.
+func toAlertsMaintenanceMap(src map[string][]maintenance.Window) map[string][]MaintenanceWindow {
+	if len(src) == 0 {
+		return nil
+	}
+	out := make(map[string][]MaintenanceWindow, len(src))
+	for h, wins := range src {
+		sl := make([]MaintenanceWindow, 0, len(wins))
+		for _, w := range wins {
+			sl = append(sl, MaintenanceWindow{
+				StartAt:   w.StartAt,
+				EndAt:     w.EndAt,
+				ScopeTags: w.ScopeTags,
+			})
+		}
+		out[h] = sl
+	}
+	return out
+}
