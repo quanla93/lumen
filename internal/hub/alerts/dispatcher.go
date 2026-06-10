@@ -198,7 +198,7 @@ func (d *Dispatcher) Enqueue(ctx context.Context, eventID int64, ch Channel, n N
 		if err != nil {
 			return 0, fmt.Errorf("get conn: %w", err)
 		}
-		defer conn.Close() // returns the conn to the pool
+		defer func() { _ = conn.Close() }() // returns the conn to the pool
 		if _, err := conn.ExecContext(ctx, "BEGIN IMMEDIATE"); err != nil {
 			return 0, fmt.Errorf("begin immediate: %w", err)
 		}
