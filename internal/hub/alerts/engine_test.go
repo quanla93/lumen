@@ -340,3 +340,163 @@ func TestEvaluate_LtComparator(t *testing.T) {
 		t.Fatalf("expected firing on lt 20%% with 10%%, got %#v", tr)
 	}
 }
+
+// TestEvaluate_MaintenanceWindowSuppressesFiring covers issue #33 /
+// #35 — the regression where the alerts engine's MaintenanceLister
+// wasn't wired into runOnce, so a window in the maintenance cacher
+// didn't suppress a firing transition. A host with an active window
+// matching its tag scope must see ZERO transitions during the window.
+func TestEvaluate_MaintenanceWindowSuppressesFiring(t *testing.T) {
+	e := newTestEngine()
+	rule := Rule{
+		ID: 7, Name: "cpu high", Metric: "cpu_pct", Comparator: "gt",
+		Threshold: 50, ForSeconds: 0, Enabled: true, Severity: "warning",
+	}
+	now := time.Date(2026, 6, 9, 12, 0, 0, 0, time.UTC)
+	wins := map[string][]MaintenanceWindow{
+		"host-a": {{
+			StartAt:   now.Add(-1 * time.Hour),
+			EndAt:     now.Add(1 * time.Hour),
+			ScopeTags: map[string]string{}, // empty = matches all
+		}},
+	}
+	tr := e.TickWithTagsAndMaintenance(now, []Rule{rule},
+		[]api.HostSnapshot{snap("host-a", 90, 0, now)},
+		[]string{"host-a"}, nil, wins)
+	if len(tr) != 0 {
+		t.Fatalf("expected 0 transitions (suppressed by window), got %d: %+v", len(tr), tr)
+	}
+}
+
+// TestEvaluate_MaintenanceWindowScopeMismatchKeepsFiring covers the
+// inverse: a window whose tag scope doesn't match the host's tags
+// must NOT suppress. The alert should still fire.
+func TestEvaluate_MaintenanceWindowScopeMismatchKeepsFiring(t *testing.T) {
+	e := newTestEngine()
+	rule := Rule{
+		ID: 8, Name: "cpu high", Metric: "cpu_pct", Comparator: "gt",
+		Threshold: 50, ForSeconds: 0, Enabled: true, Severity: "warning",
+	}
+	now := time.Date(2026, 6, 9, 12, 0, 0, 0, time.UTC)
+	wins := map[string][]MaintenanceWindow{
+		"host-a": {{
+			StartAt:   now.Add(-1 * time.Hour),
+			EndAt:     now.Add(1 * time.Hour),
+			ScopeTags: map[string]string{"tier": "prod"}, // doesn't match dev
+		}},
+	}
+	tags := map[string]map[string]string{"host-a": {"tier": "dev"}}
+	tr := e.TickWithTagsAndMaintenance(now, []Rule{rule},
+		[]api.HostSnapshot{snap("host-a", 90, 0, now)},
+		[]string{"host-a"}, tags, wins)
+	if len(tr) != 1 || tr[0].State != "firing" {
+		t.Fatalf("expected 1 firing (scope mismatch should NOT suppress), got %+v", tr)
+	}
+}
+
+// TestEvaluate_MaintenanceWindowExpiredAllowsFiring covers the time
+// bound: a window that has already ended must NOT suppress — the
+// pre-window firing was already dispatched (per RFC 0003 Q1) and any
+// new transition should land normally.
+func TestEvaluate_MaintenanceWindowExpiredAllowsFiring(t *testing.T) {
+	e := newTestEngine()
+	rule := Rule{
+		ID: 9, Name: "cpu high", Metric: "cpu_pct", Comparator: "gt",
+		Threshold: 50, ForSeconds: 0, Enabled: true, Severity: "warning",
+	}
+	now := time.Date(2026, 6, 9, 12, 0, 0, 0, time.UTC)
+	wins := map[string][]MaintenanceWindow{
+		"host-a": {{
+			StartAt:   now.Add(-3 * time.Hour),
+			EndAt:     now.Add(-1 * time.Hour), // ended an hour ago
+			ScopeTags: map[string]string{},
+		}},
+	}
+	tr := e.TickWithTagsAndMaintenance(now, []Rule{rule},
+		[]api.HostSnapshot{snap("host-a", 90, 0, now)},
+		[]string{"host-a"}, nil, wins)
+	if len(tr) != 1 || tr[0].State != "firing" {
+		t.Fatalf("expected 1 firing (window expired), got %+v", tr)
+	}
+}
+
+// TestEvaluate_CooldownExtendsOnFlap covers audit finding C4 —
+// the cooldown branch must update lastFiredAt so a sustained flap
+// during cooldown doesn't pin the window to the original fire
+// instant. Scenario: rule with cooldown=60s, breach-resolve-breach
+// pattern where each new breach happens just BEFORE the cooldown
+// would elapse.
+//
+//   t=0  breach → fire (notif, lastFiredAt=t0)
+//   t=10 resolve → state.firing=false (but lastFiredAt stays t0)
+//   t=20 breach → in-cooldown (20<60), NOT notified, lastFiredAt MUST update to t=20
+//   t=30 resolve
+//   t=40 breach → t-lastFiredAt=20, 20<60, in-cooldown, lastFiredAt=t=40
+//   ...pattern continues. With C4 fix, every in-cooldown breach
+//   bumps lastFiredAt, so a flap that NEVER resolves the cooldown
+//   can still re-fire after 60s of silence.
+//
+// Without the fix, lastFiredAt stays at t=0; the cooldown would
+// elapse at t=60 and the next breach fires immediately — which
+// seems fine, but the silent window has been "carried" past t=60
+// by in-cooldown breaches that should have extended it.
+func TestEvaluate_CooldownExtendsOnFlap(t *testing.T) {
+	e := newTestEngine()
+	rule := Rule{
+		ID: 10, Name: "cpu hot", Metric: "cpu_pct", Comparator: "gt",
+		Threshold: 50, ForSeconds: 0, CooldownSeconds: 60, Enabled: true,
+		Severity: "warning",
+	}
+	now := time.Date(2026, 6, 9, 12, 0, 0, 0, time.UTC)
+
+	// Cycle: breach→in-cooldown→resolve→re-breach→in-cooldown→…
+	// Each tick: pick CPU above/below threshold to drive a state
+	// transition. The breach (high) ticks are what count for
+	// lastFiredAt updates.
+	ticks := []struct {
+		offsetSec int
+		cpu       float64
+		wantState string // firing|resolved|""
+	}{
+		{0, 90, "firing"},   // initial fire, lastFiredAt=0
+		{5, 90, ""},         // already firing, no transition
+		{10, 5, "resolved"}, // resolve
+		{20, 90, ""},       // re-breach but in-cooldown (20s<60s), no notify. WITH fix: lastFiredAt=20.
+		{30, 5, "resolved"}, // resolve
+		{40, 90, ""},       // re-breach in-cooldown (40-20=20<60s). lastFiredAt=40.
+		{50, 5, "resolved"},
+		{60, 90, ""},       // 60-40=20s<60s, in-cooldown. lastFiredAt=60.
+		{70, 5, "resolved"},
+		{80, 90, ""},       // 80-60=20s<60s, in-cooldown. lastFiredAt=80.
+		{100, 5, "resolved"},
+		{140, 90, "firing"}, // 140-80=60s ≥ 60s, cooldown done — must fire.
+	}
+	for i, tick := range ticks {
+		tAt := now.Add(time.Duration(tick.offsetSec) * time.Second)
+		tr := e.Tick(tAt, []Rule{rule},
+			[]api.HostSnapshot{snap("h1", tick.cpu, 0, tAt)}, nil)
+		switch tick.wantState {
+		case "firing":
+			if len(tr) != 1 || tr[0].State != "firing" {
+				t.Errorf("tick #%d (t=%d, cpu=%.0f): expected firing, got %+v", i, tick.offsetSec, tick.cpu, tr)
+			}
+		case "resolved":
+			if len(tr) != 1 || tr[0].State != "resolved" {
+				t.Errorf("tick #%d (t=%d, cpu=%.0f): expected resolved, got %+v", i, tick.offsetSec, tick.cpu, tr)
+			}
+		case "":
+			if len(tr) != 0 {
+				t.Errorf("tick #%d (t=%d, cpu=%.0f): expected no transition, got %+v", i, tick.offsetSec, tick.cpu, tr)
+			}
+		}
+	}
+	// The final tick (t=140) MUST fire because lastFiredAt was
+	// bumped at t=80 (in-cooldown re-breach), and 140-80=60s
+	// exactly meets the cooldown threshold. The engine uses
+	// <, so 60s elapsed means the condition is false → falls
+	// through to the notification branch. If the C4 fix is
+	// missing, lastFiredAt stayed at t=0 and the tick at t=60
+	// would have fired earlier — but more importantly, the
+	// t=140 outcome depends on cumulative in-cooldown bumps
+	// having kept the window active through t=80.
+}

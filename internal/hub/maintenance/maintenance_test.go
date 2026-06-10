@@ -3,7 +3,6 @@ package maintenance
 import (
 	"context"
 	"database/sql"
-	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -25,18 +24,34 @@ func openTestDB(t *testing.T) *sql.DB {
 	}
 	t.Cleanup(func() { _ = db.Close() })
 
-	mig, err := os.ReadFile(filepath.Join("..", "..", "storage", "migrations", "0022_gpu_processes_maintenance.sql"))
-	if err != nil {
-		// local-dev path
-		mig, err = os.ReadFile("../../../storage/migrations/0022_gpu_processes_maintenance.sql")
-		if err != nil {
-			t.Skipf("migration file not found: %v", err)
-		}
+	// Migration 0022 contains INSERT OR IGNORE INTO settings (...) for
+	// the processes.* defaults. Create the table so the INSERT
+	// doesn't fail with "no such table: settings". The contents
+	// don't matter to the maintenance tests — the cacher reads from
+	// maintenance_windows only.
+	if _, err := db.Exec(`CREATE TABLE settings (
+		key TEXT PRIMARY KEY,
+		value TEXT NOT NULL DEFAULT ''
+	)`); err != nil {
+		t.Fatalf("create settings: %v", err)
 	}
-	// Run the maintenance_windows portion (skip the processes.*
-	// INSERTs — they live in the same migration file but aren't
-	// what we're testing here).
-	if _, err := db.Exec(string(mig)); err != nil {
+
+	// Run only the maintenance_windows DDL (skip the processes.*
+	// INSERTs in migration 0022 — they require a `users` table from
+	// the FKEY on maintenance_windows.created_by too).
+	if _, err := db.Exec(
+		`CREATE TABLE maintenance_windows (
+			id         INTEGER PRIMARY KEY AUTOINCREMENT,
+			start_at   DATETIME NOT NULL,
+			end_at     DATETIME NOT NULL,
+			reason     TEXT     NOT NULL DEFAULT '',
+			scope_tags TEXT     NOT NULL DEFAULT '{}',
+			created_by INTEGER,
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		);
+		CREATE INDEX idx_mw_active ON maintenance_windows(start_at, end_at);
+		CREATE INDEX idx_mw_created_at ON maintenance_windows(created_at);`,
+	); err != nil {
 		t.Fatalf("apply migration: %v", err)
 	}
 	return db
@@ -210,5 +225,87 @@ func TestCreateEndBeforeStart(t *testing.T) {
 		EndAt:   now,
 	}); err == nil {
 		t.Error("Create with end_at < start_at returned nil error, want non-nil")
+	}
+}
+
+// TestAllActive covers the engine-facing adapter: AllActive takes the
+// host list + host tag map + a wall-clock instant, and returns the
+// host→windows map shape the engine consumes on every tick. The
+// alerts engine's runOnce() passes this map straight into evaluate().
+func TestAllActive(t *testing.T) {
+	now := time.Now().UTC()
+	c := &Cacher{cache: []Window{
+		// Active, empty scope → matches every host.
+		{ID: 1, StartAt: now.Add(-30 * time.Minute), EndAt: now.Add(30 * time.Minute), ScopeTags: map[string]string{}},
+		// Active, scope t=prod → matches only the prod host.
+		{ID: 2, StartAt: now.Add(-10 * time.Minute), EndAt: now.Add(10 * time.Minute), ScopeTags: map[string]string{"t": "prod"}},
+		// Future window → matches nothing.
+		{ID: 3, StartAt: now.Add(1 * time.Hour), EndAt: now.Add(2 * time.Hour)},
+		// Past window → matches nothing.
+		{ID: 4, StartAt: now.Add(-2 * time.Hour), EndAt: now.Add(-1 * time.Hour)},
+	}}
+	hostTags := map[string]map[string]string{
+		"host-prod": {"t": "prod"},
+		"host-dev":  {"t": "dev"},
+		"host-none": nil, // no tags → only empty-scope windows apply
+	}
+
+	got := c.AllActive([]string{"host-prod", "host-dev", "host-none"}, hostTags, now)
+
+	// host-prod: window 1 (empty) + window 2 (scope t=prod matches).
+	if wins := got["host-prod"]; len(wins) != 2 {
+		t.Errorf("host-prod wins = %d, want 2 (empty + prod-scope), got %+v", len(wins), wins)
+	}
+	// host-dev: window 1 only (scope t=prod does NOT match t=dev).
+	if wins := got["host-dev"]; len(wins) != 1 {
+		t.Errorf("host-dev wins = %d, want 1 (empty scope only), got %+v", len(wins), wins)
+	}
+	// host-none: window 1 only (empty scope matches, scoped window doesn't).
+	if wins := got["host-none"]; len(wins) != 1 {
+		t.Errorf("host-none wins = %d, want 1 (empty scope only), got %+v", len(wins), wins)
+	}
+}
+
+// TestAllActive_NoMatchesReturnsNil covers the case where no host has
+// any active window: AllActive should return nil (not an empty map) so
+// the engine's inMaintenance short-circuit (len(map) == 0) still works.
+func TestAllActive_NoMatchesReturnsNil(t *testing.T) {
+	now := time.Now().UTC()
+	// All windows are in the past.
+	c := &Cacher{cache: []Window{
+		{StartAt: now.Add(-3 * time.Hour), EndAt: now.Add(-2 * time.Hour)},
+	}}
+	got := c.AllActive([]string{"h1", "h2"}, nil, now)
+	if got != nil {
+		t.Errorf("AllActive with no matches = %+v, want nil", got)
+	}
+}
+
+// TestAllActive_NilHostsReturnsNil covers the empty-host-list path
+// (caller passed no hosts; engine may not have called the hosts
+// lister yet). AllActive must not allocate an empty map.
+func TestAllActive_NilHostsReturnsNil(t *testing.T) {
+	now := time.Now().UTC()
+	c := &Cacher{cache: []Window{
+		{StartAt: now.Add(-time.Hour), EndAt: now.Add(time.Hour)},
+	}}
+	if got := c.AllActive(nil, nil, now); got != nil {
+		t.Errorf("AllActive(nil, ...) = %+v, want nil", got)
+	}
+}
+
+// TestAllActive_NilTagsStillMatchesEmptyScope covers the case where
+// tagsListerFromDB failed (e.g. transient DB blip) and the closure in
+// server.go passed nil for the hostTags map. Hosts with nil tags
+// should still match windows with an empty scope (the common
+// "applies-to-all" window shape).
+func TestAllActive_NilTagsStillMatchesEmptyScope(t *testing.T) {
+	now := time.Now().UTC()
+	c := &Cacher{cache: []Window{
+		{StartAt: now.Add(-time.Hour), EndAt: now.Add(time.Hour), ScopeTags: map[string]string{}},
+	}}
+	got := c.AllActive([]string{"h1"}, nil, now)
+	if wins := got["h1"]; len(wins) != 1 {
+		t.Errorf("nil tags should still match empty-scope window, got %d wins", len(wins))
 	}
 }

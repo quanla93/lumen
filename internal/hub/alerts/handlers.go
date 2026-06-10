@@ -788,7 +788,10 @@ func isValidationErr(err error) bool {
 		errors.Is(err, ErrEmailCredsRequired),
 		errors.Is(err, ErrEmailFromRequired),
 		errors.Is(err, ErrEmailToRequired),
-		errors.Is(err, ErrEmailAddrInvalid):
+		errors.Is(err, ErrEmailAddrInvalid),
+		errors.Is(err, ErrInvalidDigestWindow),
+		errors.Is(err, ErrSlackURLRequired),
+		errors.Is(err, ErrSlackURLInvalid):
 		return true
 	}
 	return false

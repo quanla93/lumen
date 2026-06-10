@@ -358,7 +358,23 @@ func (e *Engine) runOnce(ctx context.Context) {
 		}
 	}
 
-	transitions := e.evaluate(time.Now(), rules, snap, registered, tagSet, nil)
+	// RFC 0003: maintenance window suppression. Same fall-through
+	// pattern as Tags — nil lister = no suppression (older builds +
+	// deployments that don't wire the feature see no behaviour change).
+	// A failing lister logs + continues with nil so a transient DB
+	// blip on the maintenance table doesn't take down the alert
+	// pipeline.
+	var maintenance map[string][]MaintenanceWindow
+	if e.cfg.Maintenance != nil {
+		m, mErr := e.cfg.Maintenance(ctx)
+		if mErr != nil {
+			e.cfg.Logger.Warn("alerts: list maintenance windows failed", "err", mErr)
+		} else {
+			maintenance = m
+		}
+	}
+
+	transitions := e.evaluate(time.Now(), rules, snap, registered, tagSet, maintenance)
 	if len(transitions) == 0 {
 		return
 	}
@@ -485,7 +501,15 @@ func (e *Engine) evaluate(now time.Time, rules []Rule, snap []api.HostSnapshot, 
 					// Tradeoff: history loses this firing too — the operator
 					// set cooldown precisely to keep flap noise off both
 					// channels and the events table.
+					//
+					// Update lastFiredAt too (audit finding C4) so the
+					// next breach's cooldown check measures from THIS
+					// tick, not the original notification. Without this,
+					// repeated in-cooldown breaches would let the gate
+					// fire immediately after the window elapses because
+					// the elapsed-time delta is short.
 					st.firing = true
+					st.lastFiredAt = now
 					break
 				}
 				st.firing = true

@@ -49,6 +49,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm run lint
       - run: pnpm run typecheck
+      - run: pnpm --filter web test
 
   test-go:
     name: Test (Go)
@@ -155,3 +156,52 @@ jobs:
         with:
           name: benchmark
           path: bench.txt
+
+  # Catches a class of regressions where a Settings tab (or any other
+  # top-level web feature) is added to web/src but the bundle that
+  # actually ships via //go:embed in internal/hub/web/web.go is not
+  # rebuilt. Greps target string literals + i18n keys (which Vite
+  # keeps verbatim in the emitted JS), not React component names
+  # (Vite minifies those into short identifiers).
+  bundle-freshness:
+    name: Web bundle freshness
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter web build
+      - name: Verify expected source symbols are in the bundle
+        run: |
+          set -e
+          BUNDLE=$(ls web/dist/assets/index-*.js)
+          echo "Checking $BUNDLE"
+          # Add a new entry whenever a top-level feature lands a new
+          # Settings tab or login form. Each SYM is a string literal
+          # that must appear in the minified bundle — React function
+          # names get mangled by Vite, so we grep for the user-visible
+          # copy the component renders.
+          for SYM in \
+            "settings.tabs.sso" \
+            "settings.tabs.saml" \
+            "alerts.tabs.maintenance" \
+            "Sign in with SAML" \
+            "onboarding.title" \
+            "onboarding.replay" \
+            "onboarding.step1.title" \
+            "settings.onboardingReplayTitle" \
+            "passkeys.title" \
+            "Sign in with passkey" \
+          ; do
+            if ! grep -qF "$SYM" "$BUNDLE"; then
+              echo "::error::bundle missing $SYM — run 'pnpm build:web' locally and verify the source change is present."
+              exit 1
+            fi
+            echo "  ✓ found $SYM"
+          done

@@ -401,6 +401,69 @@ export type DisplayPrefs = {
 export type UserPrefsResponse = {
   dashboard: DashboardPrefs | null;
   display: DisplayPrefs | null;
+  // Sprint 5 / RFC 0005: when dismissedAt is set, the onboarding
+  // wizard should not auto-render. The operator can clear it via
+  // Settings → Account → "Replay onboarding". The backend stores
+  // the value as ISO-8601 string (RFC3339Nano from the hub); we
+  // treat null + undefined + empty string as "not dismissed" in
+  // shouldShowWizard's caller.
+  onboarding: { dismissedAt: string | null } | null;
+};
+
+// Sprint 6 / RFC 0006: passkey (WebAuthn) metadata. Deliberately
+// omits credential_id + public_key + aaguid — those are the
+// bearer secrets and the privacy guarantee is enforced server-side.
+// The Settings → Account Passkeys list renders only this shape.
+export type Passkey = {
+  id: number;
+  label: string;
+  sign_count: number;
+  created_at: string;
+  last_used_at: string | null;
+};
+
+// One challenge round-trip's worth of server-issued state. The
+// 32-byte random session ID is base64url-encoded by the server;
+// the client must echo it back on the Finish* call so the server
+// can pair the response with the right challenge.
+export type PasskeyChallenge = {
+  session_id: string;
+  // For RegisterBegin: the JSON-serialized PublicKeyCredentialCreationOptions.
+  // For LoginBegin: the JSON-serialized PublicKeyCredentialRequestOptions.
+  // The client passes the JSON directly into
+  // navigator.credentials.create() / .get() after base64url-decoding
+  // the `challenge` field + the `allowCredentials[*].id` array.
+  options_json: string;
+};
+
+// webauthnApi wraps the 6 Sprint 6 endpoints. The client never
+// decodes options_json on its own — it pipes the string straight
+// into navigator.credentials. The byte-array conversion is a
+// separate helper in web/src/lib/webauthn.ts.
+export const webauthnApi = {
+  registerBegin: (label: string) =>
+    api<PasskeyChallenge>("/api/auth/webauthn/register/begin", {
+      method: "POST",
+      body: JSON.stringify({ label }),
+    }),
+  registerFinish: (sessionId: string, attestation: unknown) =>
+    api<Passkey>("/api/auth/webauthn/register/finish", {
+      method: "POST",
+      body: JSON.stringify({ session_id: sessionId, attestation }),
+    }),
+  loginBegin: (username: string) =>
+    api<PasskeyChallenge>("/api/auth/webauthn/login/begin", {
+      method: "POST",
+      body: JSON.stringify({ username }),
+    }),
+  loginFinish: (sessionId: string, assertion: unknown) =>
+    api<{ ok: boolean; user_id?: number }>("/api/auth/webauthn/login/finish", {
+      method: "POST",
+      body: JSON.stringify({ session_id: sessionId, assertion }),
+    }),
+  list: () => api<{ credentials: Passkey[] }>("/api/me/webauthn"),
+  delete: (id: number) =>
+    api<{ ok: boolean }>(`/api/me/webauthn/${id}`, { method: "DELETE" }),
 };
 
 export const DEFAULT_DASHBOARD_PREFS: DashboardPrefs = {
@@ -433,6 +496,11 @@ export const userPrefsApi = {
     api<void>("/api/me/prefs/display", {
       method: "PUT",
       body: JSON.stringify(prefs),
+    }),
+  putOnboarding: (body: { dismissedAt: string | null }) =>
+    api<void>("/api/me/prefs/onboarding", {
+      method: "PUT",
+      body: JSON.stringify(body),
     }),
 };
 
