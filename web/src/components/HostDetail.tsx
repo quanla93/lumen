@@ -24,6 +24,13 @@ import { usePrefs } from "@/lib/userPrefs";
 import { CATALOG_IDS, CHART_CATALOG, DEFAULT_LAYOUT_LG, type ChartId, type LayoutItem } from "@/components/hostCharts/catalog";
 import type { Locale } from "@/i18n/types";
 import { Responsive, WidthProvider } from "react-grid-layout/legacy";
+// CSS for uPlot + react-grid-layout lives here, not in main.tsx,
+// so the styles only ship with the lazy HostDetail chunk. The
+// Dashboard's first paint (which never touches either) avoids
+// ~12 KB of CSS that the legacy grid layout would otherwise
+// pull into the entry bundle.
+import "uplot/dist/uPlot.min.css";
+import "react-grid-layout/css/styles.css";
 
 // rgl v2.2.3 reorganised exports: the WidthProvider HOC + the v1-style
 // flat-prop Responsive component live under /legacy. The top-level

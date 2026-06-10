@@ -1,10 +1,10 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { authApi, hostsApi, userPrefsApi, ApiError, type User, type Host } from "@/lib/api";
 import { LoginForm } from "@/components/LoginForm";
 import { RegisterForm } from "@/components/RegisterForm";
 import { AppShell, type Tab } from "@/components/AppShell";
 import { Dashboard } from "@/components/Dashboard";
-import { HostDetail } from "@/components/HostDetail";
+import { HostDetailSkeleton } from "@/components/HostDetailSkeleton";
 import { Settings } from "@/components/Settings";
 import { Alerts } from "@/components/Alerts";
 import { CenterCard } from "@/components/CenterCard";
@@ -14,6 +14,22 @@ import { StatusPage } from "@/components/StatusPage";
 import { OnboardingWizard } from "@/components/OnboardingWizard";
 import { shouldShowWizard } from "@/lib/hosts";
 import { useI18n } from "@/i18n/useI18n";
+
+// HostDetail is the biggest single chunk in the entry bundle
+// (react-grid-layout, uPlot, the per-host chart catalog, OKLCH
+// helpers). Lazy-load it so the Dashboard's first paint doesn't
+// pay for the host detail layer — the user only navigates into
+// HostDetail after clicking a card. The Suspense fallback is
+// HostDetailSkeleton, which mirrors the page's structure
+// (header + metric grid) so the layout doesn't jump.
+//
+// lazy() expects a module with a default export. HostDetail
+// exports a named function, so the .then() adapter re-shapes
+// the module into a { default: ... } object that lazy()
+// accepts.
+const HostDetail = lazy(() =>
+  import("@/components/HostDetail").then((m) => ({ default: m.HostDetail })),
+);
 
 type View =
   | { kind: "loading" }
@@ -164,7 +180,9 @@ function AppView({
   let body;
   if (tab === "dashboard") {
     body = detailHost ? (
-      <HostDetail hostName={detailHost} onBack={onBack} />
+      <Suspense fallback={<HostDetailSkeleton onBack={onBack} />}>
+        <HostDetail hostName={detailHost} onBack={onBack} />
+      </Suspense>
     ) : (
       <Dashboard onSelectHost={onSelectHost} onNavigateToSettings={() => onTabChange("settings")} />
     );
