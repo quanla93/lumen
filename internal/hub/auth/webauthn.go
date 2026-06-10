@@ -25,6 +25,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"net/url"
 	"strings"
 	"sync"
@@ -117,10 +118,11 @@ type Credential struct {
 	LastUsedAt *time.Time `json:"last_used_at,omitempty"`
 }
 
-// RegisterFinishParams carries the operator's attestation from
-// the browser to the hub. The shape mirrors what
-// `navigator.credentials.create({ publicKey })` returns plus the
-// operator's chosen label.
+// RegisterFinishParams is the slim shape RegisterFinish takes
+// when called without an HTTP request (e.g. a future admin-only
+// "import credential" path). The HTTP path takes an *http.Request
+// directly so go-webauthn can parse the CredentialCreationResponse
+// JSON body itself.
 type RegisterFinishParams struct {
 	SessionID      string
 	UserID         int64
@@ -131,17 +133,16 @@ type RegisterFinishParams struct {
 	Transports     []string
 }
 
-// LoginFinishParams carries the operator's assertion from the
-// browser. In production go-webauthn parses the ClientData +
-// AuthenticatorData + Signature and verifies the signature
-// against the stored public key. The unit test stub returns
-// success for any well-formed payload.
+// LoginFinishParams is the slim shape LoginFinish takes when
+// called without an HTTP request. Same rationale as
+// RegisterFinishParams: the HTTP path takes an *http.Request
+// so go-webauthn parses the CredentialAssertionResponse itself.
 type LoginFinishParams struct {
-	SessionID      string
-	CredentialID   []byte
-	ClientData     []byte
-	Authenticator  []byte
-	Signature      []byte
+	SessionID    string
+	CredentialID []byte
+	ClientData   []byte
+	Authenticator []byte
+	Signature    []byte
 }
 
 // NewWebAuthnService constructs the service. RPID / RPName /
@@ -364,20 +365,54 @@ func (s *WebAuthnService) RegisterBegin(ctx context.Context, userID int64, label
 	return sid, creation, nil
 }
 
-// RegisterFinish completes the ceremony. Parses the
-// attestation, persists the credential, returns the new
-// credential's metadata. The session is consumed as a side
-// effect (single-use cookie).
-func (s *WebAuthnService) RegisterFinish(ctx context.Context, p RegisterFinishParams) (*Credential, error) {
+// RegisterFinish completes the ceremony via the production
+// HTTP path. The HTTP request body must be the JSON the browser
+// sends to `navigator.credentials.create({ publicKey })` —
+// go-webauthn parses it, verifies the attestation, and returns
+// the *webauthn.Credential to persist. The session is consumed
+// as a side effect (single-use cookie).
+func (s *WebAuthnService) RegisterFinish(ctx context.Context, p RegisterFinishParams, r *http.Request) (*Credential, error) {
+	// Look up + consume the single-use session.
+	userID, sessionData, err := s.lookUpSession(ctx, p.SessionID)
+	if err != nil {
+		return nil, err
+	}
+	// Bind the credential to the session's user, not the
+	// caller-supplied p.UserID — defense in depth against
+	// cross-account credential attachment.
+	if p.UserID != 0 && p.UserID != userID {
+		return nil, errors.New("webauthn: session user mismatch")
+	}
+	user, err := s.loadUserAdapter(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	// go-webauthn does the cryptographic verification: parses
+	// the CredentialCreationResponse JSON from r, verifies the
+	// attestation against the stored challenge, and returns
+	// the verified *Credential (PublicKey, AttestationType,
+	// Authenticator.AAGUID, etc.). An error here means the
+	// attestation failed, the challenge expired, or the
+	// origin/issuer is wrong — all 400-class failures.
+	cred, err := s.wa.FinishRegistration(user, *sessionData, r)
+	if err != nil {
+		return nil, fmt.Errorf("webauthn: finish registration: %w", err)
+	}
+	return s.persistVerifiedCredential(ctx, userID, p.Label, cred)
+}
+
+// RegisterFinishRaw is the test-friendly variant that persists
+// a credential without invoking go-webauthn's attestation
+// verify. The unit tests use this to drive the DB layer in
+// isolation; the production HTTP path is RegisterFinish above.
+// Splitting them keeps the unsafe "trust the caller's bytes"
+// path off the wire entirely — RegisterFinish always goes
+// through FinishRegistration, which the library validates.
+func (s *WebAuthnService) RegisterFinishRaw(ctx context.Context, p RegisterFinishParams) (*Credential, error) {
 	// Validate session (consumes the single-use cookie).
 	if _, _, err := s.lookUpSession(ctx, p.SessionID); err != nil {
 		return nil, err
 	}
-	// In production this is where go-webauthn's
-	// (*WebAuthn).FinishRegistration(...) runs. The unit-test
-	// path (the integration_test) drives the full flow; the
-	// stub here persists the credential directly so the
-	// service compiles and tests can target the contract.
 	res, err := s.db.ExecContext(ctx, `
 		INSERT INTO webauthn_credentials
 			(user_id, credential_id, public_key, attestation_type, transports, sign_count, label)
@@ -392,6 +427,33 @@ func (s *WebAuthnService) RegisterFinish(ctx context.Context, p RegisterFinishPa
 	return &Credential{
 		ID:        id,
 		Label:     p.Label,
+		SignCount: 0,
+		CreatedAt: time.Now().UTC(),
+	}, nil
+}
+
+// persistVerifiedCredential is the shared INSERT path for the
+// verified *webauthn.Credential returned by FinishRegistration.
+// Kept private so callers can't smuggle in unverified
+// transports / attestation type / public key.
+func (s *WebAuthnService) persistVerifiedCredential(ctx context.Context, userID int64, label string, cred *webauthn.Credential) (*Credential, error) {
+	res, err := s.db.ExecContext(ctx, `
+		INSERT INTO webauthn_credentials
+			(user_id, credential_id, public_key, attestation_type, transports, sign_count, aaguid, label)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		userID, cred.ID, cred.PublicKey, cred.AttestationType,
+		mustMarshalTransports(transportStrings(cred.Transport)),
+		uint32(cred.Authenticator.SignCount),
+		cred.Authenticator.AAGUID,
+		label,
+	)
+	if err != nil {
+		return nil, err
+	}
+	id, _ := res.LastInsertId()
+	return &Credential{
+		ID:        id,
+		Label:     label,
 		SignCount: 0,
 		CreatedAt: time.Now().UTC(),
 	}, nil
@@ -427,10 +489,15 @@ func (s *WebAuthnService) LoginBegin(ctx context.Context, username string) (stri
 	return sid, assertion, nil
 }
 
-// LoginFinish completes the assertion ceremony. Returns the
-// authenticated user + the matched credential. The session is
-// consumed as a side effect.
-func (s *WebAuthnService) LoginFinish(ctx context.Context, p LoginFinishParams) (*userAdapter, *internalCredential, error) {
+// LoginFinish completes the assertion ceremony via the
+// production HTTP path. The HTTP request body must be the
+// JSON the browser sends to
+// `navigator.credentials.get({ publicKey })` — go-webauthn
+// parses it, verifies the signature against the stored public
+// key + sign_count monotonicity, and returns the verified
+// *Credential. Returns the authenticated user + the updated
+// internal row.
+func (s *WebAuthnService) LoginFinish(ctx context.Context, p LoginFinishParams, r *http.Request) (*userAdapter, *internalCredential, error) {
 	userID, sessionData, err := s.lookUpSession(ctx, p.SessionID)
 	if err != nil {
 		return nil, nil, err
@@ -439,11 +506,50 @@ func (s *WebAuthnService) LoginFinish(ctx context.Context, p LoginFinishParams) 
 	if err != nil {
 		return nil, nil, err
 	}
-	// Real impl: s.wa.FinishLogin(user, *sessionData, request).
-	// The unit test asserts the call shape; the actual
-	// ceremony requires a full HTTP request with parsed
-	// clientDataJSON + authenticatorData + signature.
-	_ = sessionData // consumed by FinishLogin in real impl
+	// go-webauthn does the cryptographic verification: parses
+	// the CredentialAssertionResponse JSON, verifies the
+	// signature against the user's stored public key, checks
+	// sign_count > stored, and returns the updated *Credential.
+	// Any error here is a 400-class failure (bad signature,
+	// expired challenge, cloned authenticator, etc.).
+	verified, err := s.wa.FinishLogin(user, *sessionData, r)
+	if err != nil {
+		return nil, nil, fmt.Errorf("webauthn: finish login: %w", err)
+	}
+	// Look up the row we just verified against, then bump
+	// sign_count atomically. UpdateSignCount refuses if the
+	// new value would not exceed the stored one — a defense
+	// in depth check; the library already enforces this but
+	// a second gate at the DB layer keeps the audit trail.
+	internal, err := s.GetByCredentialID(ctx, verified.ID)
+	if err != nil {
+		return nil, nil, err
+	}
+	if internal.UserID != userID {
+		return nil, nil, errors.New("webauthn: credential does not belong to this user")
+	}
+	if err := s.UpdateSignCount(ctx, internal.ID, uint32(verified.Authenticator.SignCount)); err != nil {
+		return nil, nil, err
+	}
+	internal.SignCount = uint32(verified.Authenticator.SignCount)
+	return user, internal, nil
+}
+
+// LoginFinishRaw is the test-friendly variant that
+// authenticates by raw credential ID lookup without invoking
+// go-webauthn's signature verify. Production is LoginFinish
+// above; the unit tests use this to drive the DB layer in
+// isolation. Splitting them keeps the "trust the caller's
+// credential_id" path off the wire entirely.
+func (s *WebAuthnService) LoginFinishRaw(ctx context.Context, p LoginFinishParams) (*userAdapter, *internalCredential, error) {
+	userID, _, err := s.lookUpSession(ctx, p.SessionID)
+	if err != nil {
+		return nil, nil, err
+	}
+	user, err := s.loadUserAdapter(ctx, userID)
+	if err != nil {
+		return nil, nil, err
+	}
 	cred, err := s.GetByCredentialID(ctx, p.CredentialID)
 	if err != nil {
 		return nil, nil, err
@@ -451,12 +557,10 @@ func (s *WebAuthnService) LoginFinish(ctx context.Context, p LoginFinishParams) 
 	if cred.UserID != userID {
 		return nil, nil, errors.New("webauthn: credential does not belong to this user")
 	}
-	// Bump sign_count + last_used_at. A real impl would do
-	// this inside FinishLogin; we keep it here so the unit
-	// test can drive a full flow.
 	if err := s.UpdateSignCount(ctx, cred.ID, cred.SignCount+1); err != nil {
 		return nil, nil, err
 	}
+	cred.SignCount++
 	return user, cred, nil
 }
 
@@ -615,6 +719,21 @@ func mustMarshalTransports(transports []string) string {
 		return "[]"
 	}
 	return string(b)
+}
+
+// transportStrings converts the library's AuthenticatorTransport
+// enum to the strings we persist in the DB. An empty slice
+// (no transport advertised) round-trips as nil so
+// mustMarshalTransports encodes "[]".
+func transportStrings(transports []protocol.AuthenticatorTransport) []string {
+	if len(transports) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(transports))
+	for _, t := range transports {
+		out = append(out, string(t))
+	}
+	return out
 }
 
 // userIDByUsername is a small helper to look up the user_id
