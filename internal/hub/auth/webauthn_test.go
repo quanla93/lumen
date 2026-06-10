@@ -164,7 +164,7 @@ func TestWebAuthnService_RegisterFinishPersistsCredential(t *testing.T) {
 
 	credID := makeTestCredentialID(1)
 	pubKey := makeTestPublicKey()
-	cred, err := svc.RegisterFinish(ctx, RegisterFinishParams{
+	cred, err := svc.RegisterFinishRaw(ctx, RegisterFinishParams{
 		UserID:         uid,
 		SessionID:      sessionID,
 		Label:          "yubikey",
@@ -216,7 +216,7 @@ func TestWebAuthnService_LoginBeginPersistsChallenge(t *testing.T) {
 		ChallengeTTL: 5 * time.Minute,
 	})
 	sID, _, _ := svc.RegisterBegin(ctx, uid, "yubikey")
-	_, err := svc.RegisterFinish(ctx, RegisterFinishParams{
+	_, err := svc.RegisterFinishRaw(ctx, RegisterFinishParams{
 		UserID:         uid,
 		SessionID:      sID,
 		Label:          "yubikey",
@@ -254,7 +254,7 @@ func TestWebAuthnService_LoginFinishReturnsUser(t *testing.T) {
 		ChallengeTTL: 5 * time.Minute,
 	})
 	sID, _, _ := svc.RegisterBegin(ctx, uid, "yubikey")
-	if _, err := svc.RegisterFinish(ctx, RegisterFinishParams{
+	if _, err := svc.RegisterFinishRaw(ctx, RegisterFinishParams{
 		UserID:         uid,
 		SessionID:      sID,
 		Label:          "yubikey",
@@ -273,7 +273,7 @@ func TestWebAuthnService_LoginFinishReturnsUser(t *testing.T) {
 	// sessionID + credentialID + sign_count are well-formed.
 	// Real lib integration is out of scope for the unit test
 	// (we'd need a full ceremony fixture).
-	user, cred, err := svc.LoginFinish(ctx, LoginFinishParams{
+	user, cred, err := svc.LoginFinishRaw(ctx, LoginFinishParams{
 		SessionID:    loginSID,
 		CredentialID: makeTestCredentialID(1),
 		ClientData:   []byte(`{"type":"webauthn.get","challenge":"stub"}`),
@@ -309,7 +309,7 @@ func TestWebAuthnService_DeleteRefusesLastPasskey(t *testing.T) {
 	// Seed two passkeys.
 	for i := byte(1); i <= 2; i++ {
 		sID, _, _ := svc.RegisterBegin(ctx, uid, "key")
-		_, err := svc.RegisterFinish(ctx, RegisterFinishParams{
+		_, err := svc.RegisterFinishRaw(ctx, RegisterFinishParams{
 			UserID: uid,
 			SessionID: sID, CredentialID: makeTestCredentialID(i),
 			PublicKey: makeTestPublicKey(), AttestationRaw: []byte(`stub`),
@@ -366,7 +366,7 @@ func TestWebAuthnService_ListReturnsMetadataOnly(t *testing.T) {
 		ChallengeTTL: 5 * time.Minute,
 	})
 	sID, _, _ := svc.RegisterBegin(ctx, uid, "yubikey")
-	_, err := svc.RegisterFinish(ctx, RegisterFinishParams{
+	_, err := svc.RegisterFinishRaw(ctx, RegisterFinishParams{
 		UserID: uid, SessionID: sID, Label: "yubikey",
 		CredentialID: makeTestCredentialID(1),
 		PublicKey:    makeTestPublicKey(), AttestationRaw: []byte(`stub`),
@@ -410,7 +410,7 @@ func TestWebAuthnService_ChallengeExpiry(t *testing.T) {
 	}
 	// Let the TTL elapse.
 	time.Sleep(5 * time.Millisecond)
-	_, err = svc.RegisterFinish(ctx, RegisterFinishParams{
+	_, err = svc.RegisterFinishRaw(ctx, RegisterFinishParams{
 		SessionID: sID, CredentialID: makeTestCredentialID(1),
 		PublicKey: makeTestPublicKey(), AttestationRaw: []byte(`stub`),
 	})
@@ -493,7 +493,7 @@ func TestWebAuthnService_SignCountMonotonic(t *testing.T) {
 		ChallengeTTL: 5 * time.Minute,
 	})
 	sID, _, _ := svc.RegisterBegin(ctx, uid, "k")
-	cred, _ := svc.RegisterFinish(ctx, RegisterFinishParams{
+	cred, _ := svc.RegisterFinishRaw(ctx, RegisterFinishParams{
 		UserID:         uid,
 		SessionID:      sID,
 		Label:          "k",
