@@ -18,7 +18,7 @@ metrics — designed to run comfortably on a Raspberry Pi.
 [Public API](docs/src/content/docs/reference/public-api.md) ·
 [Roadmap](ACTION_PLAN.md)
 
-> ⚠️ **Pre-1.0.** Latest tag is **v0.6.5**. Breaking changes are allowed in
+> ⚠️ **Pre-1.0.** Latest tag is **v0.7.3**. Breaking changes are allowed in
 > minor releases until v1.0.
 
 </div>
@@ -58,23 +58,41 @@ Each line is tagged **✅ shipped** or **🛣️ roadmap** so you know what work
 - **HTTPS-only push transport** ✅ — Agents push out via HTTPS/WebSocket.
   Works behind any NAT, Cloudflare Tunnel, or Tailscale Funnel — no SSH key infrastructure required.
 - **HDD-friendly storage** ✅ — Batched writes (60s flush ring) and WAL-tuned SQLite cut fsync
-  pressure ~100× at fleet scale. Parquet hot/cold tiering is on the roadmap.
+  pressure ~100× at fleet scale. Parquet hot/cold tiering is on the roadmap (Sprint 10, conditional).
 - **Mobile-ready PWA** ✅ — Installable to your phone's homescreen; app shell paints instantly
-  on cold start. Web Push notifications are roadmap.
+  on cold start. **Web Push notifications** ✅ (VAPID) — alerts land on desktop Chrome/Edge/Firefox
+  + Android + iOS Safari (PWA install) via a one-click subscribe inside Alerts → Channels.
 - **Bilingual UI + docs** ✅ — Both the web app and the docs ship in English and Vietnamese.
+- **Self-hosted SSO** ✅ — **OIDC** (Authentik, Keycloak, Google, Okta, Entra…) shipped in v0.7.0;
+  **SAML2** (Okta classic, Azure AD enterprise, ADFS, Shibboleth) shipped in v0.7.2. Local password
+  remains as a fallback so misconfiguration can't lock the admin out.
+- **Per-host dashboard builder** ✅ (v0.6.0) — drag, resize, add, and remove charts on the
+  Host detail page over a curated 10-entry catalog. The Dashboard host grid stays fixed-views.
+- **First-run onboarding wizard** ✅ (v0.7.0) — 4-step guided flow: create admin → add first host →
+  run the generated per-agent Compose → wait for first metrics. Replayable from Settings → Account.
+- **Hardware-backed passkeys (WebAuthn)** ✅ (v0.7.0) — phishing-resistant, hardware-backed
+  credential for the admin account. Local password + SSO + passkey all coexist.
+- **Built-in public status page** ✅ (v0.7.0) — share a read-only `/status` URL of your homelab
+  health. Per-host opt-in; safe defaults (nothing public until both flips are on).
+- **Encrypted backups** ✅ (v0.7.1) — Local path or S3-compatible bucket (AWS S3, MinIO,
+  Cloudflare R2, Backblaze B2, Wasabi). AES-256-GCM with Argon2id-derived key. Public spec so
+  third-party tools can decrypt without Lumen running. CLI + Web UI restore.
 - **Proxmox / LXC first-class** 🛣️ — Direct Proxmox API reads (agentless cluster/ZFS/PBS view)
-  are roadmap. Proxmox guests (LXC, QEMU, Docker) work today via the agent.
-- **Built-in public status page** 🛣️ — Share a read-only URL of your homelab health. Roadmap (post-v1.0).
+  are deferred to ~v1. Proxmox guests (LXC, QEMU, Docker) work today via the per-host agent.
 
 ### What Lumen is NOT
 
 So you can decide quickly if this is for you:
 
-- ❌ Not a Grafana replacement — no query editor, no user-defined metrics, no arbitrary panels. The **Host detail** page supports drag/resize over a curated chart catalog (10 entries), but the **Dashboard host grid** stays fixed views.
+- ❌ Not a Grafana replacement — no query editor, no user-defined metrics, no arbitrary panels.
+  The **Host detail** page has a drag/resize/add/remove builder over a curated 10-entry chart
+  catalog (CPU, per-core, RAM, swap, disk, disk I/O, network, load, temperature, containers);
+  the **Dashboard host grid** stays fixed views (sort + hide + saved views).
 - ❌ Not for Kubernetes / microservices observability — use Prometheus + Grafana.
-- ❌ Not multi-tenant or enterprise — single admin, optional read-only users.
+- ❌ Not multi-tenant or enterprise — single admin, optional read-only users (Sprint 8).
 - ❌ Not a log aggregator — minimal log tail viewer only (no Loki/ELK).
-- ❌ Not 1-year+ data retention — homelab focused (30-90 day default).
+- ❌ Not 1-year+ data retention — homelab focused (30-90 day default, 365d hard cap).
+- ❌ No Windows agent — homelab fleet stays Linux + macOS (Windows dropped by design).
 
 If those are dealbreakers, look at [Grafana + Prometheus](https://grafana.com) or [Netdata](https://www.netdata.cloud).
 
@@ -86,21 +104,26 @@ If those are dealbreakers, look at [Grafana + Prometheus](https://grafana.com) o
 |---|---|---|
 | Hub footprint | Single Go binary, embedded web UI | ✅ |
 | Agent footprint | Single Go binary | ✅ |
-| Metrics | CPU (+ per-core), RAM, swap, disk, disk I/O, network, load, temperature | ✅ |
+| Metrics | CPU (+ per-core), RAM, swap, disk, disk I/O, network, load, temperature, **GPU** (NVIDIA/AMD), **top-N processes** | ✅ |
 | Storage | SQLite (hot), WAL-tuned, batched writes; Parquet cold tier planned | ✅ / 🛣️ |
 | Transport | HTTPS / WebSocket (agent pushes outbound) | ✅ |
-| Realtime | WebSocket fan-out with per-host subscribe filtering | ✅ |
+| Realtime | WebSocket fan-out with per-host subscribe filtering + auto-reconnect + server keepalive | ✅ |
 | Containers | Docker container CPU / memory / state (live) | ✅ |
-| Auth | First-admin register, JWT (HS256), Argon2id, per-host bearer tokens | ✅ |
-| Settings | Runtime agent interval, retention window/interval, downsample policy | ✅ |
+| Auth | First-admin register, JWT (HS256), Argon2id, per-host bearer tokens, **OIDC SSO**, **SAML2 SSO**, **WebAuthn/passkeys** | ✅ |
+| Settings | Runtime agent interval, retention window/interval, downsample policy, **backup target + cron**, **alert maintenance windows** | ✅ |
 | UI | Dashboard, host detail charts (uPlot), dark/light, EN + VI | ✅ |
 | Personalization | Theme / language / units / reduce-motion / density saved per-user on the hub; Dashboard saved views (up to 5); per-host dashboard builder over a 10-entry chart catalog | ✅ |
 | Public Read API | `/api/v1/*` Bearer-key authenticated endpoints (version / hosts / metrics / alerts) with scopes + host-glob filter + per-key rate limit; Grafana JSON datasource recipe in docs | ✅ |
 | Deploy | Docker Compose (primary), single binary + systemd, install script | ✅ |
 | Agent lifecycle | Per-agent Docker Compose, version awareness, in-UI "Update agent" guidance | ✅ |
-| Auto-discovery | LXC, Proxmox VMs | 🛣️ |
-| Alerts | Threshold rules + offline detection; ntfy / Discord / webhook / Telegram / Email (SMTP) delivery; per-rule routing, per-channel severity floor, host glob + tag selectors, persisted delivery queue with severity-aware retry, history + delivery scrollback, retention sweep, per-rule flap cooldown, per-host maintenance silence | ✅ |
-| TOTP 2FA / multi-user | Optional second factor, read-only viewer role | 🛣️ |
+| Public status page | Read-only `/status` URL with per-host opt-in (`/api/public/status`) | ✅ |
+| Web Push | VAPID, AES-GCM-encrypted private key, per-browser subscriptions, 404/410 auto-prune | ✅ |
+| Encrypted backups | Local + S3-compatible (S3/MinIO/R2/B2/Wasabi), AES-256-GCM, cron scheduler with hot-reload, CLI + Web UI restore | ✅ |
+| Maintenance windows | Time-bounded alert suppression scoped by tag; alerts engine gate | ✅ |
+| Auto-discovery | LXC, Proxmox VMs (agentless) | 🛣️ |
+| Alerts | Threshold rules + offline detection; ntfy / Discord / Slack / webhook / Telegram / Email (SMTP) / **Web Push** delivery; per-rule routing, per-channel severity floor, host glob + tag selectors, persisted delivery queue with severity-aware retry, history + delivery scrollback, retention sweep, per-rule flap cooldown, per-host maintenance silence, **per-channel digest window**, **per-host share link** | ✅ |
+| Multi-user + TOTP 2FA | Roles (admin / viewer), read-only users, TOTP 2FA + recovery codes | 🛣️ |
+| Cold tier (Parquet) | >7d queries, multi-week retention, DuckDB query layer | 🛣️ (conditional on demand) |
 
 ---
 
@@ -161,8 +184,13 @@ Lumen is **pre-1.0**. Expect breaking changes until v1.0. We aim for stable APIs
 | v0.4 | ✅ Released | Phase 6 alert engine end-to-end (rules, five channel types — ntfy/Discord/webhook/Telegram/Email — per-rule routing, host tag inventory, persisted delivery queue, retention sweep, flap cooldown, per-host maintenance silence). v0.4.7+ added no-Docker agent install + virt-aware UI + retention settings polish + Hub Status panel. |
 | v0.5 | ✅ Released | Public Read API (`/api/v1/*` with Bearer keys, scopes, host-glob filter, in-memory rate limit, public envelope). Settings → API Keys mint/list/revoke. Grafana JSON datasource recipe in docs. |
 | v0.6 | ✅ Released | Personalization (theme / language / units / reduce-motion / **density** on the hub, replacing localStorage), Dashboard **saved views** (up to 5 per user), per-host **dashboard builder** — drag/resize/add/remove charts over a 10-entry curated catalog (CPU, per-core, RAM, swap, disk, disk I/O, network, load, temperature, containers). |
-| v0.7+ | Roadmap | Parquet cold tier (>7d queries), self-hosted SSO (OIDC first), public status page, Web Push notifications. |
-| v1.0 | Planned | API freeze (`/api/v1`), plugin SDK, Beszel migration tool. |
+| v0.7.0 | ✅ Released | **OIDC SSO** (Authentik, Keycloak, Google, Okta, Entra), **public status page** at `/status`, **Web Push** notifications (VAPID), **first-run onboarding wizard** (4-step), **WebAuthn/passkeys**, **Hub status** panel, **Per-host dashboard builder** stabilisation, Screenshots on the landing page. |
+| v0.7.1 | ✅ Released | **Encrypted backups** — local + S3-compatible, AES-256-GCM, cron scheduler, CLI + Web UI restore. |
+| v0.7.2 | ✅ Released | **SAML2 SSO** (Okta classic, Azure AD enterprise, ADFS, Shibboleth). |
+| v0.7.3 | ✅ Released | **Beszel bundle 1** — GPU monitoring (NVIDIA + AMD), top-N process list, maintenance windows (alerts gate). |
+| v0.7.4+ | Unreleased | **Notification quality** (Sprint 4: digest window, per-host share link, Slack-native channel, multi-recipient email) + **first-run onboarding polish** (Sprint 5) + **WebAuthn crypto-verify wiring** (Sprint 6 wrap-up). All code merged to Unreleased; tag pending. |
+| v0.8+ | Planned | i18n polish (RFC 0007), multi-user + TOTP 2FA (RFC 0008), Grafana spike (RFC 0009), Cold tier conditional (Sprint 10). |
+| v1.0 | Planned | API freeze (`/api/v1`), plugin SDK, Beszel migration tool, Proxmox agentless integration (deferred from earlier phase). |
 
 See the full [roadmap](ACTION_PLAN.md) (phase-by-phase plan, decisions log, anti-features).
 

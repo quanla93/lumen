@@ -33,7 +33,7 @@ The agent only sends data **out**. It never accepts inbound connections. This is
 
 ### Special case: Proxmox host
 
-For monitoring the Proxmox node itself (not the LXCs/VMs on it), Lumen can read the **Proxmox API** directly without installing an agent on the host. The full Proxmox integration ships in v0.2 (see the [roadmap](https://github.com/quanla93/lumen/blob/main/ACTION_PLAN.md)).
+For monitoring the Proxmox node itself (not the LXCs/VMs on it), you install a Lumen **agent** on the node (bare metal or LXC) — same as any other host. A future release will read the Proxmox API directly (agentless) for cluster/ZFS/PBS visibility; that work is deferred to ~v1, see the [roadmap](https://github.com/quanla93/lumen/blob/main/ACTION_PLAN.md) §"Phase 5 — Proxmox-native monitoring".
 
 ## Token
 
@@ -56,7 +56,7 @@ Lumen uses **three storage tiers** to balance speed, retention, and disk wear:
 | **Hot** | SQLite (WAL) | 1-minute | 24 hours | Recent history queries |
 | **Cold** | Parquet (ZSTD) | 5-minute | 30 days (config: up to 365) | Long-range queries |
 
-Data moves through tiers automatically — you don't manage this directly. Per-tier retention will be configurable in Settings → Retention (UI lands in v0.3).
+Data moves through tiers automatically — you don't manage this directly. Per-tier retention is configurable in **Settings → Retention** (default 24h hot, 30d alert history).
 
 ## Next
 

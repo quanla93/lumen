@@ -29,7 +29,7 @@ You'll end up with:
 Pick the tag you want from <https://github.com/quanla93/lumen/releases> and the arch that matches the host (`uname -m`: `x86_64` → `amd64`, `aarch64` → `arm64`):
 
 ```bash
-TAG=v0.6.5
+TAG=v0.7.3
 ARCH=amd64   # or arm64
 
 curl -fsSL \

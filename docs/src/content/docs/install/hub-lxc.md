@@ -115,7 +115,7 @@ Use this when you want the smallest footprint and no Docker. Skip the `--feature
 Inside the LXC:
 
 ```bash
-TAG=v0.6.5
+TAG=v0.7.3
 ARCH=amd64    # or arm64 if your Proxmox node is ARM (Ampere, etc.)
 
 curl -fsSL \

@@ -21,7 +21,7 @@ Honest is faster than oversell:
 
 - ❌ **Kubernetes clusters / microservices** — use Prometheus + Grafana.
 - ❌ **General-purpose observability** — Lumen doesn't do traces or full log search.
-- ❌ **Custom dashboard building** — Lumen has fixed dashboards. If you want a dashboard builder, use Grafana.
+- ❌ **Custom dashboard building** — Lumen has fixed Dashboard host grid (sort + hide + saved views). The **Host detail** page has a drag/resize/add/remove builder over a curated 10-entry chart catalog (CPU, per-core, RAM, swap, disk, disk I/O, network, load, temperature, containers). If you want a free-form builder over arbitrary metrics, use Grafana.
 - ❌ **Long-term metric archives (years)** — Lumen retains 30-90 days by default, capped at 365.
 - ❌ **Enterprise multi-tenant** — single admin, optional read-only users.
 
@@ -41,4 +41,4 @@ For the full system shape, see [Architecture](/reference/architecture/). Archite
 - [Use the web UI](/how-to/use-the-web-ui/) — navigate the dashboard, host detail, and settings.
 - [Concepts](./concepts.md) — Hub, Agent, Token, Tier.
 
-Advanced/manual guides are still available for [native hub install](/install/hub-binary/), [Proxmox LXC](/install/hub-lxc/), and [native Linux agents](/install/agent-linux/). Proxmox API integration is a planned product wedge tracked in the [roadmap](https://github.com/quanla93/lumen/blob/main/ACTION_PLAN.md).
+Advanced/manual guides are still available for [native hub install](/install/hub-binary/), [Proxmox LXC](/install/hub-lxc/), and [native Linux agents](/install/agent-linux/). Proxmox agentless API integration is a planned product wedge deferred to ~v1 (Phase 5 in the [roadmap](https://github.com/quanla93/lumen/blob/main/ACTION_PLAN.md)); today, Proxmox guests (LXC, QEMU, Docker) are monitored via per-host agents.

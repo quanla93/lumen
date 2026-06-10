@@ -70,7 +70,7 @@ curl -fsSL https://raw.githubusercontent.com/quanla93/lumen/main/scripts/install
 The script detects the un-templated hub URL placeholder and falls back to whatever you pass via `--hub`. Pin a specific release tag instead of `main` for reproducibility:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/quanla93/lumen/v0.6.5/scripts/install-agent.sh | sudo sh -s -- ...
+curl -fsSL https://raw.githubusercontent.com/quanla93/lumen/v0.7.3/scripts/install-agent.sh | sudo sh -s -- ...
 ```
 
 ### What the script does (both paths)
@@ -95,7 +95,7 @@ The install script is idempotent — re-running replaces the binary and refreshe
 curl -fsSL https://YOUR-HUB/install.sh | sudo sh
 
 # A.2 — GitHub raw, pinned to a tag:
-curl -fsSL https://raw.githubusercontent.com/quanla93/lumen/v0.6.5/scripts/install-agent.sh | sudo sh -s -- --hub https://YOUR-HUB
+curl -fsSL https://raw.githubusercontent.com/quanla93/lumen/v0.7.3/scripts/install-agent.sh | sudo sh -s -- --hub https://YOUR-HUB
 ```
 
 See [How-to — Update agents](../../how-to/update-agents/#binary--systemd-agents-no-docker) for the manual binary-swap flow if you'd rather not pipe `curl` to `sh`.
@@ -109,7 +109,7 @@ Use this when the install script isn't appropriate (air-gapped, custom config la
 Pick the tag and arch (`uname -m`: `x86_64` → `amd64`, `aarch64` → `arm64`):
 
 ```bash
-TAG=v0.6.5
+TAG=v0.7.3
 ARCH=amd64
 
 sudo curl -fsSL \
@@ -203,7 +203,7 @@ done
 - hosts: lumen_agents
   become: yes
   vars:
-    lumen_tag: v0.6.5
+    lumen_tag: v0.7.3
     lumen_arch: amd64
     lumen_hub_url: https://lumen.lan
   tasks:
