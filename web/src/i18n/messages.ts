@@ -143,6 +143,8 @@ export const en = {
     savedViewDeleteAria: "Delete view {name}",
     savedViewActive: "active",
     savedViewCapHint: "{used} of {max} views used",
+    savedViewUpdate: "Update {name}",
+    savedViewUpdateAria: "Save current state into view {name}",
   },
   host: {
     cpu: "CPU",
@@ -831,6 +833,8 @@ export const vi: WidenStrings<typeof en> = {
     savedViewDeleteAria: "Xoá view {name}",
     savedViewActive: "đang dùng",
     savedViewCapHint: "Đã lưu {used}/{max} view",
+    savedViewUpdate: "Cập nhật {name}",
+    savedViewUpdateAria: "Lưu trạng thái hiện tại vào view {name}",
   },
   host: {
     cpu: "CPU",

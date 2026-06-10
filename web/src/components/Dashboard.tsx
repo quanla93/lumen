@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Server, AlertTriangle, Cpu, MemoryStick, HardDrive, Settings2, Search, EyeOff, Eye, Trash2, Bookmark, Sparkles, CheckCircle2, ArrowRight, Circle } from "lucide-react";
 import { HostCard, type Snapshot } from "@/components/HostCard";
 import { AppButton, EmptyState, IconButton, Popover, SegmentedControl, StatusPill, Surface, TooltipProvider } from "@/components/ui";
@@ -218,6 +218,15 @@ function CustomizeButton({ snapshots }: { snapshots: Snapshot[] }) {
   const { dashboard, updateDashboard } = usePrefs();
   const [viewName, setViewName] = useState("");
 
+  // Remember the view ID that was just orphaned by patch() so the
+  // "Update active view" button can offer to write the new state
+  // back into it (instead of forcing the operator to delete +
+  // recreate, which loses the view ID and any external bookmark
+  // references). Cleared when the remembered view is no longer in
+  // dashboard.views (operator deleted it) or when its stored
+  // state matches the current dashboard (no diff to save).
+  const orphanedViewIdRef = useRef<string | null>(null);
+
   const hiddenSet = new Set(dashboard.hiddenHostIds);
   const visibleNames = snapshots.map((s) => s.host).filter((n) => !hiddenSet.has(n));
   // Hidden list may include hosts that aren't in the current snapshot
@@ -227,8 +236,13 @@ function CustomizeButton({ snapshots }: { snapshots: Snapshot[] }) {
 
   // patch() handles direct mutations from the sort/hide controls. Any
   // such change diverges the dashboard from whatever view is "active"
-  // — clear activeViewId so the highlight reflects reality.
+  // — clear activeViewId so the highlight reflects reality. We also
+  // remember the just-orphaned view ID so updateActiveView() can
+  // offer to write the new state back into it.
   function patch(next: Partial<typeof dashboard>) {
+    if (dashboard.activeViewId) {
+      orphanedViewIdRef.current = dashboard.activeViewId;
+    }
     updateDashboard({ ...dashboard, ...next, activeViewId: null }).catch(() => {});
   }
 
@@ -272,6 +286,61 @@ function CustomizeButton({ snapshots }: { snapshots: Snapshot[] }) {
       views: dashboard.views.filter((v) => v.id !== id),
       activeViewId: dashboard.activeViewId === id ? null : dashboard.activeViewId,
     }).catch(() => {});
+  }
+
+  // updateActiveView writes the current dashboard state into the
+  // view that was just orphaned by patch(). Restores
+  // activeViewId so the bookmark highlight returns. After the
+  // update, the remembered view ID is cleared because the
+  // operator's next action should start from a clean slate —
+  // they'll either keep the now-applied view active (no
+  // orphaned view) or diverge again, which orphans a new ID.
+  function updateActiveView() {
+    const id = orphanedViewIdRef.current;
+    if (!id) return;
+    const view = dashboard.views.find((v) => v.id === id);
+    if (!view) {
+      // Remembered view was deleted; drop the orphan marker.
+      orphanedViewIdRef.current = null;
+      return;
+    }
+    const next: SavedView = {
+      ...view,
+      sortBy: dashboard.sortBy === "tag" ? "name" : dashboard.sortBy,
+      sortDir: dashboard.sortDir,
+      defaultMetric: dashboard.defaultMetric,
+      hiddenHostIds: [...dashboard.hiddenHostIds],
+    };
+    orphanedViewIdRef.current = null;
+    updateDashboard({
+      ...dashboard,
+      views: dashboard.views.map((v) => (v.id === id ? next : v)),
+      activeViewId: id,
+    }).catch(() => {});
+  }
+
+  // Compute the "Update active view" button visibility + label.
+  // The button shows when:
+  //   (a) activeViewId is null (the operator diverged)
+  //   (b) the remembered view ID still exists in dashboard.views
+  //   (c) current state differs from the view's stored state
+  //       (no point updating if nothing changed)
+  const orphanedId = orphanedViewIdRef.current;
+  const orphanedView = orphanedId ? dashboard.views.find((v) => v.id === orphanedId) : null;
+  const currentDivergesFromOrphaned =
+    orphanedView !== undefined &&
+    orphanedView !== null &&
+    (orphanedView.sortBy !== (dashboard.sortBy === "tag" ? "name" : dashboard.sortBy) ||
+      orphanedView.sortDir !== dashboard.sortDir ||
+      orphanedView.defaultMetric !== dashboard.defaultMetric ||
+      orphanedView.hiddenHostIds.length !== dashboard.hiddenHostIds.length ||
+      orphanedView.hiddenHostIds.some((h, i) => h !== dashboard.hiddenHostIds[i]));
+  const showUpdateActive = orphanedView !== null && currentDivergesFromOrphaned;
+  // Reset the orphan marker if the view was deleted (computed
+  // from the views array on every render, so a delete naturally
+  // clears the marker).
+  if (orphanedId && !orphanedView) {
+    orphanedViewIdRef.current = null;
   }
 
   return (
@@ -355,6 +424,18 @@ function CustomizeButton({ snapshots }: { snapshots: Snapshot[] }) {
         </div>
 
         <div className="space-y-1.5 border-t border-[color:var(--color-border)] pt-3">
+          {showUpdateActive && orphanedView && (
+            <AppButton
+              type="button"
+              variant="secondary"
+              onClick={updateActiveView}
+              aria-label={t("dashboard.savedViewUpdateAria", { name: orphanedView.name })}
+              className="w-full gap-1.5 px-2 py-1 text-xs"
+            >
+              <Sparkles size={12} strokeWidth={1.75} />
+              <span className="truncate">{t("dashboard.savedViewUpdate", { name: orphanedView.name })}</span>
+            </AppButton>
+          )}
           <div className="flex items-center justify-between gap-2">
             <label className="block text-xs font-medium text-[color:var(--color-muted)]">
               {t("dashboard.savedViews")}
