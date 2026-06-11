@@ -9,6 +9,11 @@
     "build:web": "pnpm --filter web build",
     "build:docs": "pnpm --filter docs build",
     "lint": "pnpm --filter web run lint && pnpm --filter lumen-docs run lint",
-    "typecheck": "pnpm --filter web run typecheck"
+    "typecheck": "pnpm --filter web run typecheck",
+    "i18n:check": "node --import tsx scripts/i18n-parity.mjs",
+    "i18n:audit": "node scripts/i18n-audit.mjs"
+  },
+  "devDependencies": {
+    "tsx": "^4.22.4"
   }
 }
