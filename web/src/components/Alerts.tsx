@@ -2032,6 +2032,7 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
 // a row's edit button; deleting is via trash icon with a confirm
 // dialog.
 function MaintenancePanel() {
+  const { t } = useI18n();
   const [state, setState] = useState<"active" | "upcoming" | "past" | "all">("active");
   const [windows, setWindows] = useState<MaintenanceWindow[]>([]);
   const [busy, setBusy] = useState(false);
@@ -2078,9 +2079,9 @@ function MaintenancePanel() {
 
   async function del(w: MaintenanceWindow) {
     if (!await confirm({
-      title: "Cancel maintenance window",
-      message: `Cancel "${w.reason || w.id}"? Active firings resume on the next alert tick.`,
-      confirmLabel: "Cancel window",
+      title: t("alerts.maintenance.cancelWindowTitle"),
+      message: t("alerts.maintenance.cancelWindowMessage", { reason: w.reason || w.id }),
+      confirmLabel: t("alerts.maintenance.cancelWindowConfirm"),
       destructive: true,
     })) return;
     try { await maintenanceApi.delete(w.id); await refresh(); }
@@ -2101,51 +2102,51 @@ function MaintenancePanel() {
     const now = Date.now();
     const start = Date.parse(w.start_at);
     const end = Date.parse(w.end_at);
-    if (now >= start && now < end) return { text: "active", tone: "ok" };
-    if (now < start) return { text: "upcoming", tone: "warn" };
-    return { text: "past", tone: "muted" };
+    if (now >= start && now < end) return { text: t("alerts.maintenance.stateBadgeActive"), tone: "ok" };
+    if (now < start) return { text: t("alerts.maintenance.stateBadgeUpcoming"), tone: "warn" };
+    return { text: t("alerts.maintenance.stateBadgePast"), tone: "muted" };
   };
 
   return (
     <div className="space-y-4">
       <SettingsPanel
-        title="Maintenance windows"
-        description="Schedule planned downtime. Alerts matching the scope are suppressed while a window is active."
+        title={t("alerts.maintenance.title")}
+        description={t("alerts.maintenance.description")}
       >
         <SegmentedControl
           value={state}
           onChange={(v) => setState(v as typeof state)}
-          ariaLabel="Window state filter"
+          ariaLabel={t("alerts.maintenance.stateFilter")}
           options={[
-            { value: "active", label: "Active" },
-            { value: "upcoming", label: "Upcoming" },
-            { value: "past", label: "Past" },
-            { value: "all", label: "All" },
+            { value: "active", label: t("alerts.maintenance.listActive") },
+            { value: "upcoming", label: t("alerts.maintenance.listUpcoming") },
+            { value: "past", label: t("alerts.maintenance.listPast") },
+            { value: "all", label: t("alerts.maintenance.listAll") },
           ]}
         />
         <form
           onSubmit={(e) => { e.preventDefault(); void submit(); }}
           className="grid grid-cols-2 gap-3 mt-3"
         >
-          <Field label="Start (browser time)">
+          <Field label={t("alerts.maintenance.start")}>
             <FieldInput type="datetime-local" value={draft.start_at} onChange={(e) => setDraft({ ...draft, start_at: e.target.value })} />
           </Field>
-          <Field label="End (browser time)">
+          <Field label={t("alerts.maintenance.end")}>
             <FieldInput type="datetime-local" value={draft.end_at} onChange={(e) => setDraft({ ...draft, end_at: e.target.value })} />
           </Field>
-          <Field label="Reason">
-            <FieldInput value={draft.reason} onChange={(e) => setDraft({ ...draft, reason: e.target.value })} placeholder="Firmware update" />
+          <Field label={t("alerts.maintenance.reason")}>
+            <FieldInput value={draft.reason} onChange={(e) => setDraft({ ...draft, reason: e.target.value })} placeholder={t("alerts.maintenance.reasonPlaceholder")} />
           </Field>
-          <Field label="Tag scope">
-            <FieldInput value={draft.scope} onChange={(e) => setDraft({ ...draft, scope: e.target.value })} placeholder="env=prod, tier=db" />
+          <Field label={t("alerts.maintenance.tagScope")}>
+            <FieldInput value={draft.scope} onChange={(e) => setDraft({ ...draft, scope: e.target.value })} placeholder={t("alerts.maintenance.scopePlaceholder")} />
           </Field>
           <div className="col-span-2 flex items-center gap-2">
             <PrimaryButton type="submit" disabled={busy || !draft.start_at || !draft.end_at}>
-              {busy ? "Saving…" : editing ? "Update" : "Create"}
+              {busy ? t("alerts.maintenance.saving") : editing ? t("alerts.maintenance.update") : t("alerts.maintenance.create")}
             </PrimaryButton>
             {editing && (
               <GhostButton type="button" onClick={() => { setEditing(null); setDraft({ start_at: "", end_at: "", reason: "", scope: "" }); }}>
-                Cancel edit
+                {t("alerts.maintenance.cancelEdit")}
               </GhostButton>
             )}
             {error && <ErrorText message={error} />}
@@ -2153,9 +2154,9 @@ function MaintenancePanel() {
         </form>
       </SettingsPanel>
 
-      <SettingsPanel title={`${state.charAt(0).toUpperCase() + state.slice(1)} windows (${windows.length})`} description="List of windows in this state. Edit or cancel via the row actions.">
+      <SettingsPanel title={t("alerts.maintenance.listTitle", { state: state.charAt(0).toUpperCase() + state.slice(1), count: windows.length })} description={t("alerts.maintenance.listDescription")}>
         {windows.length === 0 ? (
-          <p className="text-sm text-[color:var(--color-muted)]">No {state} windows.</p>
+          <p className="text-sm text-[color:var(--color-muted)]">{t("alerts.maintenance.listEmpty", { state })}</p>
         ) : (
           <ul className="space-y-1.5">
             {windows.map((w) => {
@@ -2164,21 +2165,21 @@ function MaintenancePanel() {
                 <li key={w.id} className="flex items-center justify-between rounded-md border border-[color:var(--color-border)] px-3 py-2 text-sm">
                   <div>
                     <div className="font-medium">
-                      {w.reason || <em className="text-[color:var(--color-muted)]">(no reason)</em>}
+                      {w.reason || <em className="text-[color:var(--color-muted)]">{t("alerts.maintenance.noReason")}</em>}
                     </div>
                     <div className="text-xs text-[color:var(--color-muted)]">
                       {new Date(w.start_at).toLocaleString()} → {new Date(w.end_at).toLocaleString()}
                       {Object.keys(w.scope_tags).length > 0 && (
                         <span className="ml-2">
-                          scope: {Object.entries(w.scope_tags).map(([k, v]) => `${k}=${v}`).join(", ")}
+                          {t("alerts.maintenance.scopeLabel")} {Object.entries(w.scope_tags).map(([k, v]) => `${k}=${v}`).join(", ")}
                         </span>
                       )}
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
                     <StatusPill tone={b.tone}>{b.text}</StatusPill>
-                    <IconButton label="Edit window" onClick={() => beginEdit(w)}><Pencil size={14} /></IconButton>
-                    <IconButton label="Cancel window" onClick={() => void del(w)}><Trash2 size={14} /></IconButton>
+                    <IconButton label={t("alerts.maintenance.editWindow")} onClick={() => beginEdit(w)}><Pencil size={14} /></IconButton>
+                    <IconButton label={t("alerts.maintenance.cancelWindow")} onClick={() => void del(w)}><Trash2 size={14} /></IconButton>
                   </div>
                 </li>
               );

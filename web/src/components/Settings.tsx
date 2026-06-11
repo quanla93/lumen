@@ -1926,6 +1926,7 @@ function SAMLSettings() {
 // ─── Backup sub-tab (RFC 0001) ──────────────────────────────────────────────
 
 function BackupSettings() {
+  const { t } = useI18n();
   const [cfg, setCfg] = useState<BackupSettings | null>(null);
   const [entries, setEntries] = useState<BackupEntry[] | null>(null);
   const [busy, setBusy] = useState<"test" | "run" | "save" | "pass" | "restore" | null>(null);
@@ -2058,8 +2059,8 @@ function BackupSettings() {
 
   if (!cfg) {
     return (
-      <SettingsPanel title="Backup" description="Loading…">
-        <p className="text-sm text-[color:var(--color-muted)]">Loading backup configuration…</p>
+      <SettingsPanel title={t("settings.backup.title")} description={t("common.loading")}>
+        <p className="text-sm text-[color:var(--color-muted)]">{t("settings.backup.loading")}</p>
         {error && <ErrorText message={error} />}
       </SettingsPanel>
     );
@@ -2082,8 +2083,8 @@ function BackupSettings() {
   return (
     <div className="space-y-4">
       <SettingsPanel
-        title="Backup"
-        description="Encrypt and ship the hub's SQLite database to a local path or S3-compatible bucket. Restore via CLI (lumen-hub --restore=&lt;file&gt;) or the list below."
+        title={t("settings.backup.title")}
+        description={t("settings.backup.description")}
       >
         <form
           onSubmit={(e) => { e.preventDefault(); void saveConfig(); }}
@@ -2095,55 +2096,55 @@ function BackupSettings() {
               checked={enabled}
               onChange={(e) => setEnabled(e.target.checked)}
             />
-            <span>Enable scheduled backups</span>
+            <span>{t("settings.backup.enable")}</span>
           </label>
 
-          <Field label="Target">
+          <Field label={t("settings.backup.target")}>
             <SegmentedControl
               value={target}
               onChange={(v) => setTarget(v as "local" | "s3")}
-              ariaLabel="Backup target"
+              ariaLabel={t("settings.backup.targetLabel")}
               options={[
-                { value: "local", label: "Local path" },
-                { value: "s3", label: "S3-compatible" },
+                { value: "local", label: t("settings.backup.targetLocal") },
+                { value: "s3", label: t("settings.backup.targetS3") },
               ]}
             />
           </Field>
 
           {target === "local" ? (
-            <Field label="Local path">
+            <Field label={t("settings.backup.localPathLabel")}>
               <FieldInput
                 value={localPath}
                 onChange={(e) => setLocalPath(e.target.value)}
                 placeholder="/var/lib/lumen-backups"
               />
-              <p className="mt-1 text-xs text-[color:var(--color-muted)]">Absolute path on the hub host. Created if missing.</p>
+              <p className="mt-1 text-xs text-[color:var(--color-muted)]">{t("settings.backup.localPathHint")}</p>
             </Field>
           ) : (
             <div className="space-y-3 rounded-md border border-[color:var(--color-border)] p-3">
-              <Field label="Endpoint">
+              <Field label={t("settings.backup.s3EndpointLabel")}>
                 <FieldInput value={s3Endpoint} onChange={(e) => setS3Endpoint(e.target.value)} placeholder="https://s3.amazonaws.com" />
-                <p className="mt-1 text-xs text-[color:var(--color-muted)]">e.g. AWS, R2 (https://&lt;acct&gt;.r2.cloudflarestorage.com), MinIO, B2.</p>
+                <p className="mt-1 text-xs text-[color:var(--color-muted)]">{t("settings.backup.s3EndpointHint")}</p>
               </Field>
               <div className="grid grid-cols-2 gap-3">
-                <Field label="Region">
+                <Field label={t("settings.backup.s3RegionLabel")}>
                   <FieldInput value={s3Region} onChange={(e) => setS3Region(e.target.value)} placeholder="auto" />
                 </Field>
-                <Field label="Bucket">
+                <Field label={t("settings.backup.s3BucketLabel")}>
                   <FieldInput value={s3Bucket} onChange={(e) => setS3Bucket(e.target.value)} placeholder="lumen-backups" />
                 </Field>
               </div>
-              <Field label="Prefix">
+              <Field label={t("settings.backup.s3PrefixLabel")}>
                 <FieldInput value={s3Prefix} onChange={(e) => setS3Prefix(e.target.value)} placeholder="lumen/" />
-                <p className="mt-1 text-xs text-[color:var(--color-muted)]">Object-key prefix. Trailing slash recommended.</p>
+                <p className="mt-1 text-xs text-[color:var(--color-muted)]">{t("settings.backup.s3PrefixHint")}</p>
               </Field>
               <div className="grid grid-cols-2 gap-3">
-                <Field label="Access key">
+                <Field label={t("settings.backup.s3AccessKeyLabel")}>
                   <FieldInput value={s3AccessKey} onChange={(e) => setS3AccessKey(e.target.value)} />
                 </Field>
-                <Field label="Secret key">
+                <Field label={t("settings.backup.s3SecretKeyLabel")}>
                   <FieldInput type="password" value={s3SecretKey} onChange={(e) => setS3SecretKey(e.target.value)} placeholder="••••••" />
-                  <p className="mt-1 text-xs text-[color:var(--color-muted)]">{cfg.has_secret_key ? "Already saved. Type a new value to replace." : "Not set."}</p>
+                  <p className="mt-1 text-xs text-[color:var(--color-muted)]">{cfg.has_secret_key ? t("settings.backup.s3SecretSaved") : t("settings.backup.s3SecretMissing")}</p>
                 </Field>
               </div>
               <label className="flex items-center gap-2 text-sm">
@@ -2152,32 +2153,32 @@ function BackupSettings() {
                   checked={s3ForcePathStyle}
                   onChange={(e) => setS3ForcePathStyle(e.target.checked)}
                 />
-                <span>Path-style addressing (MinIO, older endpoints)</span>
+                <span>{t("settings.backup.s3ForcePathStyle")}</span>
               </label>
             </div>
           )}
 
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Cron expression">
+            <Field label={t("settings.backup.cronLabel")}>
               <FieldInput value={cron} onChange={(e) => setCron(e.target.value)} />
-              <p className="mt-1 text-xs text-[color:var(--color-muted)]">5-field. e.g. 0 2 * * * = daily 02:00, 0 */6 * * * = every 6 hours.</p>
+              <p className="mt-1 text-xs text-[color:var(--color-muted)]">{t("settings.backup.cronHint")}</p>
             </Field>
-            <Field label="Retain last N">
+            <Field label={t("settings.backup.retainLabel")}>
               <FieldInput
                 type="number" min={1} max={365}
                 value={retainLast}
                 onChange={(e) => setRetainLast(parseInt(e.target.value || "0", 10) || 0)}
               />
-              <p className="mt-1 text-xs text-[color:var(--color-muted)]">Older backups are swept after each successful run.</p>
+              <p className="mt-1 text-xs text-[color:var(--color-muted)]">{t("settings.backup.retainHint")}</p>
             </Field>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
             <GhostButton type="button" onClick={() => void testTarget()} disabled={busy === "test"}>
-              {busy === "test" ? "Testing…" : "Test target"}
+              {busy === "test" ? t("settings.backup.testing") : t("settings.backup.testTarget")}
             </GhostButton>
             <PrimaryButton type="submit" disabled={!dirty || busy === "save"}>
-              {busy === "save" ? "Saving…" : "Save"}
+              {busy === "save" ? t("common.saving") : t("common.save")}
             </PrimaryButton>
             {error && <ErrorText message={error} />}
             {info && <span className="text-xs text-[color:var(--color-muted)]">{info}</span>}
@@ -2186,38 +2187,38 @@ function BackupSettings() {
       </SettingsPanel>
 
       <SettingsPanel
-        title="Passphrase"
-        description="Encrypts the backup at rest. The hash is stored; the passphrase is not — losing it means every backup is unrecoverable. Save it in your password manager."
+        title={t("settings.backup.passphraseTitle")}
+        description={t("settings.backup.passphraseDescription")}
       >
         <form
           onSubmit={(e) => { e.preventDefault(); void savePassphrase(); }}
           className="flex flex-wrap items-end gap-2"
         >
-          <Field label="New passphrase">
+          <Field label={t("settings.backup.newPassphrase")}>
             <FieldInput
               type="password" value={passphrase}
               onChange={(e) => setPassphrase(e.target.value)}
-              placeholder={cfg.has_passphrase ? "(already set — type to replace)" : ""}
+              placeholder={cfg.has_passphrase ? t("settings.backup.passphrasePlaceholder") : ""}
             />
           </Field>
           <PrimaryButton type="submit" disabled={!passphrase || busy === "pass"}>
-            {busy === "pass" ? "Saving…" : "Save passphrase"}
+            {busy === "pass" ? t("common.saving") : t("settings.backup.savePassphrase")}
           </PrimaryButton>
         </form>
       </SettingsPanel>
 
       <SettingsPanel
-        title="Recent backups"
-        description="Newest first. Download saves the encrypted file. Restore replaces the live database and restarts the hub — production restore should use lumen-hub --restore=&lt;file&gt; from a stopped service."
+        title={t("settings.backup.recentTitle")}
+        description={t("settings.backup.recentDescription")}
       >
         <div className="mb-3">
           <GhostButton onClick={() => void runNow()} disabled={!cfg.has_passphrase || busy === "run"}>
             <Play size={14} className="mr-1.5" />
-            {busy === "run" ? "Running…" : "Backup now"}
+            {busy === "run" ? t("settings.backup.running") : t("settings.backup.backupNow")}
           </GhostButton>
         </div>
         {!entries || entries.length === 0 ? (
-          <p className="text-sm text-[color:var(--color-muted)]">No backups yet.</p>
+          <p className="text-sm text-[color:var(--color-muted)]">{t("settings.backup.noBackups")}</p>
         ) : (
           <ul className="space-y-1.5">
             {entries.map((e) => (
@@ -2233,7 +2234,7 @@ function BackupSettings() {
                     href={backupApi.downloadUrl(e.name)}
                     className="inline-flex items-center gap-1 rounded-md border border-[color:var(--color-border)] px-2 py-1 text-xs hover:bg-[color:var(--color-border)]/30"
                   >
-                    <Download size={12} /> Download
+                    <Download size={12} /> {t("settings.backup.download")}
                   </a>
                   <button
                     type="button"
@@ -2241,7 +2242,7 @@ function BackupSettings() {
                     onClick={() => void doRestore(e.name)}
                     className="inline-flex items-center gap-1 rounded-md border border-[color:var(--color-border)] px-2 py-1 text-xs hover:bg-[color:var(--color-border)]/30 disabled:opacity-50"
                   >
-                    <RotateCcw size={12} /> Restore
+                    <RotateCcw size={12} /> {t("settings.backup.restore")}
                   </button>
                 </div>
               </li>
