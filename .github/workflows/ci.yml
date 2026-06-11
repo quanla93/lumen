@@ -49,6 +49,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm run lint
       - run: pnpm run typecheck
+      - run: pnpm i18n:check
       - run: pnpm --filter web test
 
   test-go:
@@ -198,6 +199,11 @@ jobs:
             "settings.onboardingReplayTitle" \
             "passkeys.title" \
             "Sign in with passkey" \
+            "settings.sso.title" \
+            "settings.saml.title" \
+            "settings.statusPage.title" \
+            "alerts.webPush.subscribe" \
+            "publicStatus.notPublished" \
           ; do
             if ! grep -qF "$SYM" "$BUNDLE"; then
               echo "::error::bundle missing $SYM — run 'pnpm build:web' locally and verify the source change is present."

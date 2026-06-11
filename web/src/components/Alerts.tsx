@@ -1890,6 +1890,7 @@ function SelectInput({
 // entirely in the browser before POSTing the resulting PushSubscription
 // to /api/alerts/web-push/subscribe.
 function WebPushPanel({ channelID }: { channelID: number | null }) {
+  const { t } = useI18n();
   const [subs, setSubs] = useState<WebPushSubscription[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -1912,7 +1913,7 @@ function WebPushPanel({ channelID }: { channelID: number | null }) {
     setBusy(true);
     try {
       if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
-        throw new Error("This browser does not support Web Push.");
+        throw new Error(t("alerts.webPush.unsupported"));
       }
       const reg = await navigator.serviceWorker.ready;
       const perm = await Notification.requestPermission();
@@ -1945,7 +1946,7 @@ function WebPushPanel({ channelID }: { channelID: number | null }) {
         const next = (cur ?? []).filter((s) => s.id !== saved.id);
         return [...next, saved];
       });
-      setOkMsg("Subscribed this browser.");
+      setOkMsg(t("alerts.webPush.subscribed"));
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
@@ -1965,7 +1966,7 @@ function WebPushPanel({ channelID }: { channelID: number | null }) {
   if (channelID == null) {
     return (
       <div className="rounded-md border border-dashed border-[color:var(--color-border)] p-3 text-sm text-[color:var(--color-muted)]">
-        Save the channel first, then reopen it from the channel list to subscribe this browser.
+        {t("alerts.webPush.saveFirst")}
       </div>
     );
   }
@@ -1973,24 +1974,23 @@ function WebPushPanel({ channelID }: { channelID: number | null }) {
   return (
     <div className="space-y-3">
       <p className="text-xs text-[color:var(--color-muted)]">
-        Web Push needs no URL — each browser registers itself below and gets fanned out to on every alert.
-        Subscribing requires a one-time browser permission grant + a service worker (already installed by Lumen).
+        {t("alerts.webPush.intro")}
       </p>
       <div className="flex items-center gap-2">
         <GhostButton type="button" onClick={subscribeThisBrowser} disabled={busy}>
-          {busy ? "Subscribing…" : "Subscribe this browser"}
+          {busy ? t("alerts.webPush.subscribing") : t("alerts.webPush.subscribe")}
         </GhostButton>
         {okMsg && <span className="text-xs text-[color:var(--color-accent)]">{okMsg}</span>}
         {err && <span className="text-xs text-red-500">{err}</span>}
       </div>
       <div className="rounded-md border border-[color:var(--color-border)]">
         <div className="border-b border-[color:var(--color-border)] px-3 py-2 text-xs font-medium text-[color:var(--color-muted)]">
-          Subscribed browsers ({subs?.length ?? 0})
+          {t("alerts.webPush.listHeading", { count: subs?.length ?? 0 })}
         </div>
         {!subs ? (
-          <div className="px-3 py-2 text-sm text-[color:var(--color-muted)]">Loading…</div>
+          <div className="px-3 py-2 text-sm text-[color:var(--color-muted)]">{t("common.loading")}</div>
         ) : subs.length === 0 ? (
-          <div className="px-3 py-2 text-sm text-[color:var(--color-muted)]">No browsers yet. Click subscribe above.</div>
+          <div className="px-3 py-2 text-sm text-[color:var(--color-muted)]">{t("alerts.webPush.noSubs")}</div>
         ) : (
           <ul>
             {subs.map((s) => (
@@ -1998,10 +1998,10 @@ function WebPushPanel({ channelID }: { channelID: number | null }) {
                 <div className="min-w-0">
                   <div className="truncate font-medium">{s.label || s.endpoint}</div>
                   <div className="truncate text-xs text-[color:var(--color-muted)]">
-                    {new URL(s.endpoint).host} · added {new Date(s.created_at).toLocaleString()}
+                    {new URL(s.endpoint).host} · {t("alerts.webPush.added", { ts: new Date(s.created_at).toLocaleString() })}
                   </div>
                 </div>
-                <IconButton label="Remove subscription" onClick={() => removeSub(s.id)}>
+                <IconButton label={t("alerts.webPush.remove")} onClick={() => removeSub(s.id)}>
                   <Trash2 size={14} />
                 </IconButton>
               </li>

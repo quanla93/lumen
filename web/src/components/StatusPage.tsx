@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { publicStatusApi, type PublicStatus } from "@/lib/api";
+import { useI18n } from "@/i18n/useI18n";
 
 // StatusPage — unauthenticated /status route. Polls /api/public/status
 // every 15s so visitors see roughly-live state without flooding the hub.
@@ -7,6 +8,7 @@ import { publicStatusApi, type PublicStatus } from "@/lib/api";
 // / published) so an operator can link to /status from a public page
 // even before they've enabled the feature.
 export function StatusPage() {
+  const { t } = useI18n();
   const [data, setData] = useState<PublicStatus | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
@@ -34,14 +36,14 @@ export function StatusPage() {
   if (err && !data) {
     return (
       <Shell>
-        <p className="text-sm text-red-500">Status page is unreachable: {err}</p>
+        <p className="text-sm text-red-500">{t("publicStatus.unreachable", { error: err })}</p>
       </Shell>
     );
   }
   if (!data) {
     return (
       <Shell>
-        <p className="text-sm text-[color:var(--color-muted)]">Loading…</p>
+        <p className="text-sm text-[color:var(--color-muted)]">{t("publicStatus.loading")}</p>
       </Shell>
     );
   }
@@ -49,7 +51,7 @@ export function StatusPage() {
     return (
       <Shell title="Status">
         <p className="text-sm text-[color:var(--color-muted)]">
-          This status page isn't published. The Lumen admin hasn't enabled it yet.
+          {t("publicStatus.notPublished")}
         </p>
       </Shell>
     );
@@ -60,7 +62,7 @@ export function StatusPage() {
         <p className="mb-6 text-sm text-[color:var(--color-muted)]">{data.description}</p>
       )}
       {data.hosts.length === 0 ? (
-        <p className="text-sm text-[color:var(--color-muted)]">No hosts are public yet.</p>
+        <p className="text-sm text-[color:var(--color-muted)]">{t("publicStatus.noHosts")}</p>
       ) : (
         <ul className="space-y-3">
           {data.hosts.map((h) => (
@@ -94,7 +96,7 @@ export function StatusPage() {
         </ul>
       )}
       <p className="mt-8 text-xs text-[color:var(--color-muted)]">
-        Updated {new Date(data.generated_at).toLocaleTimeString()} ·{" "}
+        {t("publicStatus.updated", { time: new Date(data.generated_at).toLocaleTimeString() })} ·{" "}
         <a href="/" className="underline">Lumen</a>
       </p>
     </Shell>
