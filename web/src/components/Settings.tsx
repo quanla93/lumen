@@ -1466,6 +1466,7 @@ function DisplaySettings() {
 // because the surface is admin-only + rarely edited; a future PR can
 // promote the strings to i18n.messages if a VI-speaking operator hits it.
 function SSOSettings() {
+  const { t } = useI18n();
   const [cfg, setCfg] = useState<OIDCSettings | null>(null);
   const [form, setForm] = useState<OIDCSettings>({
     enabled: false, issuer: "", client_id: "", client_secret: "",
@@ -1489,7 +1490,7 @@ function SSOSettings() {
     setTestResult(null);
     try {
       const res = await oidcApi.testDiscovery(form.issuer);
-      setTestResult({ ok: res.ok, msg: res.ok ? "Issuer reachable; .well-known/openid-configuration OK" : (res.error ?? "Discovery failed") });
+      setTestResult({ ok: res.ok, msg: res.ok ? t("settings.sso.discoveryOk") : (res.error ?? t("settings.sso.discoveryFailed")) });
     } catch (err) {
       setTestResult({ ok: false, msg: err instanceof ApiError ? err.message : String(err) });
     } finally {
@@ -1521,68 +1522,66 @@ function SSOSettings() {
   }
 
   if (!cfg) {
-    return <p className="text-sm text-[color:var(--color-muted)]">Loading…</p>;
+    return <p className="text-sm text-[color:var(--color-muted)]">{t("settings.sso.loading")}</p>;
   }
 
   return (
     <div className="max-w-2xl space-y-4">
       <section>
-        <h2 className="text-base font-semibold tracking-tight mb-3">Single sign-on (OIDC)</h2>
+        <h2 className="text-base font-semibold tracking-tight mb-3">{t("settings.sso.title")}</h2>
         <p className="text-sm text-[color:var(--color-muted)]">
-          Bind a self-hosted IdP (Authentik, Keycloak, Google, etc.) so you sign in via your OIDC provider
-          instead of the local password. Single-admin mode: only the email below can sign in via OIDC, and
-          the existing local password keeps working as a fallback.
+          {t("settings.sso.description")}
         </p>
         <p className="mt-2 text-xs text-[color:var(--color-muted)]">
-          Callback URL to register with your IdP: <code className="text-[color:var(--color-fg)]">{new URL("/api/auth/oidc/callback", window.location.href).toString()}</code>
+          {t("settings.sso.callbackHint")} <code className="text-[color:var(--color-fg)]">{new URL("/api/auth/oidc/callback", window.location.href).toString()}</code>
         </p>
       </section>
 
       <form onSubmit={submit} className="space-y-3">
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" checked={form.enabled} onChange={(e) => setForm({ ...form, enabled: e.target.checked })} />
-          Enable OIDC login
+          {t("settings.sso.enable")}
         </label>
 
-        <Field label="Issuer URL">
+        <Field label={t("settings.sso.issuerUrl")}>
           <FieldInput
             value={form.issuer}
-            placeholder="https://authentik.example.com/application/o/lumen/"
+            placeholder={t("settings.sso.issuerPlaceholder")}
             onChange={(e) => setForm({ ...form, issuer: e.target.value })}
           />
         </Field>
 
-        <Field label="Client ID">
+        <Field label={t("settings.sso.clientId")}>
           <FieldInput value={form.client_id} onChange={(e) => setForm({ ...form, client_id: e.target.value })} />
         </Field>
 
-        <Field label={cfg.has_client_secret ? "Client secret (leave blank to keep saved)" : "Client secret"}>
+        <Field label={cfg.has_client_secret ? t("settings.sso.clientSecretKeep") : t("settings.sso.clientSecret")}>
           <FieldInput
             type="password"
             value={form.client_secret ?? ""}
-            placeholder={cfg.has_client_secret ? "•••••• (saved)" : ""}
+            placeholder={cfg.has_client_secret ? t("settings.sso.clientSecretSavedMask") : ""}
             onChange={(e) => setForm({ ...form, client_secret: e.target.value })}
           />
         </Field>
 
-        <Field label="Scopes">
+        <Field label={t("settings.sso.scopes")}>
           <FieldInput value={form.scopes} onChange={(e) => setForm({ ...form, scopes: e.target.value })} />
         </Field>
 
-        <Field label="Expected admin email">
+        <Field label={t("settings.sso.expectedEmail")}>
           <FieldInput
             value={form.expected_email}
-            placeholder="you@example.com"
+            placeholder={t("settings.sso.expectedEmailPlaceholder")}
             onChange={(e) => setForm({ ...form, expected_email: e.target.value })}
           />
           <p className="mt-1 text-xs text-[color:var(--color-muted)]">
-            Only this email (from the ID token's <code>email</code> claim) can sign in via OIDC. Any other identity is rejected.
+            {t("settings.sso.expectedEmailHint", { code: "email" })}
           </p>
         </Field>
 
         <div className="flex items-center gap-2">
           <GhostButton type="button" disabled={!form.issuer || testing} onClick={testDiscovery}>
-            {testing ? "Testing…" : "Test discovery"}
+            {testing ? t("settings.sso.testing") : t("settings.sso.testDiscovery")}
           </GhostButton>
           {testResult && (
             <span className={`text-sm ${testResult.ok ? "text-[color:var(--color-accent)]" : "text-red-500"}`}>
@@ -1594,10 +1593,10 @@ function SSOSettings() {
         {error && <ErrorText message={error} />}
         {savedAt && (
           <p role="status" className="text-sm text-[color:var(--color-accent)]">
-            Saved at {new Date(savedAt).toLocaleTimeString()}.
+            {t("common.savedAt", { time: new Date(savedAt).toLocaleTimeString() })}
           </p>
         )}
-        <PrimaryButton disabled={busy}>{busy ? "Saving…" : "Save"}</PrimaryButton>
+        <PrimaryButton disabled={busy}>{busy ? t("common.saving") : t("common.save")}</PrimaryButton>
       </form>
     </div>
   );
@@ -1606,6 +1605,7 @@ function SSOSettings() {
 // StatusPageSettings — admin config for the unauthenticated /status page.
 // Labels are inline English (same rationale as SSOSettings).
 function StatusPageSettings() {
+  const { t } = useI18n();
   const [cfg, setCfg] = useState<PublicStatusConfig | null>(null);
   const [hosts, setHosts] = useState<Host[] | null>(null);
   const [busy, setBusy] = useState(false);
@@ -1645,7 +1645,7 @@ function StatusPageSettings() {
   }
 
   if (!cfg) {
-    return <p className="text-sm text-[color:var(--color-muted)]">Loading…</p>;
+    return <p className="text-sm text-[color:var(--color-muted)]">{t("common.loading")}</p>;
   }
 
   const visibleCount = hosts?.filter((h) => h.public_visible).length ?? 0;
@@ -1653,14 +1653,9 @@ function StatusPageSettings() {
   return (
     <div className="max-w-2xl space-y-6">
       <section>
-        <h2 className="text-base font-semibold tracking-tight mb-3">Public status page</h2>
+        <h2 className="text-base font-semibold tracking-tight mb-3">{t("settings.statusPage.title")}</h2>
         <p className="text-sm text-[color:var(--color-muted)]">
-          A read-only page at{" "}
-          <a className="underline" href="/status" target="_blank" rel="noreferrer">
-            {new URL("/status", window.location.href).toString()}
-          </a>{" "}
-          that anyone can visit (no login). Shows the hosts you opt in below, with up/stale/down state plus CPU/RAM/disk.
-          Default: hidden until you flip the toggle and tick at least one host.
+          {t("settings.statusPage.description", { url: new URL("/status", window.location.href).toString() })}
         </p>
       </section>
 
@@ -1671,32 +1666,32 @@ function StatusPageSettings() {
             checked={cfg.enabled}
             onChange={(e) => setCfg({ ...cfg, enabled: e.target.checked })}
           />
-          Publish the status page
+          {t("settings.statusPage.publish")}
         </label>
 
-        <Field label="Title">
-          <FieldInput value={cfg.title} onChange={(e) => setCfg({ ...cfg, title: e.target.value })} placeholder="Status" />
+        <Field label={t("settings.statusPage.pageTitleLabel")}>
+          <FieldInput value={cfg.title} onChange={(e) => setCfg({ ...cfg, title: e.target.value })} placeholder={t("settings.statusPage.pageTitlePlaceholder")} />
         </Field>
 
-        <Field label="Description">
-          <FieldInput value={cfg.description} onChange={(e) => setCfg({ ...cfg, description: e.target.value })} placeholder="Optional — shown under the title." />
+        <Field label={t("settings.statusPage.descriptionLabel")}>
+          <FieldInput value={cfg.description} onChange={(e) => setCfg({ ...cfg, description: e.target.value })} placeholder={t("settings.statusPage.descriptionPlaceholder")} />
         </Field>
 
         {error && <ErrorText message={error} />}
         {savedAt && (
           <p role="status" className="text-sm text-[color:var(--color-accent)]">
-            Saved at {new Date(savedAt).toLocaleTimeString()}.
+            {t("common.savedAt", { time: new Date(savedAt).toLocaleTimeString() })}
           </p>
         )}
-        <PrimaryButton disabled={busy}>{busy ? "Saving…" : "Save"}</PrimaryButton>
+        <PrimaryButton disabled={busy}>{busy ? t("common.saving") : t("common.save")}</PrimaryButton>
       </form>
 
       <section>
-        <h3 className="text-sm font-semibold tracking-tight mb-2">Hosts on the public page ({visibleCount})</h3>
+        <h3 className="text-sm font-semibold tracking-tight mb-2">{t("settings.statusPage.hostsHeading", { count: visibleCount })}</h3>
         {!hosts ? (
-          <p className="text-sm text-[color:var(--color-muted)]">Loading hosts…</p>
+          <p className="text-sm text-[color:var(--color-muted)]">{t("settings.statusPage.loadingHosts")}</p>
         ) : hosts.length === 0 ? (
-          <p className="text-sm text-[color:var(--color-muted)]">No hosts yet — create one in the Hosts tab.</p>
+          <p className="text-sm text-[color:var(--color-muted)]">{t("settings.statusPage.noHosts")}</p>
         ) : (
           <ul className="space-y-1.5">
             {hosts.map((h) => (
@@ -1708,7 +1703,7 @@ function StatusPageSettings() {
                     checked={h.public_visible}
                     onChange={(e) => togglePublic(h, e.target.checked)}
                   />
-                  Show on /status
+                  {t("settings.statusPage.showOnStatus")}
                 </label>
               </li>
             ))}
@@ -1722,6 +1717,7 @@ function StatusPageSettings() {
 // ─── SAML sub-tab (RFC 0002) ──────────────────────────────────────────────
 
 function SAMLSettings() {
+  const { t } = useI18n();
   const [cfg, setCfg] = useState<SAMLSettings | null>(null);
   const [busy, setBusy] = useState<"save" | "test" | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -1766,7 +1762,7 @@ function SAMLSettings() {
       };
       const next = await samlApi.put(body);
       setCfg(next);
-      setInfo("Saved.");
+      setInfo(t("settings.saml.saved"));
     } catch (err) {
       setError(err instanceof ApiError ? err.message : String(err));
     } finally { setBusy(null); }
@@ -1782,9 +1778,9 @@ function SAMLSettings() {
       );
       if (res.ok) {
         setDiscovered({ sso_url: res.sso_url, idp_entity_id: res.idp_entity_id });
-        setInfo("IdP metadata parsed.");
+        setInfo(t("settings.saml.testOk"));
       } else {
-        setError(res.error ?? "Test failed");
+        setError(res.error ?? t("settings.saml.testFailed"));
       }
     } catch (err) {
       setError(err instanceof ApiError ? err.message : String(err));
@@ -1793,8 +1789,8 @@ function SAMLSettings() {
 
   if (!cfg) {
     return (
-      <SettingsPanel title="SAML" description="Loading…">
-        <p className="text-sm text-[color:var(--color-muted)]">Loading SAML configuration…</p>
+      <SettingsPanel title="SAML" description={t("settings.saml.loading")}>
+        <p className="text-sm text-[color:var(--color-muted)]">{t("settings.saml.loading")}</p>
         {error && <ErrorText message={error} />}
       </SettingsPanel>
     );
@@ -1811,8 +1807,8 @@ function SAMLSettings() {
   return (
     <div className="space-y-4">
       <SettingsPanel
-        title="SAML SSO"
-        description="Older enterprise + EDU IdPs (Okta classic, Azure AD enterprise, ADFS, Shibboleth). Use OIDC for new deployments when you can — better tooling + simpler setup."
+        title={t("settings.saml.title")}
+        description={t("settings.saml.description")}
       >
         <form
           onSubmit={(e) => { e.preventDefault(); void save(); }}
@@ -1824,12 +1820,12 @@ function SAMLSettings() {
               checked={enabled}
               onChange={(e) => setEnabled(e.target.checked)}
             />
-            <span>Enable SAML sign-in</span>
+            <span>{t("settings.saml.enable")}</span>
           </label>
 
-          <Field label="SP metadata">
+          <Field label={t("settings.saml.spMetadata")}>
             <p className="text-xs text-[color:var(--color-muted)]">
-              Hand this URL to your IdP:{" "}
+              {t("settings.saml.spMetadataHandHint")}{" "}
               <a
                 className="text-[color:var(--lumen-teal)] underline"
                 href={samlApi.metadataUrl()}
@@ -1840,24 +1836,24 @@ function SAMLSettings() {
               </a>
             </p>
             <p className="mt-1 text-xs text-[color:var(--color-muted)]">
-              An SP keypair is auto-generated on first save. The SP entity ID defaults to the metadata URL; override here only if your IdP requires a fixed value.
+              {t("settings.saml.spMetadataAutoHint")}
             </p>
           </Field>
 
-          <Field label="IdP metadata source">
+          <Field label={t("settings.saml.idpSource")}>
             <SegmentedControl
               value={metadataSource}
               onChange={(v) => setMetadataSource(v as "paste" | "url")}
-              ariaLabel="IdP metadata source"
+              ariaLabel={t("settings.saml.idpSource")}
               options={[
-                { value: "paste", label: "Paste XML" },
-                { value: "url", label: "Fetch URL" },
+                { value: "paste", label: t("settings.saml.idpSourcePaste") },
+                { value: "url", label: t("settings.saml.idpSourceUrl") },
               ]}
             />
           </Field>
 
           {metadataSource === "paste" ? (
-            <Field label="IdP metadata XML">
+            <Field label={t("settings.saml.idpMetadataXml")}>
               <textarea
                 value={idpMetadataXML}
                 onChange={(e) => setIdpMetadataXML(e.target.value)}
@@ -1867,7 +1863,7 @@ function SAMLSettings() {
               />
             </Field>
           ) : (
-            <Field label="IdP metadata URL">
+            <Field label={t("settings.saml.idpMetadataUrl")}>
               <FieldInput
                 value={idpMetadataURL}
                 onChange={(e) => setIdpMetadataURL(e.target.value)}
@@ -1877,14 +1873,14 @@ function SAMLSettings() {
           )}
 
           <div className="grid grid-cols-2 gap-3">
-            <Field label="SP entity ID (optional)">
+            <Field label={t("settings.saml.spEntityId")}>
               <FieldInput
                 value={spEntityID}
                 onChange={(e) => setSPEntityID(e.target.value)}
-                placeholder="(defaults to metadata URL)"
+                placeholder={t("settings.saml.spEntityIdPlaceholder")}
               />
             </Field>
-            <Field label="Clock skew (seconds)">
+            <Field label={t("settings.saml.clockSkew")}>
               <FieldInput
                 type="number" min={0} max={600}
                 value={clockSkew}
@@ -1893,23 +1889,23 @@ function SAMLSettings() {
             </Field>
           </div>
 
-          <Field label="Expected NameID (comma-separated)">
+          <Field label={t("settings.saml.expectedNameId")}>
             <FieldInput
               value={expectedNameID}
               onChange={(e) => setExpectedNameID(e.target.value)}
-              placeholder="alice, bob"
+              placeholder={t("settings.saml.expectedNameIdPlaceholder")}
             />
             <p className="mt-1 text-xs text-[color:var(--color-muted)]">
-              The exact NameID value(s) your IdP releases for the admin user. Case-insensitive. Required to enable.
+              {t("settings.saml.expectedNameIdHint")}
             </p>
           </Field>
 
           <div className="flex flex-wrap items-center gap-2">
             <GhostButton type="button" onClick={() => void testMetadata()} disabled={busy === "test"}>
-              {busy === "test" ? "Testing…" : "Test metadata"}
+              {busy === "test" ? t("settings.saml.testing") : t("settings.saml.testMetadata")}
             </GhostButton>
             <PrimaryButton type="submit" disabled={!dirty || busy === "save"}>
-              {busy === "save" ? "Saving…" : "Save"}
+              {busy === "save" ? t("common.saving") : t("common.save")}
             </PrimaryButton>
             {error && <ErrorText message={error} />}
             {info && <span className="text-xs text-[color:var(--color-muted)]">{info}</span>}
@@ -1917,8 +1913,8 @@ function SAMLSettings() {
 
           {discovered && (
             <div className="rounded-md border border-[color:var(--color-border)] p-3 text-xs">
-              <div><strong>SSO URL:</strong> {discovered.sso_url ?? "(none)"}</div>
-              <div><strong>IdP entity ID:</strong> {discovered.idp_entity_id ?? "(none)"}</div>
+              <div><strong>{t("settings.saml.discoveredSsoUrl")}</strong> {discovered.sso_url ?? t("settings.saml.discoveredNone")}</div>
+              <div><strong>{t("settings.saml.discoveredIdpEntityId")}</strong> {discovered.idp_entity_id ?? t("settings.saml.discoveredNone")}</div>
             </div>
           )}
         </form>
