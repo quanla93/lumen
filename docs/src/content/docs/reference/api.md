@@ -1,6 +1,6 @@
 ---
 title: API
-description: Every REST endpoint and WebSocket frame the hub exposes. Stable wire format under /api/* (versioning lands at v0.1.0 as /api/v1/*).
+description: Every REST endpoint and WebSocket frame the hub exposes. Public Read API at /api/v1/* (stable since v0.5.0); internal /api/* endpoints can still change between releases.
 sidebar:
   order: 2
 ---
@@ -236,8 +236,8 @@ Fields returned match the persisted scalars (no `cpu_per_core`,
 GET /api/version
 Cookie: lumen_session=…
 → 200 {
-    "hub_version": "v0.2.0",
-    "latest_agent_version": "v0.2.0"
+    "hub_version": "v0.7.3",
+    "latest_agent_version": "v0.7.3"
   }
 ```
 
@@ -482,7 +482,13 @@ intentionally terse to avoid information leaks.
 
 ## Versioning
 
-Pre-v0.1.0 the API is `/api/*` and can break between commits. At
-v0.1.0 the stable surface moves to `/api/v1/*` and the unversioned
-paths become aliases for one release. After v0.2.0, unversioned
-paths are removed.
+The public, third-party-facing surface is `/api/v1/*` (Bearer API key, rich envelope) and is
+**stable since v0.5.0** (Phase 7 first slice). Versioning policy: adding a field is non-breaking;
+removing/renaming/changing semantics is breaking and ships under `/api/v2/*` with the v1 path
+deprecated for at least 6 months. See [Public Read API](./public-api.md) for the full envelope
+shape, error codes, and rate-limit headers.
+
+The internal/UI surface at `/api/*` (session cookie, terse `{"error":"…"}` envelope) and the
+agent-only surface (`/api/ingest`, `/api/agent/policy`, bearer host token) are **not versioned**
+and may change between releases without notice. The two surfaces are kept separate so a
+breaking change to internal endpoints does not move the public contract.

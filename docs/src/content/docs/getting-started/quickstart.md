@@ -77,7 +77,7 @@ curl -fsSL https://raw.githubusercontent.com/quanla93/lumen/main/scripts/install
     --host pve-01
 ```
 
-Pin a release tag (e.g. `v0.6.5`) instead of `main` for reproducible installs. Either way the script auto-detects the arch, pulls the matching agent binary, writes `/etc/systemd/system/lumen-agent.service`, and starts the service. The host card appears on the dashboard within one collection interval.
+Pin a release tag (e.g. `v0.7.3`) instead of `main` for reproducible installs. Either way the script auto-detects the arch, pulls the matching agent binary, writes `/etc/systemd/system/lumen-agent.service`, and starts the service. The host card appears on the dashboard within one collection interval.
 
 ### Path B — Docker Compose on the target
 

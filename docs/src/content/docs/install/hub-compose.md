@@ -56,7 +56,7 @@ Generate the secret and write it in place:
 sudo sed -i "s|REPLACE_WITH_32_BYTE_HEX|$(openssl rand -hex 32)|" docker-compose.yml
 ```
 
-Pinning a version is recommended for production. Replace `:latest` with the tag you want, e.g. `ghcr.io/quanla93/lumen-hub:0.6.5`. The image is multi-arch (linux/amd64 + linux/arm64) so the same tag works on x86 servers, Apple Silicon, Raspberry Pi 4/5, Ampere, Graviton, etc.
+Pinning a version is recommended for production. Replace `:latest` with the tag you want, e.g. `ghcr.io/quanla93/lumen-hub:0.7.3`. The image is multi-arch (linux/amd64 + linux/arm64) so the same tag works on x86 servers, Apple Silicon, Raspberry Pi 4/5, Ampere, Graviton, etc.
 
 ## 3. Start the hub
 

@@ -349,4 +349,4 @@ Items deliberately out of scope for v0.5.0; track [RFC 0003](https://github.com/
 - Per-key rate-limit override
 - Tag-pair host filter (glob is enough for v1)
 - CORS (caller must be behind a reverse proxy / on LAN)
-- `>7d` metrics queries (waits on Cold tier in v0.6.0+)
+- `>7d` metrics queries (waits on Cold tier; Sprint 10 in the [roadmap](https://github.com/quanla93/lumen/blob/main/ACTION_PLAN.md) — conditional on real demand, defer otherwise)
